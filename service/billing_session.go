@@ -259,6 +259,25 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
 
+	// ---- 跨组计费：特殊授权分组强制走钱包 ----
+	// 当用户使用通过 GroupSpecialUsableGroup 授权的分组（如 GPT_Month 用户访问 vip 组），
+	// 且该分组与用户订阅的 UpgradeGroup 不匹配时，强制使用钱包计费，防止订阅额度被跨组消耗。
+	// 例外：vip 全模型订阅用户不触发此规则，因为 vip 套餐本身就覆盖所有渠道分组。
+	if pref != "wallet_only" &&
+		relayInfo.UsingGroup != "" && relayInfo.UsingGroup != relayInfo.UserGroup {
+		if IsSpeciallyGrantedGroup(relayInfo.UserGroup, relayInfo.UsingGroup) {
+			upgradeGroup, err := model.GetActiveSubscriptionUpgradeGroup(relayInfo.UserId)
+			if err == nil && upgradeGroup != "" && relayInfo.UsingGroup != upgradeGroup &&
+				upgradeGroup != "vip" &&
+				model.IsSubscriptionUpgradeGroup(relayInfo.UsingGroup) {
+				pref = "wallet_only"
+				logger.LogInfo(c, fmt.Sprintf(
+					"用户 %d 跨组访问 (userGroup=%s, usingGroup=%s, subscriptionUpgradeGroup=%s), 强制使用钱包计费",
+					relayInfo.UserId, relayInfo.UserGroup, relayInfo.UsingGroup, upgradeGroup))
+			}
+		}
+	}
+
 	// 钱包路径需要先检查用户额度
 	tryWallet := func() (*BillingSession, *types.NewAPIError) {
 		userQuota, err := model.GetUserQuota(relayInfo.UserId, false)

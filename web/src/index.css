@@ -31,13 +31,6 @@ body {
   background-color: var(--semi-color-bg-0);
 }
 
-/* 桌面端禁止 body 纵向滚动 - 防止 VChart tooltip 触发页面滚动条 */
-@media (min-width: 768px) {
-  body {
-    overflow-y: hidden;
-  }
-}
-
 .app-layout {
   height: 100vh;
   height: 100dvh;
@@ -475,9 +468,6 @@ html.dark .sbg-variant-green {
 /* 页脚样式 */
 .custom-footer {
   font-size: 1.1em;
-}
-.custom-footer.na-cb6feafeb3990c78 {
-  position: relative;
 }
 
 /* 卡片内容容器通用样式 */
@@ -982,27 +972,1402 @@ html.dark .with-pastel-balls::before {
   border-radius: 10px !important;
 }
 
-@keyframes slideInLeft {
+/* ==================== Synai996 首页（浅色蓝白体系） ==================== */
+
+/* ---------- Variables & page wrapper ---------- */
+.synai-homepage {
+  --ink: #18222f;
+  --muted: #5f6b7b;
+  --blue: #4c6fff;
+  --blue-soft: #e9efff;
+  --line: rgba(27, 31, 35, 0.1);
+  --paper: rgba(255, 255, 255, 0.82);
+  --paper-strong: rgba(255, 255, 255, 0.95);
+  --shadow: 0 24px 80px rgba(30, 61, 114, 0.12);
+
+  position: relative;
+  overflow: hidden;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(76, 111, 255, 0.14), transparent 28%),
+    radial-gradient(circle at right 10%, rgba(61, 196, 255, 0.12), transparent 26%),
+    linear-gradient(180deg, #f7faff 0%, #f3f7fd 50%, #eef3fa 100%);
+  color: var(--ink);
+  font-family: 'PingFang SC', 'Hiragino Sans GB', 'Noto Serif SC', 'Microsoft YaHei', sans-serif;
+  padding-bottom: 56px;
+}
+
+/* grid texture overlay */
+.synai-homepage::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(76, 111, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(76, 111, 255, 0.04) 1px, transparent 1px);
+  background-size: 36px 36px;
+  pointer-events: none;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.5), transparent 90%);
+  z-index: 0;
+}
+
+/* ---------- Shell (centered container) ---------- */
+.synai-shell {
+  position: relative;
+  z-index: 1;
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+}
+
+/* ---------- Hero ---------- */
+.synai-hero {
+  position: relative;
+  padding: 52px 0 28px;
+}
+
+.synai-hero-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.synai-hero-card {
+  position: relative;
+  border-radius: 36px;
+  padding: 42px;
+  overflow: hidden;
+  background: var(--paper);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: var(--shadow);
+}
+
+.synai-hero-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(76, 111, 255, 0.16), transparent 24%),
+    radial-gradient(circle at 88% 20%, rgba(61, 196, 255, 0.14), transparent 18%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
+  pointer-events: none;
+}
+
+.synai-hero-layout {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 24px;
+  align-items: stretch;
+}
+
+/* ---------- Eyebrow badge ---------- */
+.synai-hero-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.synai-eyebrow {
+  display: inline-block;
+  padding: 6px 16px;
+  border-radius: 20px;
+  background: rgba(124, 77, 255, 0.12);
+  border: 1px solid rgba(124, 77, 255, 0.22);
+  color: #7c6adc;
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  box-shadow: 0 0 15px rgba(124, 77, 255, 0.12);
+}
+
+/* ---------- Eyebrow row (badge + QQ link) ---------- */
+.synai-eyebrow-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.synai-eyebrow-row .synai-eyebrow {
+  margin-top: 0;
+}
+
+.synai-qq-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: rgba(76, 111, 255, 0.08);
+  border: 1px solid rgba(76, 111, 255, 0.18);
+  color: #5f6b7b;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+.synai-qq-link:hover {
+  background: rgba(76, 111, 255, 0.14);
+  color: #4c6fff;
+  transform: translateY(-1px);
+}
+
+/* ---------- Quick Entry cards ---------- */
+.synai-quick-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.synai-quick-entry {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(76, 111, 255, 0.04);
+  border: 1px solid rgba(76, 111, 255, 0.08);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.synai-quick-entry:hover {
+  background: rgba(76, 111, 255, 0.08);
+  border-color: rgba(76, 111, 255, 0.16);
+  transform: translateY(-1px);
+}
+.synai-quick-entry-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 2px;
+}
+.synai-quick-entry-desc {
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.synai-quick-entry-path {
+  font-size: 0.7rem;
+  color: var(--blue);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  margin-top: 4px;
+  opacity: 0.7;
+}
+
+/* ---------- Hero heading ---------- */
+/* ---------- Hero brand (logo + heading) ---------- */
+.synai-hero-brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 14px 0 12px;
+}
+
+.synai-hero-logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 8px 28px rgba(76, 111, 255, 0.18);
+}
+
+.synai-hero-h1 {
+  margin: 0;
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, Lato, 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 2.8rem;
+  letter-spacing: -1px;
+  font-weight: 800;
+  background:
+    linear-gradient(90deg, transparent 0%, transparent 40%, rgba(255, 255, 255, 0.55) 50%, transparent 60%, transparent 100%) 200% 0 / 200% 100%,
+    linear-gradient(180deg, #1a1a2e, #b0b0b0);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: hero-shine 4s linear infinite;
+}
+
+@keyframes hero-shine {
+  0% { background-position: 200% 0, 0 0; }
+  100% { background-position: -200% 0, 0 0; }
+}
+
+.synai-accent {
+  color: #4c6fff;
+}
+
+/* ---------- Rainbow gradient text ---------- */
+.synai-rainbow-text {
+  background: linear-gradient(
+    180deg,
+    #ff6b6b 0%,
+    #ff9a56 18%,
+    #ffd93d 34%,
+    #6bcb77 50%,
+    #4d96ff 66%,
+    #9b72f2 82%,
+    #c471ed 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* ---------- Hero lead paragraph ---------- */
+.synai-lead {
+  max-width: 640px;
+  margin: 0 0 24px;
+  color: var(--muted);
+  font-size: 1.08rem;
+  line-height: 1.9;
+}
+
+/* ---------- Buttons ---------- */
+.synai-btn {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 14px 22px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.synai-btn:hover {
+  transform: translateY(-2px);
+}
+
+.synai-btn:active {
+  transform: translateY(0);
+}
+
+.synai-btn-primary {
+  background: linear-gradient(135deg, #4c6fff, #5f8bff);
+  color: #fffdf9;
+  box-shadow: 0 14px 28px rgba(76, 111, 255, 0.24);
+}
+
+.synai-btn-primary:hover {
+  box-shadow: 0 18px 36px rgba(76, 111, 255, 0.32);
+}
+
+.synai-btn-secondary {
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--ink);
+  border: 1px solid rgba(35, 41, 54, 0.1);
+}
+
+.synai-btn-secondary:hover {
+  background: #fff;
+}
+
+.synai-btn-sm {
+  padding: 10px 16px;
+  font-size: 13px;
+}
+
+/* ---------- Hero actions row ---------- */
+.synai-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+/* ---------- Hero metrics ---------- */
+.synai-hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.synai-metric {
+  padding: 16px;
+  border-radius: 22px;
+  background: rgba(245, 249, 255, 0.82);
+  border: 1px solid rgba(35, 41, 54, 0.08);
+}
+
+.synai-metric strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 1.1rem;
+  color: var(--ink);
+}
+
+.synai-metric span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ---------- Uptime card ---------- */
+.synai-uptime-card {
+  display: flex;
+  flex-direction: column;
+  margin-top: 16px;
+  padding: 18px 22px 20px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, rgba(220, 252, 231, 0.5) 0%, rgba(187, 247, 208, 0.3) 50%, rgba(167, 243, 208, 0.2) 100%);
+  border: 1px solid rgba(34, 197, 94, 0.18);
+  backdrop-filter: blur(8px);
+  flex: 1;
+}
+
+.synai-uptime-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.synai-uptime-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #15803d;
+}
+
+.synai-uptime-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+  animation: synai-pulse 2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes synai-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 8px rgba(34, 197, 94, 0.6); }
+  50% { opacity: 0.5; box-shadow: 0 0 16px rgba(34, 197, 94, 0.3); }
+}
+
+.synai-uptime-link {
+  color: #16a34a;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 12px;
+  background: rgba(34, 197, 94, 0.1);
+  transition: all 0.2s;
+}
+
+.synai-uptime-link:hover {
+  background: rgba(34, 197, 94, 0.2);
+  color: #15803d;
+}
+
+.synai-uptime-counter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.synai-uptime-unit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.synai-uptime-num {
+  font-family: 'Outfit', 'SF Mono', 'Menlo', monospace;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #166534;
+  background: linear-gradient(180deg, #14532d 0%, #22c55e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1;
+  min-width: 56px;
+  text-align: center;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background-color: rgba(255, 255, 255, 0.5);
+  /* Override gradient for the text, keep bg for the box */
+  background: rgba(255, 255, 255, 0.5);
+  color: #14532d;
+  -webkit-text-fill-color: #14532d;
+}
+
+.synai-uptime-sec {
+  animation: synai-tick 1s step-end infinite;
+}
+
+@keyframes synai-tick {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.synai-uptime-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #16a34a;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.synai-uptime-colon {
+  font-family: 'Outfit', monospace;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #22c55e;
+  line-height: 1;
+  margin-bottom: 18px;
+  animation: synai-blink 1s step-end infinite;
+}
+
+@keyframes synai-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+/* ---------- Hero right panel ---------- */
+.synai-hero-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.synai-base-card,
+.synai-status-card {
+  border-radius: 28px;
+  padding: 22px;
+  background: var(--paper-strong);
+  border: 1px solid rgba(35, 41, 54, 0.08);
+}
+
+.synai-panel-label {
+  margin-bottom: 10px;
+  color: #4c6fff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.synai-url-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid rgba(35, 41, 54, 0.1);
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.synai-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.synai-chip {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(76, 111, 255, 0.1);
+  color: #3f5fd5;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.synai-provider-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.synai-provider {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(76, 111, 255, 0.08);
+  color: #2f4fc7;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* ---------- Section ---------- */
+.synai-section {
+  padding: 18px 0 24px;
+}
+
+/* ---------- Section card (the big wrapping card) ---------- */
+.synai-section-card {
+  border-radius: 34px;
+  padding: 32px;
+  background: var(--paper);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: var(--shadow);
+}
+
+/* ---------- Section head (left-right split) ---------- */
+.synai-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-end;
+  margin-bottom: 22px;
+}
+
+.synai-kicker {
+  color: #4c6fff;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.synai-section-h2 {
+  margin: 8px 0 0;
+  font-family: Lato, 'Helvetica Neue', 'PingFang SC', sans-serif;
+  font-size: clamp(2rem, 3vw, 2.8rem);
+  line-height: 1.05;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.synai-section-desc {
+  margin: 0;
+  max-width: 420px;
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+/* ---------- Section actions (buttons below desc) ---------- */
+.synai-section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.synai-section-head-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+/* ---------- Feature grid ---------- */
+.synai-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.synai-feature-card {
+  border-radius: 28px;
+  padding: 22px;
+  border: 1px solid rgba(35, 41, 54, 0.08);
+  background: rgba(248, 251, 255, 0.82);
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.synai-feature-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(76, 111, 255, 0.18);
+  box-shadow: 0 20px 50px rgba(30, 61, 114, 0.14);
+}
+
+.synai-feature-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+  background: linear-gradient(135deg, #e8efff, #dff6ff);
+  color: #4c6fff;
+  font-weight: 800;
+}
+
+.synai-feature-card h3 {
+  margin: 0 0 8px;
+  font-size: 1.08rem;
+  color: var(--ink);
+}
+
+.synai-feature-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+/* ---------- Plans grid ---------- */
+.synai-plans-grid {
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 8px;
+}
+
+.synai-plans-grid::-webkit-scrollbar {
+  height: 6px;
+}
+
+.synai-plans-grid::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 3px;
+}
+
+.synai-plans-grid::-webkit-scrollbar-thumb {
+  background: rgba(76, 111, 255, 0.2);
+  border-radius: 3px;
+}
+
+.synai-plans-grid::-webkit-scrollbar-thumb:hover {
+  background: rgba(76, 111, 255, 0.35);
+}
+
+.synai-plan-card {
+  position: relative;
+  border-radius: 28px;
+  padding: 22px;
+  border: 1px solid rgba(35, 41, 54, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(241, 246, 255, 0.94));
+  overflow: hidden;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  min-width: 280px;
+  flex: 0 0 calc(25% - 14px);
+  scroll-snap-align: start;
+}
+
+.synai-plan-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 50px rgba(30, 61, 114, 0.14);
+}
+
+.synai-plan-card.highlight {
+  border-color: rgba(76, 111, 255, 0.24);
+  box-shadow: 0 24px 60px rgba(76, 111, 255, 0.14);
+}
+
+.synai-plan-card::after {
+  content: '';
+  position: absolute;
+  inset: auto -50px -80px auto;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(76, 111, 255, 0.14), transparent 70%);
+  pointer-events: none;
+}
+
+.synai-plan-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.synai-plan-tag {
+  display: inline-flex;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(76, 111, 255, 0.1);
+  color: #3f5fd5;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.synai-plan-group {
+  color: #198754;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.synai-plan-card h3 {
+  margin: 0 0 8px;
+  font-size: 1.08rem;
+  color: var(--ink);
+}
+
+.synai-plan-card > p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+.synai-price-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin: 18px 0;
+}
+
+.synai-price {
+  font-family: Lato, 'Helvetica Neue', sans-serif;
+  font-size: 3rem;
+  line-height: 0.95;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.synai-price-unit {
+  padding-bottom: 7px;
+  color: var(--muted);
+}
+
+.synai-meta-grid {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0 22px;
+}
+
+.synai-meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid rgba(35, 41, 54, 0.09);
+}
+
+.synai-meta-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.synai-meta-value {
+  text-align: right;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.synai-plan-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.synai-plan-note {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.synai-pricing-empty,
+.synai-pricing-loading {
+  grid-column: 1 / -1;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.synai-pricing-empty h3 {
+  margin: 0 0 8px;
+  color: var(--ink);
+}
+
+.synai-pricing-empty p {
+  margin: 0 0 16px;
+  color: var(--muted);
+}
+
+/* ---------- Tutorial section ---------- */
+.synai-tutorial-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.synai-tutorial-tab {
+  border: 1px solid rgba(76, 111, 255, 0.12);
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform 180ms ease, border-color 180ms ease, color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.synai-tutorial-tab:hover {
+  transform: translateY(-1px);
+  color: #3253d9;
+  border-color: rgba(76, 111, 255, 0.28);
+}
+
+.synai-tutorial-tab.active {
+  background: linear-gradient(135deg, #4c6fff, #5f8bff);
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 10px 24px rgba(76, 111, 255, 0.2);
+}
+
+/* ---------- Steps grid (tutorial panel) ---------- */
+.synai-steps-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 20px;
+  animation: synai-fade-in 280ms ease;
+}
+
+.synai-tool-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(76, 111, 255, 0.06), rgba(232, 246, 255, 0.75));
+  border: 1px solid rgba(76, 111, 255, 0.1);
+}
+
+.synai-tool-summary h3 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+  color: var(--ink);
+}
+
+.synai-tool-summary p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.synai-tool-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.synai-tool-badge {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(76, 111, 255, 0.12);
+  color: #3555d6;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.synai-steps-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.synai-step-card {
+  position: relative;
+  border-radius: 28px;
+  padding: 22px;
+  border: 1px solid rgba(35, 41, 54, 0.08);
+  background: rgba(249, 252, 255, 0.82);
+  overflow: hidden;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.synai-step-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 40px rgba(30, 61, 114, 0.1);
+}
+
+.synai-step-card::after {
+  content: '';
+  position: absolute;
+  inset: auto -20px -28px auto;
+  width: 86px;
+  height: 86px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(76, 111, 255, 0.08), transparent 68%);
+  pointer-events: none;
+}
+
+.synai-step-index {
+  width: 46px;
+  height: 46px;
+  border-radius: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+  background: linear-gradient(135deg, #e8efff, #dff6ff);
+  color: #4c6fff;
+  font-weight: 800;
+}
+
+.synai-step-card h3 {
+  margin: 0 0 8px;
+  font-size: 1.08rem;
+  color: var(--ink);
+}
+
+.synai-step-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+/* ---------- Code card ---------- */
+.synai-code-card {
+  border-radius: 28px;
+  padding: 24px;
+  border: 1px solid rgba(35, 41, 54, 0.08);
+  background: rgba(249, 252, 255, 0.82);
+  align-self: start;
+}
+
+.synai-code-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  color: #4c6fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.synai-code-card pre {
+  margin: 0;
+  padding: 18px;
+  overflow: auto;
+  border-radius: 18px;
+  background: #111827;
+  color: #deebff;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.synai-code-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.synai-mini-btn {
+  border: 1px solid rgba(76, 111, 255, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+  color: #3555d6;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 180ms ease;
+}
+
+.synai-mini-btn:hover {
+  transform: translateY(-1px);
+  background: #f4f7ff;
+}
+
+.synai-mini-btn-primary {
+  background: linear-gradient(135deg, #4c6fff, #5f8bff);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 8px 20px rgba(76, 111, 255, 0.2);
+}
+
+.synai-mini-btn-primary:hover {
+  box-shadow: 0 12px 28px rgba(76, 111, 255, 0.28);
+  background: linear-gradient(135deg, #3f5fd5, #4c6fff);
+}
+
+/* ---------- Animations ---------- */
+@keyframes synai-fade-in {
   from {
-    transform: translateX(-100%);
     opacity: 0;
+    transform: translateY(10px);
   }
   to {
-    transform: translateX(0);
     opacity: 1;
+    transform: translateY(0);
   }
 }
 
-/* Channel advanced settings side panel animations */
-@keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
+/* ---------- Responsive ---------- */
+@media (max-width: 1080px) {
+  .synai-hero-layout,
+  .synai-feature-grid,
+  .synai-steps-grid {
+    grid-template-columns: 1fr;
   }
-  to {
-    transform: translateX(0);
-    opacity: 1;
+
+  .synai-feature-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .synai-plan-card {
+    flex: 0 0 calc(50% - 9px);
   }
 }
 
-.ec-dbcd0a3c01b55203 { forced-color-adjust: auto; }
+@media (max-width: 720px) {
+  .synai-hero-card,
+  .synai-section-card {
+    padding: 24px;
+    border-radius: 26px;
+  }
+
+  .synai-hero-brand {
+    gap: 14px;
+  }
+
+  .synai-hero-logo {
+    width: 48px;
+    height: 48px;
+  }
+
+  .synai-section-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .synai-section-head-right {
+    align-items: flex-start;
+  }
+
+  .synai-hero-metrics,
+  .synai-feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .synai-uptime-card {
+    padding: 14px 16px 16px;
+  }
+
+  .synai-uptime-num {
+    font-size: 1.4rem;
+    min-width: 42px;
+    padding: 4px 6px;
+  }
+
+  .synai-uptime-colon {
+    font-size: 1.2rem;
+    margin-bottom: 14px;
+  }
+
+  .synai-url-box,
+  .synai-plan-footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .synai-price {
+    font-size: 2.4rem;
+  }
+
+  .synai-code-actions {
+    flex-direction: column;
+  }
+
+  .synai-tool-summary {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .synai-plan-card {
+    flex: 0 0 calc(80% - 9px);
+  }
+
+  .synai-steps-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Dark mode overrides ---------- */
+html.dark .synai-homepage {
+  background:
+    radial-gradient(circle at top left, rgba(76, 111, 255, 0.12), transparent 28%),
+    radial-gradient(circle at right 10%, rgba(61, 196, 255, 0.08), transparent 26%),
+    linear-gradient(180deg, #0b1020 0%, #11192e 48%, #0d1529 100%);
+  color: #e8efff;
+}
+
+html.dark .synai-homepage::before {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+}
+
+html.dark .synai-hero-card,
+html.dark .synai-section-card {
+  background: rgba(14, 24, 46, 0.62);
+  border-color: rgba(157, 182, 255, 0.18);
+  box-shadow: 0 24px 80px rgba(4, 10, 22, 0.35);
+}
+
+html.dark .synai-hero-logo {
+  box-shadow: 0 8px 28px rgba(88, 112, 255, 0.28), 0 0 0 1px rgba(136, 166, 255, 0.2);
+}
+
+html.dark .synai-hero-h1,
+html.dark .synai-section-h2,
+html.dark .synai-feature-card h3,
+html.dark .synai-step-card h3,
+html.dark .synai-plan-card h3,
+html.dark .synai-tool-summary h3,
+html.dark .synai-price,
+html.dark .synai-meta-value,
+html.dark .synai-metric strong {
+  color: #f0f4ff;
+}
+
+html.dark .synai-lead,
+html.dark .synai-section-desc,
+html.dark .synai-feature-card p,
+html.dark .synai-step-card p,
+html.dark .synai-plan-card > p,
+html.dark .synai-plan-note,
+html.dark .synai-meta-label,
+html.dark .synai-metric span,
+html.dark .synai-tool-summary p,
+html.dark .synai-price-unit {
+  color: rgba(228, 236, 255, 0.72);
+}
+
+html.dark .synai-eyebrow {
+  background: rgba(124, 77, 255, 0.15);
+  border-color: rgba(124, 77, 255, 0.25);
+  color: #9e8cfc;
+  box-shadow: 0 0 15px rgba(124, 77, 255, 0.2);
+}
+
+html.dark .synai-qq-link {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(228, 236, 255, 0.72);
+}
+html.dark .synai-qq-link:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #88a6ff;
+}
+
+html.dark .synai-quick-entry {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+html.dark .synai-quick-entry:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+html.dark .synai-quick-entry-title {
+  color: #f0f4ff;
+}
+html.dark .synai-quick-entry-desc {
+  color: rgba(228, 236, 255, 0.6);
+}
+html.dark .synai-quick-entry-path {
+  color: #88a6ff;
+}
+
+html.dark .synai-accent {
+  color: #88a6ff;
+}
+
+html.dark .synai-hero-h1 {
+  background:
+    linear-gradient(90deg, transparent 0%, transparent 40%, rgba(255, 255, 255, 0.65) 50%, transparent 60%, transparent 100%) 200% 0 / 200% 100%,
+    linear-gradient(180deg, #fff 0%, #b0b0b0 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+html.dark .synai-base-card,
+html.dark .synai-status-card {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+html.dark .synai-url-box {
+  background: rgba(8, 14, 30, 0.34);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #f5f8ff;
+}
+
+html.dark .synai-chip {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(228, 236, 255, 0.72);
+}
+
+html.dark .synai-provider {
+  background: rgba(117, 232, 255, 0.12);
+  color: #d7f6ff;
+}
+
+html.dark .synai-panel-label {
+  color: rgba(214, 227, 255, 0.78);
+}
+
+html.dark .synai-kicker {
+  color: #75e8ff;
+}
+
+html.dark .synai-metric {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+html.dark .synai-uptime-card {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(16, 185, 129, 0.06) 50%, rgba(5, 150, 105, 0.04) 100%);
+  border-color: rgba(34, 197, 94, 0.15);
+}
+
+html.dark .synai-uptime-status {
+  color: #86efac;
+}
+
+html.dark .synai-uptime-num {
+  background: rgba(255, 255, 255, 0.06);
+  color: #bbf7d0;
+  -webkit-text-fill-color: #bbf7d0;
+}
+
+html.dark .synai-uptime-colon {
+  color: #4ade80;
+}
+
+html.dark .synai-uptime-label {
+  color: #86efac;
+}
+
+html.dark .synai-uptime-link {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.1);
+}
+
+html.dark .synai-uptime-link:hover {
+  background: rgba(34, 197, 94, 0.2);
+  color: #bbf7d0;
+}
+
+html.dark .synai-feature-card,
+html.dark .synai-step-card,
+html.dark .synai-code-card {
+  background: rgba(14, 24, 46, 0.62);
+  border-color: rgba(157, 182, 255, 0.18);
+}
+
+html.dark .synai-feature-icon,
+html.dark .synai-step-index {
+  background: linear-gradient(135deg, rgba(130, 154, 255, 0.24), rgba(117, 232, 255, 0.24));
+  color: #edf2ff;
+}
+
+html.dark .synai-plan-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(238, 246, 255, 0.04));
+  border-color: rgba(157, 182, 255, 0.18);
+}
+
+html.dark .synai-plan-card.highlight {
+  border-color: rgba(148, 173, 255, 0.3);
+  box-shadow: 0 28px 80px rgba(96, 120, 255, 0.15);
+}
+
+html.dark .synai-plans-grid::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+html.dark .synai-plans-grid::-webkit-scrollbar-thumb {
+  background: rgba(136, 166, 255, 0.2);
+}
+
+html.dark .synai-plans-grid::-webkit-scrollbar-thumb:hover {
+  background: rgba(136, 166, 255, 0.35);
+}
+
+html.dark .synai-plan-tag {
+  background: rgba(124, 143, 255, 0.18);
+  color: #dbe4ff;
+}
+
+html.dark .synai-plan-group {
+  color: #b8f7ff;
+}
+
+html.dark .synai-meta-row {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+html.dark .synai-btn-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  color: #eef3ff;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+html.dark .synai-tutorial-tab {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(228, 236, 255, 0.72);
+}
+
+html.dark .synai-tutorial-tab:hover {
+  color: #f4f7ff;
+  border-color: rgba(136, 166, 255, 0.28);
+}
+
+html.dark .synai-tutorial-tab.active {
+  background: linear-gradient(135deg, rgba(136, 166, 255, 0.28), rgba(117, 232, 255, 0.2));
+  color: #ffffff;
+  border-color: rgba(136, 166, 255, 0.4);
+  box-shadow: 0 12px 30px rgba(88, 112, 255, 0.22);
+}
+
+html.dark .synai-tool-summary {
+  background: linear-gradient(180deg, rgba(136, 166, 255, 0.08), rgba(117, 232, 255, 0.05));
+  border-color: rgba(136, 166, 255, 0.14);
+}
+
+html.dark .synai-tool-badge {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(239, 244, 255, 0.82);
+}
+
+html.dark .synai-mini-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #eef3ff;
+}
+
+html.dark .synai-mini-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+html.dark .synai-mini-btn-primary {
+  background: linear-gradient(135deg, #4c6fff, #5f8bff);
+  color: #fff;
+  border-color: transparent;
+}
+
+html.dark .synai-code-head {
+  color: rgba(233, 240, 255, 0.76);
+}
+
+html.dark .synai-code-card pre {
+  background: rgba(5, 10, 22, 0.62);
+  color: #dce7ff;
+}
+
+html.dark .synai-code-card {
+  background: rgba(14, 24, 46, 0.62);
+  border-color: rgba(157, 182, 255, 0.18);
+}

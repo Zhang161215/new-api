@@ -63,3 +63,25 @@ func GetUserGroupRatio(userGroup, group string) float64 {
 	}
 	return ratio_setting.GetGroupRatio(group)
 }
+
+// IsSpeciallyGrantedGroup checks whether targetGroup was added to userGroup's
+// GroupSpecialUsableGroup list (with "+" prefix or direct add).
+func IsSpeciallyGrantedGroup(userGroup, targetGroup string) bool {
+	specialSettings, ok := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Get(userGroup)
+	if !ok {
+		return false
+	}
+	for key := range specialSettings {
+		if strings.HasPrefix(key, "+:") {
+			if strings.TrimPrefix(key, "+:") == targetGroup {
+				return true
+			}
+		} else if !strings.HasPrefix(key, "-:") {
+			// Direct add (no prefix)
+			if key == targetGroup {
+				return true
+			}
+		}
+	}
+	return false
+}

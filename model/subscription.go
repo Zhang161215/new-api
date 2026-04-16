@@ -666,6 +666,58 @@ func GetAllActiveUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 	return buildSubscriptionSummaries(subs), nil
 }
 
+// GetActiveSubscriptionUpgradeGroup returns the UpgradeGroup of the user's most recent
+// active subscription. Used for cross-group billing checks.
+func GetActiveSubscriptionUpgradeGroup(userId int) (string, error) {
+	if userId <= 0 {
+		return "", errors.New("invalid userId")
+	}
+	now := common.GetTimestamp()
+
+	// First try: subscription with non-empty upgrade_group
+	var sub UserSubscription
+	err := DB.Where("user_id = ? AND status = ? AND end_time > ? AND upgrade_group <> ''",
+		userId, "active", now).
+		Order("end_time desc, id desc").
+		Limit(1).
+		First(&sub).Error
+	if err == nil {
+		return strings.TrimSpace(sub.UpgradeGroup), nil
+	}
+
+	// Fallback: subscription with empty upgrade_group — look up plan's upgrade_group
+	var subWithEmptyGroup UserSubscription
+	err = DB.Where("user_id = ? AND status = ? AND end_time > ?",
+		userId, "active", now).
+		Order("end_time desc, id desc").
+		Limit(1).
+		First(&subWithEmptyGroup).Error
+	if err != nil {
+		return "", err
+	}
+	if subWithEmptyGroup.PlanId <= 0 {
+		return "", nil
+	}
+	plan, planErr := GetSubscriptionPlanById(subWithEmptyGroup.PlanId)
+	if planErr != nil {
+		return "", planErr
+	}
+	return strings.TrimSpace(plan.UpgradeGroup), nil
+}
+
+// IsSubscriptionUpgradeGroup checks whether the given group name is the UpgradeGroup
+// of any enabled subscription plan.
+func IsSubscriptionUpgradeGroup(group string) bool {
+	if group == "" {
+		return false
+	}
+	var count int64
+	DB.Model(&SubscriptionPlan{}).
+		Where("upgrade_group = ? AND enabled = ?", group, true).
+		Count(&count)
+	return count > 0
+}
+
 // HasActiveUserSubscription returns whether the user has any active subscription.
 // This is a lightweight existence check to avoid heavy pre-consume transactions.
 func HasActiveUserSubscription(userId int) (bool, error) {
