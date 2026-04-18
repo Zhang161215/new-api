@@ -194,6 +194,58 @@ const renderInviteInfo = (text, record, t) => {
 };
 
 /**
+ * Render expired time
+ */
+const renderExpiredTime = (text, record, t) => {
+  const expiredTime = record.expired_time;
+  if (!expiredTime || expiredTime === -1) {
+    return (
+      <Tag color='green' shape='circle' size='small'>
+        {t('永不过期')}
+      </Tag>
+    );
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const isExpired = expiredTime < now;
+  const date = new Date(expiredTime * 1000);
+  const dateStr = date.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+
+  if (isExpired) {
+    return (
+      <Tooltip content={dateStr} position='top'>
+        <Tag color='red' shape='circle' size='small'>
+          {t('已过期')}
+        </Tag>
+      </Tooltip>
+    );
+  }
+
+  const diff = expiredTime - now;
+  const days = Math.floor(diff / 86400);
+  if (days <= 7) {
+    return (
+      <Tooltip content={dateStr} position='top'>
+        <Tag color='orange' shape='circle' size='small'>
+          {days}{t('天后过期')}
+        </Tag>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Tooltip content={dateStr} position='top'>
+      <Tag color='blue' shape='circle' size='small'>
+        {days}{t('天')}
+      </Tag>
+    </Tooltip>
+  );
+};
+
+/**
  * Render operations column
  */
 const renderOperations = (
@@ -206,6 +258,7 @@ const renderOperations = (
     showDemoteModal,
     showEnableDisableModal,
     showDeleteModal,
+    showUserInvitesModal,
     showResetPasskeyModal,
     showResetTwoFAModal,
     showUserSubscriptionsModal,
@@ -217,6 +270,14 @@ const renderOperations = (
   }
 
   const moreMenu = [
+    {
+      node: 'item',
+      name: t('邀请明细'),
+      onClick: () => showUserInvitesModal(record),
+    },
+    {
+      node: 'divider',
+    },
     {
       node: 'item',
       name: t('订阅管理'),
@@ -306,6 +367,7 @@ export const getUsersColumns = ({
   showDemoteModal,
   showEnableDisableModal,
   showDeleteModal,
+  showUserInvitesModal,
   showResetPasskeyModal,
   showResetTwoFAModal,
   showUserSubscriptionsModal,
@@ -339,6 +401,11 @@ export const getUsersColumns = ({
       },
     },
     {
+      title: t('到期时间'),
+      dataIndex: 'expired_time',
+      render: (text, record) => renderExpiredTime(text, record, t),
+    },
+    {
       title: t('角色'),
       dataIndex: 'role',
       render: (text, record, index) => {
@@ -363,6 +430,7 @@ export const getUsersColumns = ({
           showDemoteModal,
           showEnableDisableModal,
           showDeleteModal,
+          showUserInvitesModal,
           showResetPasskeyModal,
           showResetTwoFAModal,
           showUserSubscriptionsModal,

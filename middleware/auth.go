@@ -377,6 +377,12 @@ func TokenAuth() func(c *gin.Context) {
 			return
 		}
 
+		// 检查用户套餐是否过期
+		if userCache.ExpiredTime > 0 && userCache.ExpiredTime < common.GetTimestamp() {
+			abortWithOpenAiMessage(c, http.StatusForbidden, "您的套餐已过期，请续费后继续使用")
+			return
+		}
+
 		userCache.WriteContext(c)
 
 		userGroup := userCache.Group

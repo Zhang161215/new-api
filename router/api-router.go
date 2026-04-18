@@ -50,6 +50,8 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/creem/webhook", controller.CreemWebhook)
 		apiRouter.POST("/waffo/webhook", controller.WaffoWebhook)
 
+		apiRouter.GET("/subscription/public_plans", controller.GetSubscriptionPlans)
+
 		// Universal secure verification routes
 		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.UniversalVerify)
 
@@ -64,6 +66,7 @@ func SetApiRouter(router *gin.Engine) {
 			userRoute.GET("/logout", controller.Logout)
 			userRoute.POST("/epay/notify", controller.EpayNotify)
 			userRoute.GET("/epay/notify", controller.EpayNotify)
+			userRoute.POST("/xunhu/notify", controller.XunhuPayNotify)
 			userRoute.GET("/groups", controller.GetUserGroups)
 
 			selfRoute := userRoute.Group("/")
@@ -91,6 +94,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/stripe/amount", controller.RequestStripeAmount)
 				selfRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.RequestCreemPay)
 				selfRoute.POST("/waffo/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPay)
+				selfRoute.POST("/xunhu/pay", middleware.CriticalRateLimit(), controller.RequestXunhuPay)
 				selfRoute.POST("/aff_transfer", controller.TransferAffQuota)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
 
@@ -121,6 +125,7 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", controller.UnbindCustomOAuthByAdmin)
 				adminRoute.DELETE("/:id/bindings/:binding_type", controller.AdminClearUserBinding)
 				adminRoute.GET("/:id", controller.GetUser)
+				adminRoute.GET("/:id/invites", controller.GetUserInvites)
 				adminRoute.POST("/", controller.CreateUser)
 				adminRoute.POST("/manage", controller.ManageUser)
 				adminRoute.PUT("/", controller.UpdateUser)
@@ -143,6 +148,7 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionRoute.POST("/epay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestEpay)
 			subscriptionRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestStripePay)
 			subscriptionRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestCreemPay)
+			subscriptionRoute.POST("/xunhu/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestXunhuPay)
 		}
 		subscriptionAdminRoute := apiRouter.Group("/subscription/admin")
 		subscriptionAdminRoute.Use(middleware.AdminAuth())
@@ -150,6 +156,7 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionAdminRoute.GET("/plans", controller.AdminListSubscriptionPlans)
 			subscriptionAdminRoute.POST("/plans", controller.AdminCreateSubscriptionPlan)
 			subscriptionAdminRoute.PUT("/plans/:id", controller.AdminUpdateSubscriptionPlan)
+			subscriptionAdminRoute.DELETE("/plans/:id", controller.AdminDeleteSubscriptionPlan)
 			subscriptionAdminRoute.PATCH("/plans/:id", controller.AdminUpdateSubscriptionPlanStatus)
 			subscriptionAdminRoute.POST("/bind", controller.AdminBindSubscription)
 
@@ -158,6 +165,8 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionAdminRoute.POST("/users/:id/subscriptions", controller.AdminCreateUserSubscription)
 			subscriptionAdminRoute.POST("/user_subscriptions/:id/invalidate", controller.AdminInvalidateUserSubscription)
 			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", controller.AdminDeleteUserSubscription)
+			subscriptionAdminRoute.PUT("/user_subscriptions/:id/end_time", controller.AdminUpdateUserSubscriptionEndTime)
+			subscriptionAdminRoute.POST("/user_subscriptions/:id/reset_quota", controller.AdminResetUserSubscriptionQuota)
 		}
 
 		// Subscription payment callbacks (no auth)
@@ -165,6 +174,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/subscription/epay/notify", controller.SubscriptionEpayNotify)
 		apiRouter.GET("/subscription/epay/return", controller.SubscriptionEpayReturn)
 		apiRouter.POST("/subscription/epay/return", controller.SubscriptionEpayReturn)
+		apiRouter.POST("/subscription/xunhu/notify", controller.SubscriptionXunhuNotify)
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
 		{
@@ -305,6 +315,20 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			groupRoute.GET("/", controller.GetGroups)
 		}
+
+		// Analytics routes (admin only)
+		analyticsRoute := apiRouter.Group("/analytics")
+		analyticsRoute.Use(middleware.AdminAuth())
+		{
+			analyticsRoute.GET("/top-users", controller.GetTopUsers)
+			analyticsRoute.GET("/top-tokens", controller.GetTopTokens)
+			analyticsRoute.GET("/user/:id/ips", controller.GetUserIPs)
+			analyticsRoute.GET("/sharing-risk", controller.GetSharingRisk)
+			analyticsRoute.GET("/invite-risk", controller.GetInviteRisk)
+		}
+
+		// Daily ranking (user auth)
+		apiRouter.GET("/analytics/daily-ranking", middleware.UserAuth(), controller.GetDailyRanking)
 
 		prefillGroupRoute := apiRouter.Group("/prefill_group")
 		prefillGroupRoute.Use(middleware.AdminAuth())

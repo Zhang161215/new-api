@@ -849,6 +849,48 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 	return "", nil
 }
 
+// AdminUpdateUserSubscriptionEndTime updates the end_time of an existing user subscription.
+func AdminUpdateUserSubscriptionEndTime(userSubscriptionId int, newEndTime int64) error {
+	if userSubscriptionId <= 0 {
+		return errors.New("invalid userSubscriptionId")
+	}
+	if newEndTime <= 0 {
+		return errors.New("invalid end_time")
+	}
+	result := DB.Model(&UserSubscription{}).Where("id = ?", userSubscriptionId).Update("end_time", newEndTime)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("订阅记录不存在")
+	}
+	return nil
+}
+
+// AdminResetUserSubscriptionQuota resets AmountUsed to 0 for an active subscription
+// and recalculates NextResetTime from now.
+func AdminResetUserSubscriptionQuota(userSubscriptionId int) error {
+	if userSubscriptionId <= 0 {
+		return errors.New("invalid userSubscriptionId")
+	}
+	now := GetDBTimestamp()
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var sub UserSubscription
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ? AND status = ?", userSubscriptionId, "active").
+			First(&sub).Error; err != nil {
+			return fmt.Errorf("订阅记录不存在或已失效: %w", err)
+		}
+		sub.AmountUsed = 0
+		sub.LastResetTime = now
+		// Recalculate next reset time based on plan settings
+		plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+		if err == nil && plan != nil && NormalizeResetPeriod(plan.QuotaResetPeriod) != SubscriptionResetNever {
+			sub.NextResetTime = calcNextResetTime(time.Unix(now, 0), plan, sub.EndTime)
+		}
+		return tx.Save(&sub).Error
+	})
+}
+
 type SubscriptionPreConsumeResult struct {
 	UserSubscriptionId int
 	PreConsumed        int64
@@ -1005,7 +1047,7 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 }
 
 // PreConsumeUserSubscription pre-consumes from any active subscription total quota.
-func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
+func PreConsumeUserSubscription(requestId string, userId int, modelName string, usingGroup string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
@@ -1050,6 +1092,20 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		}
 		if len(subs) == 0 {
 			return errors.New("no active subscription")
+		}
+		// When usingGroup is specified, reorder subscriptions to prioritize
+		// those whose upgrade_group matches usingGroup.
+		if strings.TrimSpace(usingGroup) != "" {
+			matched := make([]UserSubscription, 0, len(subs))
+			unmatched := make([]UserSubscription, 0, len(subs))
+			for _, s := range subs {
+				if strings.TrimSpace(s.UpgradeGroup) == strings.TrimSpace(usingGroup) {
+					matched = append(matched, s)
+				} else {
+					unmatched = append(unmatched, s)
+				}
+			}
+			subs = append(matched, unmatched...)
 		}
 		for _, candidate := range subs {
 			sub := candidate
@@ -1126,7 +1182,19 @@ func RefundSubscriptionPreConsume(requestId string) error {
 			record.Status = "refunded"
 			return tx.Save(&record).Error
 		}
-		if err := PostConsumeUserSubscriptionDelta(record.UserSubscriptionId, -record.PreConsumed); err != nil {
+		// Use inline delta update within existing transaction to avoid nested transactions
+		var sub UserSubscription
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ?", record.UserSubscriptionId).
+			First(&sub).Error; err != nil {
+			return err
+		}
+		newUsed := sub.AmountUsed + (-record.PreConsumed)
+		if newUsed < 0 {
+			newUsed = 0
+		}
+		sub.AmountUsed = newUsed
+		if err := tx.Save(&sub).Error; err != nil {
 			return err
 		}
 		record.Status = "refunded"

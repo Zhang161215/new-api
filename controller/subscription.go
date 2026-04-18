@@ -381,3 +381,67 @@ func AdminDeleteUserSubscription(c *gin.Context) {
 	}
 	common.ApiSuccess(c, nil)
 }
+
+// AdminUpdateUserSubscriptionEndTime updates the end_time of a user subscription.
+func AdminUpdateUserSubscriptionEndTime(c *gin.Context) {
+	subId, _ := strconv.Atoi(c.Param("id"))
+	if subId <= 0 {
+		common.ApiErrorMsg(c, "无效的订阅ID")
+		return
+	}
+	var req struct {
+		EndTime int64 `json:"end_time"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.EndTime <= 0 {
+		common.ApiErrorMsg(c, "参数错误: end_time 必须为有效的 Unix 时间戳")
+		return
+	}
+	err := model.AdminUpdateUserSubscriptionEndTime(subId, req.EndTime)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"message": "到期时间已更新"})
+}
+
+// AdminDeleteSubscriptionPlan deletes a subscription plan if no active subscriptions reference it.
+func AdminDeleteSubscriptionPlan(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if id <= 0 {
+		common.ApiErrorMsg(c, "无效的ID")
+		return
+	}
+	// 检查是否有活跃订阅引用此套餐
+	var activeCount int64
+	if err := model.DB.Model(&model.UserSubscription{}).
+		Where("plan_id = ? AND status = ?", id, "active").
+		Count(&activeCount).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if activeCount > 0 {
+		common.ApiErrorMsg(c, "该套餐下仍有活跃订阅，无法删除")
+		return
+	}
+	if err := model.DB.Where("id = ?", id).Delete(&model.SubscriptionPlan{}).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.InvalidateSubscriptionPlanCache(id)
+	common.ApiSuccess(c, nil)
+}
+
+// AdminResetUserSubscriptionQuota resets AmountUsed to 0 for an active user subscription.
+func AdminResetUserSubscriptionQuota(c *gin.Context) {
+	subId, _ := strconv.Atoi(c.Param("id"))
+	if subId <= 0 {
+		common.ApiErrorMsg(c, "无效的订阅ID")
+		return
+	}
+	err := model.AdminResetUserSubscriptionQuota(subId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"message": "订阅额度已重置"})
+}

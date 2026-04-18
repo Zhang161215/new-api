@@ -21,46 +21,55 @@ const UserNameMaxLength = 20
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
-	Id               int            `json:"id"`
-	Username         string         `json:"username" gorm:"unique;index" validate:"max=20"`
-	Password         string         `json:"password" gorm:"not null;" validate:"min=8,max=20"`
-	OriginalPassword string         `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
-	DisplayName      string         `json:"display_name" gorm:"index" validate:"max=20"`
-	Role             int            `json:"role" gorm:"type:int;default:1"`   // admin, common
-	Status           int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
-	Email            string         `json:"email" gorm:"index" validate:"max=50"`
-	GitHubId         string         `json:"github_id" gorm:"column:github_id;index"`
-	DiscordId        string         `json:"discord_id" gorm:"column:discord_id;index"`
-	OidcId           string         `json:"oidc_id" gorm:"column:oidc_id;index"`
-	WeChatId         string         `json:"wechat_id" gorm:"column:wechat_id;index"`
-	TelegramId       string         `json:"telegram_id" gorm:"column:telegram_id;index"`
-	VerificationCode string         `json:"verification_code" gorm:"-:all"`                                    // this field is only for Email verification, don't save it to database!
-	AccessToken      *string        `json:"access_token" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
-	Quota            int            `json:"quota" gorm:"type:int;default:0"`
-	UsedQuota        int            `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
-	RequestCount     int            `json:"request_count" gorm:"type:int;default:0;"`               // request number
-	Group            string         `json:"group" gorm:"type:varchar(64);default:'default'"`
-	AffCode          string         `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	AffCount         int            `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota         int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota  int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
-	InviterId        int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
-	DeletedAt        gorm.DeletedAt `gorm:"index"`
-	LinuxDOId        string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
-	Setting          string         `json:"setting" gorm:"type:text;column:setting"`
-	Remark           string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
-	StripeCustomer   string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
+	Id                    int            `json:"id"`
+	Username              string         `json:"username" gorm:"unique;index" validate:"max=20"`
+	Password              string         `json:"password" gorm:"not null;" validate:"min=8,max=20"`
+	OriginalPassword      string         `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
+	DisplayName           string         `json:"display_name" gorm:"index" validate:"max=20"`
+	Role                  int            `json:"role" gorm:"type:int;default:1"`   // admin, common
+	Status                int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
+	Email                 string         `json:"email" gorm:"index" validate:"max=50"`
+	GitHubId              string         `json:"github_id" gorm:"column:github_id;index"`
+	DiscordId             string         `json:"discord_id" gorm:"column:discord_id;index"`
+	OidcId                string         `json:"oidc_id" gorm:"column:oidc_id;index"`
+	WeChatId              string         `json:"wechat_id" gorm:"column:wechat_id;index"`
+	TelegramId            string         `json:"telegram_id" gorm:"column:telegram_id;index"`
+	VerificationCode      string         `json:"verification_code" gorm:"-:all"`                                    // this field is only for Email verification, don't save it to database!
+	AccessToken           *string        `json:"access_token" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
+	Quota                 int            `json:"quota" gorm:"type:int;default:0"`
+	UsedQuota             int            `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
+	RequestCount          int            `json:"request_count" gorm:"type:int;default:0;"`               // request number
+	Group                 string         `json:"group" gorm:"type:varchar(64);default:'default'"`
+	AffCode               string         `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	AffCount              int            `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
+	AffQuota              int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
+	AffHistoryQuota       int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
+	InviterId             int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	RegisterIP            string         `json:"register_ip,omitempty" gorm:"type:varchar(64);column:register_ip;index"`
+	RegisterTime          int64          `json:"register_time" gorm:"bigint;column:register_time;index"`
+	InvitedTotal          int            `json:"invited_total,omitempty" gorm:"-:all"`
+	InvitedPaidCount      int            `json:"invited_paid_count,omitempty" gorm:"-:all"`
+	InviteSuspiciousCount int            `json:"invite_suspicious_count,omitempty" gorm:"-:all"`
+	InvitePaidAmount      float64        `json:"invite_paid_amount,omitempty" gorm:"-:all"`
+	InviteConversionRate  float64        `json:"invite_conversion_rate,omitempty" gorm:"-:all"`
+	DeletedAt             gorm.DeletedAt `gorm:"index"`
+	LinuxDOId             string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
+	Setting               string         `json:"setting" gorm:"type:text;column:setting"`
+	Remark                string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
+	StripeCustomer        string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
+	ExpiredTime           int64          `json:"expired_time" gorm:"bigint;default:-1"` // -1 means never expired
 }
 
 func (user *User) ToBaseUser() *UserBase {
 	cache := &UserBase{
-		Id:       user.Id,
-		Group:    user.Group,
-		Quota:    user.Quota,
-		Status:   user.Status,
-		Username: user.Username,
-		Setting:  user.Setting,
-		Email:    user.Email,
+		Id:          user.Id,
+		Group:       user.Group,
+		Quota:       user.Quota,
+		Status:      user.Status,
+		Username:    user.Username,
+		Setting:     user.Setting,
+		Email:       user.Email,
+		ExpiredTime: user.ExpiredTime,
 	}
 	return cache
 }
@@ -213,6 +222,10 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 		tx.Rollback()
 		return nil, 0, err
 	}
+	if err = enrichUsersInviteStats(tx, users); err != nil {
+		tx.Rollback()
+		return nil, 0, err
+	}
 
 	// Commit transaction
 	if err = tx.Commit().Error; err != nil {
@@ -280,6 +293,10 @@ func SearchUsers(keyword string, group string, startIdx int, num int) ([]*User, 
 		tx.Rollback()
 		return nil, 0, err
 	}
+	if err = enrichUsersInviteStats(tx, users); err != nil {
+		tx.Rollback()
+		return nil, 0, err
+	}
 
 	// 提交事务
 	if err = tx.Commit().Error; err != nil {
@@ -329,14 +346,17 @@ func HardDeleteUserById(id int) error {
 }
 
 func inviteUser(inviterId int) (err error) {
-	user, err := GetUserById(inviterId, true)
-	if err != nil {
+	if _, err = GetUserById(inviterId, true); err != nil {
 		return err
 	}
-	user.AffCount++
-	user.AffQuota += common.QuotaForInviter
-	user.AffHistoryQuota += common.QuotaForInviter
-	return DB.Save(user).Error
+	updates := map[string]interface{}{
+		"aff_count": gorm.Expr("aff_count + ?", 1),
+	}
+	if common.QuotaForInviter > 0 {
+		updates["aff_quota"] = gorm.Expr("aff_quota + ?", common.QuotaForInviter)
+		updates["aff_history"] = gorm.Expr("aff_history + ?", common.QuotaForInviter)
+	}
+	return DB.Model(&User{}).Where("id = ?", inviterId).Updates(updates).Error
 }
 
 func (user *User) TransferAffQuotaToQuota(quota int) error {
@@ -387,6 +407,9 @@ func (user *User) Insert(inviterId int) error {
 	user.Quota = common.QuotaForNewUser
 	//user.SetAccessToken(common.GetUUID())
 	user.AffCode = common.GetRandomString(4)
+	if user.RegisterTime == 0 {
+		user.RegisterTime = common.GetTimestamp()
+	}
 
 	// 初始化用户设置，包括默认的边栏配置
 	if user.Setting == "" {
@@ -423,10 +446,9 @@ func (user *User) Insert(inviterId int) error {
 			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
 			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
+		_ = inviteUser(inviterId)
 		if common.QuotaForInviter > 0 {
-			//_ = IncreaseUserQuota(inviterId, common.QuotaForInviter)
 			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
 		}
 	}
 	return nil
@@ -445,6 +467,9 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 	}
 	user.Quota = common.QuotaForNewUser
 	user.AffCode = common.GetRandomString(4)
+	if user.RegisterTime == 0 {
+		user.RegisterTime = common.GetTimestamp()
+	}
 
 	// 初始化用户设置
 	if user.Setting == "" {
@@ -484,9 +509,9 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
 			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
+		_ = inviteUser(inviterId)
 		if common.QuotaForInviter > 0 {
 			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
 		}
 	}
 }
@@ -523,7 +548,9 @@ func (user *User) Edit(updatePassword bool) error {
 		"username":     newUser.Username,
 		"display_name": newUser.DisplayName,
 		"group":        newUser.Group,
+		"quota":        newUser.Quota,
 		"remark":       newUser.Remark,
+		"expired_time": newUser.ExpiredTime,
 	}
 	if updatePassword {
 		updates["password"] = newUser.Password
@@ -1045,4 +1072,278 @@ func RootUserExists() bool {
 		return false
 	}
 	return true
+}
+
+// ==================== Invite Statistics ====================
+
+type UserInviteOrderStats struct {
+	PaidOrderCount int     `json:"paid_order_count"`
+	PaidAmount     float64 `json:"paid_amount"`
+	LastPaidTime   int64   `json:"last_paid_time"`
+}
+
+type UserInviteSubscriptionStats struct {
+	SubscriptionCount       int `json:"subscription_count"`
+	ActiveSubscriptionCount int `json:"active_subscription_count"`
+}
+
+type UserInviteDetail struct {
+	Id                int                         `json:"id"`
+	Username          string                      `json:"username"`
+	DisplayName       string                      `json:"display_name"`
+	Email             string                      `json:"email"`
+	RegisterIP        string                      `json:"register_ip"`
+	RegisterTime      int64                       `json:"register_time"`
+	InviterId         int                         `json:"inviter_id"`
+	OrderStats        UserInviteOrderStats        `json:"order_stats"`
+	SubscriptionStats UserInviteSubscriptionStats `json:"subscription_stats"`
+	RiskTags          []string                    `json:"risk_tags"`
+}
+
+type UserInviteSummary struct {
+	InvitedTotal            int     `json:"invited_total"`
+	PaidTotal               int     `json:"paid_total"`
+	UnpaidTotal             int     `json:"unpaid_total"`
+	PaidAmountTotal         float64 `json:"paid_amount_total"`
+	ActiveSubscriptionTotal int     `json:"active_subscription_total"`
+	SuspiciousTotal         int     `json:"suspicious_total"`
+}
+
+type UserInviteDetailsResponse struct {
+	Summary UserInviteSummary  `json:"summary"`
+	Items   []UserInviteDetail `json:"items"`
+}
+
+func GetUserInviteDetails(inviterId int) (*UserInviteDetailsResponse, error) {
+	if inviterId <= 0 {
+		return nil, errors.New("inviter id 为空！")
+	}
+
+	var invitees []*User
+	if err := DB.Model(&User{}).
+		Where("inviter_id = ?", inviterId).
+		Order("id desc").
+		Find(&invitees).Error; err != nil {
+		return nil, err
+	}
+
+	resp := &UserInviteDetailsResponse{
+		Items: make([]UserInviteDetail, 0, len(invitees)),
+	}
+	if len(invitees) == 0 {
+		return resp, nil
+	}
+
+	userIds := make([]int, 0, len(invitees))
+	for _, invitee := range invitees {
+		userIds = append(userIds, invitee.Id)
+	}
+
+	orderStatsMap, err := getInviteOrderStats(userIds)
+	if err != nil {
+		return nil, err
+	}
+	subscriptionStatsMap, err := getInviteSubscriptionStats(userIds)
+	if err != nil {
+		return nil, err
+	}
+	ipCount := make(map[string]int)
+	for _, invitee := range invitees {
+		if invitee.RegisterIP != "" {
+			ipCount[invitee.RegisterIP]++
+		}
+	}
+
+	for _, invitee := range invitees {
+		orderStats := orderStatsMap[invitee.Id]
+		subStats := subscriptionStatsMap[invitee.Id]
+		riskTags := make([]string, 0, 3)
+		if invitee.RegisterIP != "" && ipCount[invitee.RegisterIP] > 1 {
+			riskTags = append(riskTags, "same_ip")
+		}
+		if orderStats.PaidOrderCount == 0 {
+			riskTags = append(riskTags, "no_real_payment")
+		}
+		if subStats.ActiveSubscriptionCount == 0 {
+			riskTags = append(riskTags, "no_active_subscription")
+		}
+
+		resp.Items = append(resp.Items, UserInviteDetail{
+			Id:                invitee.Id,
+			Username:          invitee.Username,
+			DisplayName:       invitee.DisplayName,
+			Email:             invitee.Email,
+			RegisterIP:        invitee.RegisterIP,
+			RegisterTime:      invitee.RegisterTime,
+			InviterId:         invitee.InviterId,
+			OrderStats:        orderStats,
+			SubscriptionStats: subStats,
+			RiskTags:          riskTags,
+		})
+
+		resp.Summary.InvitedTotal++
+		if orderStats.PaidOrderCount > 0 {
+			resp.Summary.PaidTotal++
+			resp.Summary.PaidAmountTotal += orderStats.PaidAmount
+		} else {
+			resp.Summary.UnpaidTotal++
+		}
+		if subStats.ActiveSubscriptionCount > 0 {
+			resp.Summary.ActiveSubscriptionTotal++
+		}
+		if len(riskTags) > 0 {
+			resp.Summary.SuspiciousTotal++
+		}
+	}
+
+	return resp, nil
+}
+
+func getInviteOrderStats(userIds []int) (map[int]UserInviteOrderStats, error) {
+	result := make(map[int]UserInviteOrderStats, len(userIds))
+	if len(userIds) == 0 {
+		return result, nil
+	}
+
+	var rows []struct {
+		UserId         int     `gorm:"column:user_id"`
+		PaidOrderCount int     `gorm:"column:paid_order_count"`
+		PaidAmount     float64 `gorm:"column:paid_amount"`
+		LastPaidTime   int64   `gorm:"column:last_paid_time"`
+	}
+
+	err := DB.Model(&SubscriptionOrder{}).
+		Select("user_id, COUNT(*) as paid_order_count, COALESCE(SUM(money), 0) as paid_amount, COALESCE(MAX(complete_time), 0) as last_paid_time").
+		Where("user_id IN ? AND status = ?", userIds, "paid").
+		Group("user_id").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	for _, row := range rows {
+		result[row.UserId] = UserInviteOrderStats{
+			PaidOrderCount: row.PaidOrderCount,
+			PaidAmount:     row.PaidAmount,
+			LastPaidTime:   row.LastPaidTime,
+		}
+	}
+	return result, nil
+}
+
+func getInviteSubscriptionStats(userIds []int) (map[int]UserInviteSubscriptionStats, error) {
+	result := make(map[int]UserInviteSubscriptionStats, len(userIds))
+	if len(userIds) == 0 {
+		return result, nil
+	}
+
+	var rows []struct {
+		UserId                  int `gorm:"column:user_id"`
+		SubscriptionCount       int `gorm:"column:subscription_count"`
+		ActiveSubscriptionCount int `gorm:"column:active_subscription_count"`
+	}
+
+	err := DB.Model(&UserSubscription{}).
+		Select("user_id, COUNT(*) as subscription_count, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_subscription_count").
+		Where("user_id IN ?", userIds).
+		Group("user_id").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	for _, row := range rows {
+		result[row.UserId] = UserInviteSubscriptionStats{
+			SubscriptionCount:       row.SubscriptionCount,
+			ActiveSubscriptionCount: row.ActiveSubscriptionCount,
+		}
+	}
+	return result, nil
+}
+
+func enrichUsersInviteStats(tx *gorm.DB, users []*User) error {
+	if len(users) == 0 {
+		return nil
+	}
+
+	userIds := make([]int, 0, len(users))
+	for _, user := range users {
+		userIds = append(userIds, user.Id)
+	}
+
+	var invitedRows []struct {
+		InviterId    int `gorm:"column:inviter_id"`
+		InvitedTotal int `gorm:"column:invited_total"`
+	}
+	if err := tx.Model(&User{}).
+		Select("inviter_id, COUNT(*) as invited_total").
+		Where("inviter_id IN ?", userIds).
+		Group("inviter_id").
+		Find(&invitedRows).Error; err != nil {
+		return err
+	}
+
+	invitedMap := make(map[int]int, len(invitedRows))
+	for _, row := range invitedRows {
+		invitedMap[row.InviterId] = row.InvitedTotal
+	}
+
+	var paidRows []struct {
+		InviterId        int     `gorm:"column:inviter_id"`
+		InvitedPaidCount int     `gorm:"column:invited_paid_count"`
+		InvitePaidAmount float64 `gorm:"column:invite_paid_amount"`
+	}
+	if err := tx.Table("users AS invitees").
+		Select(`invitees.inviter_id,
+			COUNT(DISTINCT invitees.id) as invited_paid_count,
+			COALESCE(SUM(subscription_orders.money), 0) as invite_paid_amount`).
+		Joins(`JOIN subscription_orders ON subscription_orders.user_id = invitees.id AND subscription_orders.status = ?`, "paid").
+		Where("invitees.inviter_id IN ?", userIds).
+		Group("invitees.inviter_id").
+		Find(&paidRows).Error; err != nil {
+		return err
+	}
+
+	paidMap := make(map[int]struct {
+		count  int
+		amount float64
+	}, len(paidRows))
+	for _, row := range paidRows {
+		paidMap[row.InviterId] = struct {
+			count  int
+			amount float64
+		}{count: row.InvitedPaidCount, amount: row.InvitePaidAmount}
+	}
+
+	var suspiciousRows []struct {
+		InviterId             int `gorm:"column:inviter_id"`
+		InviteSuspiciousCount int `gorm:"column:invite_suspicious_count"`
+	}
+	if err := tx.Table("users AS invitees").
+		Select(`invitees.inviter_id, COUNT(*) as invite_suspicious_count`).
+		Where(`invitees.inviter_id IN ? AND invitees.register_ip <> '' AND invitees.register_ip IN (
+			SELECT register_ip FROM users WHERE inviter_id IN ? AND register_ip <> '' GROUP BY inviter_id, register_ip HAVING COUNT(*) > 1
+		)`, userIds, userIds).
+		Group("invitees.inviter_id").
+		Find(&suspiciousRows).Error; err != nil {
+		return err
+	}
+
+	suspiciousMap := make(map[int]int, len(suspiciousRows))
+	for _, row := range suspiciousRows {
+		suspiciousMap[row.InviterId] = row.InviteSuspiciousCount
+	}
+
+	for _, user := range users {
+		user.InvitedTotal = invitedMap[user.Id]
+		paid := paidMap[user.Id]
+		user.InvitedPaidCount = paid.count
+		user.InvitePaidAmount = paid.amount
+		user.InviteSuspiciousCount = suspiciousMap[user.Id]
+		if user.InvitedTotal > 0 {
+			user.InviteConversionRate = float64(user.InvitedPaidCount) / float64(user.InvitedTotal)
+		}
+	}
+
+	return nil
 }

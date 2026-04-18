@@ -37,6 +37,8 @@ const routerMap = {
   redemption: '/console/redemption',
   topup: '/console/topup',
   user: '/console/user',
+  analytics: '/console/analytics',
+  dailyRanking: '/console/daily-ranking',
   subscription: '/console/subscription',
   log: '/console/log',
   midjourney: '/console/midjourney',
@@ -88,6 +90,11 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('使用日志'),
         itemKey: 'log',
         to: '/log',
+      },
+      {
+        text: t('每日排行'),
+        itemKey: 'dailyRanking',
+        to: '/daily-ranking',
       },
       {
         text: t('绘图日志'),
@@ -181,6 +188,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('用户管理'),
         itemKey: 'user',
         to: '/user',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('用量分析'),
+        itemKey: 'analytics',
+        to: '/analytics',
         className: isAdmin() ? '' : 'tableHiddle',
       },
       {

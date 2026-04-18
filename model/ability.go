@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/samber/lo"
 	"gorm.io/gorm"
@@ -119,6 +120,22 @@ func GetChannel(group string, model string, retry int) (*Channel, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// If no abilities found, try with normalized model name (e.g. strip compact suffix)
+	if len(abilities) == 0 {
+		normalizedModel := ratio_setting.FormatMatchingModelName(model)
+		if normalizedModel != "" && normalizedModel != model {
+			channelQuery, err = getChannelQuery(group, normalizedModel, retry)
+			if err != nil {
+				return nil, err
+			}
+			err = channelQuery.Order("weight DESC").Find(&abilities).Error
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	channel := Channel{}
 	if len(abilities) > 0 {
 		// Randomly choose one

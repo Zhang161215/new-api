@@ -175,11 +175,13 @@ func Register(c *gin.Context) {
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
 	inviterId, _ := model.GetUserIdByAffCode(affCode)
 	cleanUser := model.User{
-		Username:    user.Username,
-		Password:    user.Password,
-		DisplayName: user.Username,
-		InviterId:   inviterId,
-		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
+		Username:     user.Username,
+		Password:     user.Password,
+		DisplayName:  user.Username,
+		InviterId:    inviterId,
+		RegisterIP:   c.ClientIP(),
+		RegisterTime: common.GetTimestamp(),
+		Role:         common.RoleCommonUser, // 明确设置角色为普通用户
 	}
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
@@ -284,6 +286,30 @@ func GetUser(c *gin.Context) {
 		"data":    user,
 	})
 	return
+}
+
+func GetUserInvites(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	user, err := model.GetUserById(id, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	myRole := c.GetInt("role")
+	if myRole <= user.Role && myRole != common.RoleRootUser {
+		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
+		return
+	}
+	data, err := model.GetUserInviteDetails(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, data)
 }
 
 func GenerateAccessToken(c *gin.Context) {
@@ -411,6 +437,7 @@ func GetSelf(c *gin.Context) {
 		"inviter_id":        user.InviterId,
 		"linux_do_id":       user.LinuxDOId,
 		"setting":           user.Setting,
+		"expired_time":      user.ExpiredTime,
 		"stripe_customer":   user.StripeCustomer,
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":       permissions,                // 新增权限字段
@@ -576,6 +603,9 @@ func UpdateUser(c *gin.Context) {
 	if err := updatedUser.Edit(updatePassword); err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	if originUser.Quota != updatedUser.Quota {
+		model.RecordLog(originUser.Id, model.LogTypeManage, fmt.Sprintf("管理员将用户额度从 %s修改为 %s", logger.LogQuota(originUser.Quota), logger.LogQuota(updatedUser.Quota)))
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -827,6 +857,7 @@ func CreateUser(c *gin.Context) {
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
 		Role:        user.Role, // 保持管理员设置的角色
+		ExpiredTime: -1,        // 默认永不过期
 	}
 	if err := cleanUser.Insert(0); err != nil {
 		common.ApiError(c, err)
