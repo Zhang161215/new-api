@@ -706,6 +706,16 @@ export const calculateModelPrice = ({
       ? formatTokenPrice(inputRatioPriceUSD * Number(record.audio_ratio))
       : null;
 
+    // 原价（不含分组倍率）
+    const originalInputRatioPriceUSD = record.model_ratio * 2;
+    const formatOriginalTokenPrice = (priceUSD) => {
+      const rawDisplayPrice = displayPrice(priceUSD);
+      const numericPrice =
+        parseFloat(rawDisplayPrice.replace(/[^0-9.]/g, '')) / unitDivisor;
+      return `${symbol}${numericPrice.toFixed(precision)}`;
+    };
+    const showOriginalPrice = true;
+
     return {
       inputPrice,
       completionPrice: formatTokenPrice(
@@ -729,6 +739,14 @@ export const calculateModelPrice = ({
                 Number(record.audio_completion_ratio),
             )
           : null,
+      originalInputPrice: showOriginalPrice
+        ? formatOriginalTokenPrice(originalInputRatioPriceUSD)
+        : null,
+      originalCompletionPrice: showOriginalPrice
+        ? formatOriginalTokenPrice(
+            originalInputRatioPriceUSD * Number(record.completion_ratio),
+          )
+        : null,
       unitLabel,
       isPerToken: true,
       isTokensDisplay: false,
@@ -817,35 +835,41 @@ export const getModelPriceItems = (
       );
     }
 
-    const unitSuffix = ` / 1${priceData.unitLabel} Tokens`;
-    return [
+    const unitSuffix = `/M`;
+    const items = [
       {
-        key: 'input',
-        label: t('输入价格'),
-        value: priceData.inputPrice,
-        suffix: unitSuffix,
+        key: 'main-price',
+        isMainPrice: true,
+        inputLabel: t('输入'),
+        inputValue: `${priceData.inputPrice}${unitSuffix}`,
+        outputLabel: t('输出'),
+        outputValue: `${priceData.completionPrice}${unitSuffix}`,
       },
-      {
-        key: 'completion',
-        label: t('补全价格'),
-        value: priceData.completionPrice,
-        suffix: unitSuffix,
-      },
+      ...(priceData.originalInputPrice
+        ? [
+            {
+              key: 'original-price',
+              isOriginalPrice: true,
+              label: t('原价:'),
+              value: `${priceData.originalInputPrice}/M ${priceData.originalCompletionPrice}/M`,
+            },
+          ]
+        : []),
       {
         key: 'cache',
-        label: t('缓存读取价格'),
+        label: t('缓存读取'),
         value: priceData.cachePrice,
         suffix: unitSuffix,
       },
       {
         key: 'create-cache',
-        label: t('缓存创建价格'),
+        label: t('缓存创建'),
         value: priceData.createCachePrice,
         suffix: unitSuffix,
       },
       {
         key: 'image',
-        label: t('图片输入价格'),
+        label: t('图片输入'),
         value: priceData.imagePrice,
         suffix: unitSuffix,
       },
@@ -857,11 +881,15 @@ export const getModelPriceItems = (
       },
       {
         key: 'audio-output',
-        label: t('音频补全价格'),
+        label: t('音频补全'),
         value: priceData.audioOutputPrice,
         suffix: unitSuffix,
       },
-    ].filter((item) => item.value !== null && item.value !== undefined && item.value !== '');
+    ].filter((item) => {
+      if (item.isMainPrice || item.isOriginalPrice) return true;
+      return item.value !== null && item.value !== undefined && item.value !== '';
+    });
+    return items;
   }
 
   return [
@@ -879,12 +907,28 @@ export const formatPriceInfo = (priceData, t, quotaDisplayType = 'USD') => {
   const items = getModelPriceItems(priceData, t, quotaDisplayType);
   return (
     <>
-      {items.map((item) => (
-        <span key={item.key} style={{ color: 'var(--semi-color-text-1)' }}>
-          {item.label} {item.value}
-          {item.suffix}
-        </span>
-      ))}
+      {items.map((item) =>
+        item.isMainPrice ? (
+          <div key={item.key} className='flex items-center gap-2 flex-wrap'>
+            <span style={{ color: 'var(--semi-color-success)' }}>
+              {item.inputLabel} {item.inputValue}
+            </span>
+            <span style={{ color: 'var(--semi-color-success)' }}>
+              {item.outputLabel} {item.outputValue}
+            </span>
+          </div>
+        ) : item.isOriginalPrice ? (
+          <div key={item.key}>
+            <span style={{ color: 'var(--semi-color-text-2)', textDecoration: 'line-through', fontSize: 12, fontWeight: 600, fontStyle: 'italic', fontFamily: 'revert-layer' }}>
+              {item.label} {item.value}
+            </span>
+          </div>
+        ) : (
+          <span key={item.key} style={{ color: 'var(--semi-color-text-1)' }}>
+            {item.label} {item.value}{item.suffix}
+          </span>
+        ),
+      )}
     </>
   );
 };

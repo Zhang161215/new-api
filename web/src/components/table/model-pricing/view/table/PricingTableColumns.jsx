@@ -239,9 +239,27 @@ export const getPricingTableColumns = ({
       return (
         <div className='space-y-1'>
           {priceItems.map((item) => (
-            <div key={item.key} className='text-gray-700'>
-              {item.label} {item.value}
-              {item.suffix}
+            <div key={item.key}>
+              {item.isMainPrice ? (
+                <div className='flex items-center gap-2 flex-wrap'>
+                  <span style={{ color: 'var(--semi-color-success)', fontWeight: 500 }}>
+                    {item.inputLabel} {item.inputValue}
+                  </span>
+                  <span style={{ color: 'var(--semi-color-success)', fontWeight: 500 }}>
+                    {item.outputLabel} {item.outputValue}
+                  </span>
+                </div>
+              ) : item.isOriginalPrice ? (
+                <div>
+                  <span style={{ color: 'var(--semi-color-text-2)', textDecoration: 'line-through', fontSize: 12, fontWeight: 600, fontStyle: 'italic', fontFamily: 'revert-layer' }}>
+                    {item.label} {item.value}
+                  </span>
+                </div>
+              ) : (
+                <div className='text-gray-700'>
+                  {item.label} {item.value}{item.suffix}
+                </div>
+              )}
             </div>
           ))}
         </div>

@@ -130,10 +130,26 @@ const ModelPricingTable = ({
         <div className='space-y-1'>
           {items.map((item) => (
             <div key={item.key}>
-              <div className='font-semibold text-orange-600'>
-                {item.label} {item.value}
-              </div>
-              <div className='text-xs text-gray-500'>{item.suffix}</div>
+              {item.isMainPrice ? (
+                <>
+                  <div className='flex items-center gap-2 flex-wrap'>
+                    <span style={{ color: 'var(--semi-color-success)', fontWeight: 600 }}>
+                      {item.inputLabel} {item.inputValue}
+                    </span>
+                    <span style={{ color: 'var(--semi-color-success)', fontWeight: 600 }}>
+                      {item.outputLabel} {item.outputValue}
+                    </span>
+                  </div>
+                </>
+              ) : item.isOriginalPrice ? (
+                <span style={{ color: 'var(--semi-color-text-2)', textDecoration: 'line-through', fontSize: 12, fontWeight: 600, fontStyle: 'italic', fontFamily: 'revert-layer' }}>
+                  {item.label} {item.value}
+                </span>
+              ) : (
+                <div className='font-semibold text-orange-600'>
+                  {item.label} {item.value}{item.suffix}
+                </div>
+              )}
             </div>
           ))}
         </div>
