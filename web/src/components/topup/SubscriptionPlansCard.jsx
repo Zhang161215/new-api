@@ -252,6 +252,8 @@ const SubscriptionPlansCard = ({
     (allSubscriptions || []).forEach((sub) => {
       const planId = sub?.subscription?.plan_id;
       if (!planId) return;
+      // 只统计 active 状态的订阅，已过期/已取消的不占限购名额
+      if (sub?.subscription?.status !== 'active') return;
       map.set(planId, (map.get(planId) || 0) + 1);
     });
     return map;
