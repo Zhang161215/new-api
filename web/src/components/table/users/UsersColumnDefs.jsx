@@ -174,12 +174,20 @@ const renderQuotaUsage = (text, record, t) => {
  * Render invite information
  */
 const renderInviteInfo = (text, record, t) => {
+  // 优先使用 invited_total（含软删，实时统计，与详情页同口径），
+  // 缺失则回退到 aff_count。
+  const invitedCount =
+    record.invited_total !== undefined && record.invited_total !== null
+      ? record.invited_total
+      : record.aff_count;
   return (
     <div>
       <Space spacing={1}>
-        <Tag color='white' shape='circle' className='!text-xs'>
-          {t('邀请')}: {renderNumber(record.aff_count)}
-        </Tag>
+        <Tooltip content={t('邀请总数（实时统计，含已注销/删除用户）')}>
+          <Tag color='white' shape='circle' className='!text-xs'>
+            {t('邀请')}: {renderNumber(invitedCount)}
+          </Tag>
+        </Tooltip>
         <Tag color='white' shape='circle' className='!text-xs'>
           {t('收益')}: {renderQuota(record.aff_history_quota)}
         </Tag>

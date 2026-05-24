@@ -42,9 +42,9 @@ type User struct {
 	Group                 string         `json:"group" gorm:"type:varchar(64);default:'default'"`
 	AffCode               string         `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	AffCount              int            `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota              int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`                 // 邀请剩余额度
-	AffPendingQuota       int            `json:"aff_pending_quota" gorm:"type:int;default:0;column:aff_pending_quota"` // 邀请待到账额度
-	AffHistoryQuota       int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"`       // 邀请历史额度
+	AffQuota              int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`                            // 邀请剩余额度
+	AffPendingQuota       int            `json:"aff_pending_quota" gorm:"type:int;default:0;column:aff_pending_quota"`            // 邀请待到账额度
+	AffHistoryQuota       int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"`                  // 邀请历史额度
 	InviterId             int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
 	RegisterIP            string         `json:"register_ip,omitempty" gorm:"type:varchar(64);column:register_ip;index"`
 	RegisterTime          int64          `json:"register_time" gorm:"bigint;column:register_time;index"`
@@ -1078,9 +1078,15 @@ func RootUserExists() bool {
 // ==================== Invite Statistics ====================
 
 type UserInviteOrderStats struct {
+	// 合计字段（向下兼容旧 UI；含义：订阅 + 充值合计）
 	PaidOrderCount int     `json:"paid_order_count"`
 	PaidAmount     float64 `json:"paid_amount"`
 	LastPaidTime   int64   `json:"last_paid_time"`
+	// 拆分字段
+	SubscriptionOrderCount int     `json:"subscription_order_count"`
+	SubscriptionAmount     float64 `json:"subscription_amount"`
+	TopUpCount             int     `json:"topup_count"`
+	TopUpAmount            float64 `json:"topup_amount"`
 }
 
 type UserInviteSubscriptionStats struct {
@@ -1099,6 +1105,9 @@ type UserInviteDetail struct {
 	OrderStats        UserInviteOrderStats        `json:"order_stats"`
 	SubscriptionStats UserInviteSubscriptionStats `json:"subscription_stats"`
 	RiskTags          []string                    `json:"risk_tags"`
+	RiskScore         int                         `json:"risk_score"`
+	IsDeleted         bool                        `json:"is_deleted"`
+	DeletedAt         int64                       `json:"deleted_at,omitempty"`
 }
 
 type UserInviteSummary struct {
@@ -1106,8 +1115,11 @@ type UserInviteSummary struct {
 	PaidTotal               int     `json:"paid_total"`
 	UnpaidTotal             int     `json:"unpaid_total"`
 	PaidAmountTotal         float64 `json:"paid_amount_total"`
+	SubscriptionAmountTotal float64 `json:"subscription_amount_total"`
+	TopUpAmountTotal        float64 `json:"topup_amount_total"`
 	ActiveSubscriptionTotal int     `json:"active_subscription_total"`
 	SuspiciousTotal         int     `json:"suspicious_total"`
+	DeletedTotal            int     `json:"deleted_total"`
 }
 
 type UserInviteDetailsResponse struct {
@@ -1121,7 +1133,8 @@ func GetUserInviteDetails(inviterId int) (*UserInviteDetailsResponse, error) {
 	}
 
 	var invitees []*User
-	if err := DB.Model(&User{}).
+	// Unscoped 含软删用户，与 aff_count 口径对齐
+	if err := DB.Unscoped().Model(&User{}).
 		Where("inviter_id = ?", inviterId).
 		Order("id desc").
 		Find(&invitees).Error; err != nil {
@@ -1158,15 +1171,21 @@ func GetUserInviteDetails(inviterId int) (*UserInviteDetailsResponse, error) {
 	for _, invitee := range invitees {
 		orderStats := orderStatsMap[invitee.Id]
 		subStats := subscriptionStatsMap[invitee.Id]
-		riskTags := make([]string, 0, 3)
+		riskTags := make([]string, 0, 2)
+		riskScore := 0
 		if invitee.RegisterIP != "" && ipCount[invitee.RegisterIP] > 1 {
 			riskTags = append(riskTags, "same_ip")
+			riskScore += 2
 		}
 		if orderStats.PaidOrderCount == 0 {
 			riskTags = append(riskTags, "no_real_payment")
+			riskScore += 1
 		}
-		if subStats.ActiveSubscriptionCount == 0 {
-			riskTags = append(riskTags, "no_active_subscription")
+
+		isDeleted := invitee.DeletedAt.Valid
+		deletedAtTs := int64(0)
+		if isDeleted {
+			deletedAtTs = invitee.DeletedAt.Time.Unix()
 		}
 
 		resp.Items = append(resp.Items, UserInviteDetail{
@@ -1180,19 +1199,28 @@ func GetUserInviteDetails(inviterId int) (*UserInviteDetailsResponse, error) {
 			OrderStats:        orderStats,
 			SubscriptionStats: subStats,
 			RiskTags:          riskTags,
+			RiskScore:         riskScore,
+			IsDeleted:         isDeleted,
+			DeletedAt:         deletedAtTs,
 		})
 
 		resp.Summary.InvitedTotal++
+		if isDeleted {
+			resp.Summary.DeletedTotal++
+		}
 		if orderStats.PaidOrderCount > 0 {
 			resp.Summary.PaidTotal++
 			resp.Summary.PaidAmountTotal += orderStats.PaidAmount
+			resp.Summary.SubscriptionAmountTotal += orderStats.SubscriptionAmount
+			resp.Summary.TopUpAmountTotal += orderStats.TopUpAmount
 		} else {
 			resp.Summary.UnpaidTotal++
 		}
 		if subStats.ActiveSubscriptionCount > 0 {
 			resp.Summary.ActiveSubscriptionTotal++
 		}
-		if len(riskTags) > 0 {
+		// 计分制：score >= 2 才算可疑
+		if riskScore >= 2 {
 			resp.Summary.SuspiciousTotal++
 		}
 	}
@@ -1206,29 +1234,58 @@ func getInviteOrderStats(userIds []int) (map[int]UserInviteOrderStats, error) {
 		return result, nil
 	}
 
-	var rows []struct {
-		UserId         int     `gorm:"column:user_id"`
-		PaidOrderCount int     `gorm:"column:paid_order_count"`
-		PaidAmount     float64 `gorm:"column:paid_amount"`
-		LastPaidTime   int64   `gorm:"column:last_paid_time"`
+	// 查询 A：订阅订单
+	var subRows []struct {
+		UserId       int     `gorm:"column:user_id"`
+		OrderCount   int     `gorm:"column:order_count"`
+		Amount       float64 `gorm:"column:amount"`
+		LastPaidTime int64   `gorm:"column:last_paid_time"`
 	}
-
 	err := DB.Model(&SubscriptionOrder{}).
-		Select("user_id, COUNT(*) as paid_order_count, COALESCE(SUM(money), 0) as paid_amount, COALESCE(MAX(complete_time), 0) as last_paid_time").
+		Select("user_id, COUNT(*) as order_count, COALESCE(SUM(money), 0) as amount, COALESCE(MAX(complete_time), 0) as last_paid_time").
 		Where("user_id IN ? AND status = ?", userIds, "paid").
 		Group("user_id").
-		Find(&rows).Error
+		Find(&subRows).Error
 	if err != nil {
 		return nil, err
 	}
-
-	for _, row := range rows {
+	for _, row := range subRows {
 		result[row.UserId] = UserInviteOrderStats{
-			PaidOrderCount: row.PaidOrderCount,
-			PaidAmount:     row.PaidAmount,
-			LastPaidTime:   row.LastPaidTime,
+			SubscriptionOrderCount: row.OrderCount,
+			SubscriptionAmount:     row.Amount,
+			PaidOrderCount:         row.OrderCount,
+			PaidAmount:             row.Amount,
+			LastPaidTime:           row.LastPaidTime,
 		}
 	}
+
+	// 查询 B：在线充值（Stripe/Creem/Waffo/易支付等）
+	var topupRows []struct {
+		UserId       int     `gorm:"column:user_id"`
+		OrderCount   int     `gorm:"column:order_count"`
+		Amount       float64 `gorm:"column:amount"`
+		LastPaidTime int64   `gorm:"column:last_paid_time"`
+	}
+	err = DB.Model(&TopUp{}).
+		Select("user_id, COUNT(*) as order_count, COALESCE(SUM(money), 0) as amount, COALESCE(MAX(complete_time), 0) as last_paid_time").
+		Where("user_id IN ? AND status = ?", userIds, common.TopUpStatusSuccess).
+		Group("user_id").
+		Find(&topupRows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range topupRows {
+		stat := result[row.UserId]
+		stat.TopUpCount = row.OrderCount
+		stat.TopUpAmount = row.Amount
+		stat.PaidOrderCount += row.OrderCount
+		stat.PaidAmount += row.Amount
+		if row.LastPaidTime > stat.LastPaidTime {
+			stat.LastPaidTime = row.LastPaidTime
+		}
+		result[row.UserId] = stat
+	}
+
 	return result, nil
 }
 
@@ -1276,7 +1333,8 @@ func enrichUsersInviteStats(tx *gorm.DB, users []*User) error {
 		InviterId    int `gorm:"column:inviter_id"`
 		InvitedTotal int `gorm:"column:invited_total"`
 	}
-	if err := tx.Model(&User{}).
+	// Unscoped 含软删被邀用户，与详情页/aff_count 口径对齐
+	if err := tx.Unscoped().Model(&User{}).
 		Select("inviter_id, COUNT(*) as invited_total").
 		Where("inviter_id IN ?", userIds).
 		Group("inviter_id").
@@ -1289,31 +1347,73 @@ func enrichUsersInviteStats(tx *gorm.DB, users []*User) error {
 		invitedMap[row.InviterId] = row.InvitedTotal
 	}
 
-	var paidRows []struct {
-		InviterId        int     `gorm:"column:inviter_id"`
-		InvitedPaidCount int     `gorm:"column:invited_paid_count"`
-		InvitePaidAmount float64 `gorm:"column:invite_paid_amount"`
+	// 真实付费 = 订阅 ∪ 充值。先按 inviter 分别查 subscription_orders 和 top_ups，
+	// 再在 Go 内存合并去重，避免一个被邀人同时出现在两个表导致计数翻倍。
+	type inviterPaid struct {
+		invitees map[int]struct{}
+		amount   float64
+	}
+	merged := make(map[int]*inviterPaid)
+	ensure := func(inviterId int) *inviterPaid {
+		if p, ok := merged[inviterId]; ok {
+			return p
+		}
+		p := &inviterPaid{invitees: make(map[int]struct{})}
+		merged[inviterId] = p
+		return p
+	}
+
+	// 订阅订单付费记录
+	var subPaidRows []struct {
+		InviterId int     `gorm:"column:inviter_id"`
+		InviteeId int     `gorm:"column:invitee_id"`
+		Amount    float64 `gorm:"column:amount"`
 	}
 	if err := tx.Table("users AS invitees").
-		Select(`invitees.inviter_id,
-			COUNT(DISTINCT invitees.id) as invited_paid_count,
-			COALESCE(SUM(subscription_orders.money), 0) as invite_paid_amount`).
+		Select(`invitees.inviter_id, invitees.id as invitee_id,
+			COALESCE(SUM(subscription_orders.money), 0) as amount`).
 		Joins(`JOIN subscription_orders ON subscription_orders.user_id = invitees.id AND subscription_orders.status = ?`, "paid").
 		Where("invitees.inviter_id IN ?", userIds).
-		Group("invitees.inviter_id").
-		Find(&paidRows).Error; err != nil {
+		Group("invitees.inviter_id, invitees.id").
+		Find(&subPaidRows).Error; err != nil {
 		return err
+	}
+	for _, row := range subPaidRows {
+		p := ensure(row.InviterId)
+		p.invitees[row.InviteeId] = struct{}{}
+		p.amount += row.Amount
+	}
+
+	// 充值付费记录（top_ups.status='success'）
+	var topupPaidRows []struct {
+		InviterId int     `gorm:"column:inviter_id"`
+		InviteeId int     `gorm:"column:invitee_id"`
+		Amount    float64 `gorm:"column:amount"`
+	}
+	if err := tx.Table("users AS invitees").
+		Select(`invitees.inviter_id, invitees.id as invitee_id,
+			COALESCE(SUM(top_ups.money), 0) as amount`).
+		Joins(`JOIN top_ups ON top_ups.user_id = invitees.id AND top_ups.status = ?`, common.TopUpStatusSuccess).
+		Where("invitees.inviter_id IN ?", userIds).
+		Group("invitees.inviter_id, invitees.id").
+		Find(&topupPaidRows).Error; err != nil {
+		return err
+	}
+	for _, row := range topupPaidRows {
+		p := ensure(row.InviterId)
+		p.invitees[row.InviteeId] = struct{}{}
+		p.amount += row.Amount
 	}
 
 	paidMap := make(map[int]struct {
 		count  int
 		amount float64
-	}, len(paidRows))
-	for _, row := range paidRows {
-		paidMap[row.InviterId] = struct {
+	}, len(merged))
+	for inviterId, p := range merged {
+		paidMap[inviterId] = struct {
 			count  int
 			amount float64
-		}{count: row.InvitedPaidCount, amount: row.InvitePaidAmount}
+		}{count: len(p.invitees), amount: p.amount}
 	}
 
 	var suspiciousRows []struct {

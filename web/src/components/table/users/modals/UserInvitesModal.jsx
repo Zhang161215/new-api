@@ -54,7 +54,6 @@ function renderRiskTag(tag, t) {
   const config = {
     same_ip: { color: 'red', label: t('同 IP') },
     no_real_payment: { color: 'grey', label: t('无真实付费') },
-    no_active_subscription: { color: 'orange', label: t('无生效订阅') },
   }[tag] || { color: 'grey', label: tag };
 
   return (
@@ -99,7 +98,14 @@ const UserInvitesModal = ({ visible, onCancel, user, t }) => {
         width: 220,
         render: (text, record) => (
           <div className='flex flex-col'>
-            <Text strong>{text || '-'}</Text>
+            <Space spacing={4}>
+              <Text strong>{text || '-'}</Text>
+              {record.is_deleted && (
+                <Tag color='grey' shape='circle' size='small'>
+                  {t('已删除')}
+                </Tag>
+              )}
+            </Space>
             <Text type='tertiary' size='small'>
               {record.display_name || '-'} / ID: {record.id}
             </Text>
@@ -116,31 +122,46 @@ const UserInvitesModal = ({ visible, onCancel, user, t }) => {
         title: t('注册信息'),
         dataIndex: 'register_time',
         width: 240,
-        render: (text, record) => (
-          <div className='flex flex-col'>
-            <Text size='small'>{formatTs(text)}</Text>
-            <Text type='tertiary' size='small'>
-              IP: {record.register_ip || '-'}
-            </Text>
-          </div>
-        ),
+        render: (text, record) => {
+          const hasNoIp = !record.register_ip;
+          const hasNoTime = !text;
+          return (
+            <div className='flex flex-col'>
+              <Text size='small'>{formatTs(text)}</Text>
+              <Text type='tertiary' size='small'>
+                IP: {record.register_ip
+                  ? record.register_ip
+                  : (hasNoIp && hasNoTime)
+                    ? t('未记录')
+                    : '-'}
+              </Text>
+            </div>
+          );
+        },
       },
       {
         title: t('真实付费'),
         dataIndex: 'order_stats',
-        width: 180,
+        width: 200,
         render: (text) => {
           const isPaid = (text?.paid_order_count || 0) > 0;
+          const subCount = text?.subscription_order_count || 0;
+          const topupCount = text?.topup_count || 0;
+          const subAmt = Number(text?.subscription_amount || 0).toFixed(2);
+          const topupAmt = Number(text?.topup_amount || 0).toFixed(2);
           return (
             <div className='flex flex-col gap-1'>
               <Tag color={isPaid ? 'green' : 'grey'} shape='circle' size='small'>
                 {isPaid ? t('已真实付费') : t('未真实付费')}
               </Tag>
               <Text type='tertiary' size='small'>
-                {t('订单')}: {text?.paid_order_count || 0}
+                {t('合计')}: {Number(text?.paid_amount || 0).toFixed(2)}
               </Text>
               <Text type='tertiary' size='small'>
-                {t('金额')}: {Number(text?.paid_amount || 0).toFixed(2)}
+                {t('订阅')} {subCount} {t('单')} / {t('充值')} {topupCount} {t('笔')}
+              </Text>
+              <Text type='tertiary' size='small'>
+                {t('订阅')}: {subAmt} / {t('充值')}: {topupAmt}
               </Text>
             </div>
           );
@@ -170,14 +191,26 @@ const UserInvitesModal = ({ visible, onCancel, user, t }) => {
       {
         title: t('风险标签'),
         dataIndex: 'risk_tags',
-        width: 260,
-        render: (tags) => (
-          <Space wrap spacing={4}>
-            {(tags || []).length > 0
-              ? tags.map((tag) => renderRiskTag(tag, t))
-              : <Tag color='green' shape='circle' size='small'>{t('正常')}</Tag>}
-          </Space>
-        ),
+        width: 280,
+        render: (tags, record) => {
+          const score = record?.risk_score || 0;
+          const isSuspicious = score >= 2;
+          return (
+            <Space wrap spacing={4}>
+              {isSuspicious && (
+                <Tag color='red' shape='circle' size='small'>
+                  {t('可疑')}
+                </Tag>
+              )}
+              {(tags || []).length > 0
+                ? tags.map((tag) => renderRiskTag(tag, t))
+                : <Tag color='green' shape='circle' size='small'>{t('正常')}</Tag>}
+              <Tag color='white' shape='circle' size='small'>
+                {t('风险评分')}: {score}
+              </Tag>
+            </Space>
+          );
+        },
       },
     ],
     [t],
@@ -213,6 +246,9 @@ const UserInvitesModal = ({ visible, onCancel, user, t }) => {
               <div>
                 <Text type='tertiary'>{t('邀请总数')}</Text>
                 <div className='text-xl font-bold'>{summary.invited_total || 0}</div>
+                <Text type='tertiary' size='small'>
+                  {t('含已删除')}: {summary.deleted_total || 0}
+                </Text>
               </div>
             </div>
           </Card>
@@ -242,6 +278,12 @@ const UserInvitesModal = ({ visible, onCancel, user, t }) => {
                 <div className='text-xl font-bold'>
                   {(summary.paid_amount_total || 0).toFixed(2)}
                 </div>
+                <Text type='tertiary' size='small'>
+                  {t('订阅')}: {(summary.subscription_amount_total || 0).toFixed(2)}
+                </Text>
+                <Text type='tertiary' size='small'>
+                  {t('充值')}: {(summary.topup_amount_total || 0).toFixed(2)}
+                </Text>
               </div>
             </div>
           </Card>

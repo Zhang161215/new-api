@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
@@ -718,25 +719,67 @@ func batchGetInvitePaidStats(inviterIds []int) (map[int]struct {
 		return result, nil
 	}
 
-	var rows []struct {
-		InviterId       int     `gorm:"column:inviter_id"`
-		PaidTotal       int     `gorm:"column:paid_total"`
-		PaidAmountTotal float64 `gorm:"column:paid_amount_total"`
+	// 真实付费 = 订阅 ∪ 充值。两次查询各自落到 (inviter_id, invitee_id) 维度，
+	// 再在 Go 内存合并去重，避免同一被邀人在两个表都付费导致计数翻倍。
+	type inviterPaid struct {
+		invitees map[int]struct{}
+		amount   float64
 	}
-	err := model.DB.Table("users AS invitees").
-		Select(`invitees.inviter_id, COUNT(DISTINCT invitees.id) as paid_total, COALESCE(SUM(subscription_orders.money), 0) as paid_amount_total`).
+	merged := make(map[int]*inviterPaid)
+	ensure := func(inviterId int) *inviterPaid {
+		if p, ok := merged[inviterId]; ok {
+			return p
+		}
+		p := &inviterPaid{invitees: make(map[int]struct{})}
+		merged[inviterId] = p
+		return p
+	}
+
+	// 订阅订单
+	var subRows []struct {
+		InviterId int     `gorm:"column:inviter_id"`
+		InviteeId int     `gorm:"column:invitee_id"`
+		Amount    float64 `gorm:"column:amount"`
+	}
+	if err := model.DB.Table("users AS invitees").
+		Select(`invitees.inviter_id, invitees.id as invitee_id, COALESCE(SUM(subscription_orders.money), 0) as amount`).
 		Joins(`JOIN subscription_orders ON subscription_orders.user_id = invitees.id AND subscription_orders.status = ?`, "paid").
 		Where("invitees.inviter_id IN ?", inviterIds).
-		Group("invitees.inviter_id").
-		Find(&rows).Error
-	if err != nil {
+		Group("invitees.inviter_id, invitees.id").
+		Find(&subRows).Error; err != nil {
 		return nil, err
 	}
-	for _, row := range rows {
-		result[row.InviterId] = struct {
+	for _, row := range subRows {
+		p := ensure(row.InviterId)
+		p.invitees[row.InviteeId] = struct{}{}
+		p.amount += row.Amount
+	}
+
+	// 在线充值
+	var topupRows []struct {
+		InviterId int     `gorm:"column:inviter_id"`
+		InviteeId int     `gorm:"column:invitee_id"`
+		Amount    float64 `gorm:"column:amount"`
+	}
+	if err := model.DB.Table("users AS invitees").
+		Select(`invitees.inviter_id, invitees.id as invitee_id, COALESCE(SUM(top_ups.money), 0) as amount`).
+		Joins(`JOIN top_ups ON top_ups.user_id = invitees.id AND top_ups.status = ?`, common.TopUpStatusSuccess).
+		Where("invitees.inviter_id IN ?", inviterIds).
+		Group("invitees.inviter_id, invitees.id").
+		Find(&topupRows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range topupRows {
+		p := ensure(row.InviterId)
+		p.invitees[row.InviteeId] = struct{}{}
+		p.amount += row.Amount
+	}
+
+	for inviterId, p := range merged {
+		result[inviterId] = struct {
 			PaidTotal       int
 			PaidAmountTotal float64
-		}{PaidTotal: row.PaidTotal, PaidAmountTotal: row.PaidAmountTotal}
+		}{PaidTotal: len(p.invitees), PaidAmountTotal: p.amount}
 	}
 	return result, nil
 }
