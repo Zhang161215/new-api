@@ -20,7 +20,11 @@ import React from 'react';
 import AffiliateRebatesTable from '../../components/table/affiliate-rebates/AffiliateRebatesTable';
 
 const AffiliateRebatesPage = () => {
-  return <AffiliateRebatesTable />;
+  return (
+    <div className='mt-[60px] px-2'>
+      <AffiliateRebatesTable />
+    </div>
+  );
 };
 
 export default AffiliateRebatesPage;

@@ -10,20 +10,27 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import React, { useEffect, useState } from 'react';
 import {
-  Card,
-  Table,
   Button,
   Tag,
   Toast,
   Modal,
   Input,
-  Form,
   Space,
   Typography,
   Select,
+  Form,
+  Empty,
 } from '@douyinfe/semi-ui';
+import {
+  IllustrationNoResult,
+  IllustrationNoResultDark,
+} from '@douyinfe/semi-illustrations';
 import { API, timestamp2string } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
+import { useIsMobile } from '../../../hooks/common/useIsMobile';
+import { createCardProPagination } from '../../../helpers/utils';
+import CardPro from '../../common/ui/CardPro';
+import CardTable from '../../common/ui/CardTable';
 
 const { Text } = Typography;
 
@@ -35,6 +42,8 @@ const STATUS_MAP = {
 
 const AffiliateRebatesTable = () => {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
+
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
@@ -91,7 +100,15 @@ const AffiliateRebatesTable = () => {
     fetchList(1, pageSize, statusFilter, inviterId, inviteeId);
   };
 
-  const onRelease = async (record) => {
+  const onReset = () => {
+    setStatusFilter('');
+    setInviterId('');
+    setInviteeId('');
+    setPage(1);
+    fetchList(1, pageSize, '', '', '');
+  };
+
+  const onRelease = (record) => {
     Modal.confirm({
       title: t('确认提前到账'),
       content: `#${record.id} → ${t('返利金额')} $${(record.rebate_money || 0).toFixed(2)}`,
@@ -187,6 +204,7 @@ const AffiliateRebatesTable = () => {
       title: t('操作'),
       dataIndex: 'op',
       width: 180,
+      fixed: 'right',
       render: (_, r) => (
         <Space>
           {r.status === 'pending' && (
@@ -209,43 +227,62 @@ const AffiliateRebatesTable = () => {
     },
   ];
 
-  return (
-    <Card title={t('返利管理')}>
-      <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-        <Select
-          placeholder={t('状态')}
-          value={statusFilter}
-          onChange={(v) => setStatusFilter(v || '')}
-          style={{ width: 140 }}
-          showClear
-        >
-          <Select.Option value='pending'>{t('待到账')}</Select.Option>
-          <Select.Option value='released'>{t('已到账')}</Select.Option>
-          <Select.Option value='revoked'>{t('已撤销')}</Select.Option>
-        </Select>
-        <Input
-          placeholder={t('邀请人') + ' ID'}
-          value={inviterId}
-          onChange={(v) => setInviterId(v)}
-          style={{ width: 140 }}
-        />
-        <Input
-          placeholder={t('被邀人') + ' ID'}
-          value={inviteeId}
-          onChange={(v) => setInviteeId(v)}
-          style={{ width: 140 }}
-        />
-        <Button type='primary' onClick={onSearch}>
-          {t('搜索')}
-        </Button>
-      </Space>
+  // 描述区域
+  const descriptionArea = (
+    <div className='flex items-center gap-2 mb-2'>
+      <Text strong style={{ fontSize: 16 }}>
+        {t('返利管理')}
+      </Text>
+      <Text type='tertiary' className='text-sm'>
+        {t('邀请充值返利记录管理')}
+      </Text>
+    </div>
+  );
 
-      <Table
-        columns={columns}
-        dataSource={items}
-        loading={loading}
-        rowKey='id'
-        pagination={{
+  // 搜索区域
+  const searchArea = (
+    <div className='flex flex-wrap items-center gap-2 w-full'>
+      <Select
+        placeholder={t('状态')}
+        value={statusFilter || undefined}
+        onChange={(v) => setStatusFilter(v || '')}
+        style={{ width: 140 }}
+        showClear
+      >
+        <Select.Option value='pending'>{t('待到账')}</Select.Option>
+        <Select.Option value='released'>{t('已到账')}</Select.Option>
+        <Select.Option value='revoked'>{t('已撤销')}</Select.Option>
+      </Select>
+      <Input
+        placeholder={t('邀请人') + ' ID'}
+        value={inviterId}
+        onChange={(v) => setInviterId(v)}
+        style={{ width: 140 }}
+        showClear
+      />
+      <Input
+        placeholder={t('被邀人') + ' ID'}
+        value={inviteeId}
+        onChange={(v) => setInviteeId(v)}
+        style={{ width: 140 }}
+        showClear
+      />
+      <Button type='primary' onClick={onSearch}>
+        {t('搜索')}
+      </Button>
+      <Button type='tertiary' onClick={onReset}>
+        {t('重置')}
+      </Button>
+    </div>
+  );
+
+  return (
+    <>
+      <CardPro
+        type='type1'
+        descriptionArea={descriptionArea}
+        searchArea={searchArea}
+        paginationArea={createCardProPagination({
           currentPage: page,
           pageSize,
           total,
@@ -254,10 +291,30 @@ const AffiliateRebatesTable = () => {
             setPageSize(ps);
             setPage(1);
           },
-          showSizeChanger: true,
-          pageSizeOpts: [10, 20, 50, 100],
-        }}
-      />
+          isMobile,
+          t,
+        })}
+        t={t}
+      >
+        <CardTable
+          columns={columns}
+          dataSource={items}
+          loading={loading}
+          rowKey='id'
+          pagination={false}
+          scroll={{ x: 1100 }}
+          empty={
+            <Empty
+              image={<IllustrationNoResult style={{ width: 140, height: 140 }} />}
+              darkModeImage={
+                <IllustrationNoResultDark style={{ width: 140, height: 140 }} />
+              }
+              description={t('暂无数据')}
+              style={{ padding: 30 }}
+            />
+          }
+        />
+      </CardPro>
 
       <Modal
         title={t('确认撤销该返利？')}
@@ -279,7 +336,7 @@ const AffiliateRebatesTable = () => {
           onChange={(v) => setRevokeReason(v)}
         />
       </Modal>
-    </Card>
+    </>
   );
 };
 
