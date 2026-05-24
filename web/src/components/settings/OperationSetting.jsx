@@ -27,6 +27,7 @@ import SettingsLog from '../../pages/Setting/Operation/SettingsLog';
 import SettingsMonitoring from '../../pages/Setting/Operation/SettingsMonitoring';
 import SettingsCreditLimit from '../../pages/Setting/Operation/SettingsCreditLimit';
 import SettingsCheckin from '../../pages/Setting/Operation/SettingsCheckin';
+import SettingsAffiliateRebate from '../../pages/Setting/Operation/SettingsAffiliateRebate';
 import { API, showError, toBoolean } from '../../helpers';
 
 const OperationSetting = () => {
@@ -36,6 +37,11 @@ const OperationSetting = () => {
     PreConsumedQuota: 0,
     QuotaForInviter: 0,
     QuotaForInvitee: 0,
+    AffiliateRebateEnabled: true,
+    AffiliateRebatePercent: 5,
+    AffiliateRebateMinThresholdUSD: 2,
+    AffiliateRebateBonusUSD: 2,
+    AffiliateRebateDelayDays: 3,
     'quota_setting.enable_free_model_pre_consume': true,
 
     /* 通用设置 */
@@ -153,6 +159,10 @@ const OperationSetting = () => {
         {/* 签到设置 */}
         <Card style={{ marginTop: '10px' }}>
           <SettingsCheckin options={inputs} refresh={onRefresh} />
+        </Card>
+        {/* 邀请返利设置 */}
+        <Card style={{ marginTop: '10px' }}>
+          <SettingsAffiliateRebate options={inputs} refresh={onRefresh} />
         </Card>
       </Spin>
     </>

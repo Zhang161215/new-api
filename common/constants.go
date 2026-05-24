@@ -104,6 +104,15 @@ var TelegramBotName = ""
 var QuotaForNewUser = 0
 var QuotaForInviter = 0
 var QuotaForInvitee = 0
+
+// 邀请充值返利（Affiliate Top-up Rebate）
+// 在被邀人首次成功充值时，按金额给邀请人发放返利，延迟到账。
+var AffiliateRebateEnabled = true
+var AffiliateRebatePercent = 5.0         // 返利百分比（%）
+var AffiliateRebateMinThresholdUSD = 2.0 // 保底阈值：当 money×percent < 此值时，额外赠送
+var AffiliateRebateBonusUSD = 2.0        // 额外奖励金额（美元）
+var AffiliateRebateDelayDays = 3         // 到账延迟天数
+
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false

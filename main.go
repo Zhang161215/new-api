@@ -112,6 +112,10 @@ func main() {
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
 
+	// Affiliate rebate auto-release task (pending -> released after delay)
+	model.SetAffiliateRebateHook(service.TriggerAffiliateRebate)
+	service.StartAffiliateRebateTask()
+
 	// Wire task polling adaptor factory (breaks service -> relay import cycle)
 	service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor {
 		a := relay.GetTaskAdaptor(platform)

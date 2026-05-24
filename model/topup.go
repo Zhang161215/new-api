@@ -11,6 +11,28 @@ import (
 	"gorm.io/gorm"
 )
 
+// affiliateRebateHook 在 topup 成功 commit 后调用。
+// 由 service 包通过 SetAffiliateRebateHook 注入，避免 model -> service 反向依赖循环。
+var affiliateRebateHook func(*TopUp) error
+
+// SetAffiliateRebateHook 注入返利触发器；service 包初始化时调用。
+func SetAffiliateRebateHook(h func(*TopUp) error) {
+	affiliateRebateHook = h
+}
+
+// fireAffiliateRebate 安全触发钩子（仅成功状态）。
+func fireAffiliateRebate(topUp *TopUp) {
+	if affiliateRebateHook == nil || topUp == nil {
+		return
+	}
+	if topUp.Status != common.TopUpStatusSuccess {
+		return
+	}
+	if err := affiliateRebateHook(topUp); err != nil {
+		common.SysLog(fmt.Sprintf("affiliate rebate hook error (topup #%d): %v", topUp.Id, err))
+	}
+}
+
 type TopUp struct {
 	Id            int     `json:"id"`
 	UserId        int     `json:"user_id" gorm:"index"`
@@ -106,6 +128,8 @@ func Recharge(referenceId string, customerId string) (err error) {
 	}
 
 	RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount))
+
+	fireAffiliateRebate(topUp)
 
 	return nil
 }
@@ -310,6 +334,11 @@ func ManualCompleteTopUp(tradeNo string) error {
 
 	// 事务外记录日志，避免阻塞
 	RecordLog(userId, LogTypeTopup, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney))
+
+	// 取最新的 topup 状态触发返利（前面 commit 之后的视图）
+	if completed := GetTopUpByTradeNo(tradeNo); completed != nil {
+		fireAffiliateRebate(completed)
+	}
 	return nil
 }
 func RechargeCreem(referenceId string, customerEmail string, customerName string) (err error) {
@@ -384,6 +413,8 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 
 	RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("使用Creem充值成功，充值额度: %v，支付金额：%.2f", quota, topUp.Money))
 
+	fireAffiliateRebate(topUp)
+
 	return nil
 }
 
@@ -446,6 +477,8 @@ func RechargeWaffo(tradeNo string) (err error) {
 	if quotaToAdd > 0 {
 		RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money))
 	}
+
+	fireAffiliateRebate(topUp)
 
 	return nil
 }

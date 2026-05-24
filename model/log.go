@@ -48,6 +48,8 @@ const (
 	LogTypeSystem  = 4
 	LogTypeError   = 5
 	LogTypeRefund  = 6
+	// LogTypeAffiliateRebate 邀请充值返利记录（生成 / 到账 / 撤销）
+	LogTypeAffiliateRebate = 7
 )
 
 func formatUserLogs(logs []*Log, startIdx int) {

@@ -97,6 +97,9 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/waffo/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPay)
 				selfRoute.POST("/xunhu/pay", middleware.CriticalRateLimit(), controller.RequestXunhuPay)
 				selfRoute.POST("/aff_transfer", controller.TransferAffQuota)
+				selfRoute.GET("/affiliate/summary", controller.GetUserAffiliateSummary)
+				selfRoute.GET("/affiliate/history", controller.GetUserAffiliateHistory)
+				selfRoute.GET("/affiliate/config", controller.GetUserAffiliateConfig)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
 
 				// 2FA routes
@@ -137,6 +140,15 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/2fa/stats", controller.Admin2FAStats)
 				adminRoute.DELETE("/:id/2fa", controller.AdminDisable2FA)
 			}
+		}
+
+		// Affiliate rebate (admin only)
+		affiliateRebateRoute := apiRouter.Group("/affiliate-rebates")
+		affiliateRebateRoute.Use(middleware.AdminAuth())
+		{
+			affiliateRebateRoute.GET("", controller.AdminListAffiliateRebates)
+			affiliateRebateRoute.POST("/:id/release", controller.AdminReleaseAffiliateRebate)
+			affiliateRebateRoute.POST("/:id/revoke", controller.AdminRevokeAffiliateRebate)
 		}
 
 		// Subscription billing (plans, purchase, admin management)

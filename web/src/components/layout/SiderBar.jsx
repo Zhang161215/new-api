@@ -38,6 +38,7 @@ const routerMap = {
   topup: '/console/topup',
   user: '/console/user',
   analytics: '/console/analytics',
+  affiliateRebates: '/console/affiliate-rebates',
   dailyRanking: '/console/daily-ranking',
   subscription: '/console/subscription',
   log: '/console/log',
@@ -194,6 +195,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('用量分析'),
         itemKey: 'analytics',
         to: '/analytics',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('返利管理'),
+        itemKey: 'affiliateRebates',
+        to: '/affiliate-rebates',
         className: isAdmin() ? '' : 'tableHiddle',
       },
       {

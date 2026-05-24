@@ -51,6 +51,7 @@ import Setup from './pages/Setup';
 import SetupCheck from './components/layout/SetupCheck';
 import Analytics from './pages/Analytics';
 import DailyRanking from './pages/DailyRanking';
+import AffiliateRebates from './pages/AffiliateRebates';
 
 const Home = lazy(() => import('./pages/Home'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -178,6 +179,14 @@ function App() {
           element={
             <AdminRoute>
               <Analytics />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/affiliate-rebates'
+          element={
+            <AdminRoute>
+              <AffiliateRebates />
             </AdminRoute>
           }
         />

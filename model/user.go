@@ -42,8 +42,9 @@ type User struct {
 	Group                 string         `json:"group" gorm:"type:varchar(64);default:'default'"`
 	AffCode               string         `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	AffCount              int            `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota              int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota       int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
+	AffQuota              int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`                 // 邀请剩余额度
+	AffPendingQuota       int            `json:"aff_pending_quota" gorm:"type:int;default:0;column:aff_pending_quota"` // 邀请待到账额度
+	AffHistoryQuota       int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"`       // 邀请历史额度
 	InviterId             int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
 	RegisterIP            string         `json:"register_ip,omitempty" gorm:"type:varchar(64);column:register_ip;index"`
 	RegisterTime          int64          `json:"register_time" gorm:"bigint;column:register_time;index"`
