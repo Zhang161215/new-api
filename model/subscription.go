@@ -705,6 +705,45 @@ func GetActiveSubscriptionUpgradeGroup(userId int) (string, error) {
 	return strings.TrimSpace(plan.UpgradeGroup), nil
 }
 
+// GetActiveSubscriptionUpgradeGroups 返回该用户所有 active 订阅的 upgrade_group 集合（去重）。
+// 当 user_subscriptions.upgrade_group 快照为空时，回退到 plan 的 upgrade_group。
+// 用于跨组计费判断：判断当前请求的 usingGroup 是否在用户订阅覆盖范围内。
+//
+// 性能：一次 LEFT JOIN 查询，对每个请求增加一次轻量 DB 调用；
+// 无订阅用户返回空 map，调用方可据此快速跳过。
+func GetActiveSubscriptionUpgradeGroups(userId int) (map[string]bool, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	now := common.GetTimestamp()
+
+	type row struct {
+		SubGroup  string `gorm:"column:sub_group"`
+		PlanGroup string `gorm:"column:plan_group"`
+	}
+	var rows []row
+	err := DB.Table("user_subscriptions AS us").
+		Select("us.upgrade_group AS sub_group, COALESCE(p.upgrade_group, '') AS plan_group").
+		Joins("LEFT JOIN subscription_plans AS p ON p.id = us.plan_id").
+		Where("us.user_id = ? AND us.status = ? AND us.end_time > ?", userId, "active", now).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	groups := make(map[string]bool, len(rows))
+	for _, r := range rows {
+		g := strings.TrimSpace(r.SubGroup)
+		if g == "" {
+			g = strings.TrimSpace(r.PlanGroup)
+		}
+		if g != "" {
+			groups[g] = true
+		}
+	}
+	return groups, nil
+}
+
 // IsSubscriptionUpgradeGroup checks whether the given group name is the UpgradeGroup
 // of any enabled subscription plan.
 func IsSubscriptionUpgradeGroup(group string) bool {
