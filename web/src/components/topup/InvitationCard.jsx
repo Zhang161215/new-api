@@ -297,6 +297,20 @@ const InvitationCard = ({
                   {t('到账后可随时划转到余额使用')}
                 </Text>
               </div>
+              {/* 自定义补充说明（管理员后台填写，按 \n 拆分多行） */}
+              {config.extra_rules &&
+                config.extra_rules
+                  .split('\n')
+                  .map((line) => line.trim())
+                  .filter((line) => line.length > 0)
+                  .map((line, idx) => (
+                    <div key={`extra-${idx}`} className='flex items-start gap-2'>
+                      <Badge dot type='warning' />
+                      <Text type='tertiary' className='text-sm whitespace-pre-wrap'>
+                        {line}
+                      </Text>
+                    </div>
+                  ))}
             </div>
           </Card>
         )}

@@ -30,6 +30,7 @@ export default function SettingsAffiliateRebate(props) {
     AffiliateRebateMinThresholdUSD: 2,
     AffiliateRebateBonusUSD: 2,
     AffiliateRebateDelayDays: 3,
+    AffiliateRebateExtraRules: '',
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
@@ -151,6 +152,24 @@ export default function SettingsAffiliateRebate(props) {
                 min={0}
                 onChange={(value) =>
                   setInputs({ ...inputs, AffiliateRebateDelayDays: value })
+                }
+              />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24} sm={24} md={16}>
+              <Form.TextArea
+                label={t('自定义规则补充说明')}
+                field={'AffiliateRebateExtraRules'}
+                extraText={t(
+                  '每行一条，将追加显示在用户钱包页「活动规则」卡片末尾。留空则不显示补充说明',
+                )}
+                placeholder={t(
+                  '例如：\n本活动最终解释权归本平台所有\n严禁刷邀请等作弊行为，违规者将取消所有奖励',
+                )}
+                autosize={{ minRows: 3, maxRows: 8 }}
+                onChange={(value) =>
+                  setInputs({ ...inputs, AffiliateRebateExtraRules: value })
                 }
               />
             </Col>

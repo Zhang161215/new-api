@@ -42,6 +42,7 @@ const OperationSetting = () => {
     AffiliateRebateMinThresholdUSD: 2,
     AffiliateRebateBonusUSD: 2,
     AffiliateRebateDelayDays: 3,
+    AffiliateRebateExtraRules: '',
     'quota_setting.enable_free_model_pre_consume': true,
 
     /* 通用设置 */

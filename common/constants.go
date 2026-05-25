@@ -112,6 +112,7 @@ var AffiliateRebatePercent = 5.0         // 返利百分比（%）
 var AffiliateRebateMinThresholdUSD = 2.0 // 保底阈值：当 money×percent < 此值时，额外赠送
 var AffiliateRebateBonusUSD = 2.0        // 额外奖励金额（美元）
 var AffiliateRebateDelayDays = 3         // 到账延迟天数
+var AffiliateRebateExtraRules = ""       // 自定义规则补充说明（多行，渲染时按 \n 拆分）
 
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false

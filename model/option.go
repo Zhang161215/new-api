@@ -131,6 +131,7 @@ func InitOptionMap() {
 	common.OptionMap["AffiliateRebateMinThresholdUSD"] = strconv.FormatFloat(common.AffiliateRebateMinThresholdUSD, 'f', -1, 64)
 	common.OptionMap["AffiliateRebateBonusUSD"] = strconv.FormatFloat(common.AffiliateRebateBonusUSD, 'f', -1, 64)
 	common.OptionMap["AffiliateRebateDelayDays"] = strconv.Itoa(common.AffiliateRebateDelayDays)
+	common.OptionMap["AffiliateRebateExtraRules"] = common.AffiliateRebateExtraRules
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)
@@ -469,6 +470,8 @@ func updateOptionMap(key string, value string) (err error) {
 		common.AffiliateRebateBonusUSD, _ = strconv.ParseFloat(value, 64)
 	case "AffiliateRebateDelayDays":
 		common.AffiliateRebateDelayDays, _ = strconv.Atoi(value)
+	case "AffiliateRebateExtraRules":
+		common.AffiliateRebateExtraRules = value
 	case "QuotaRemindThreshold":
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":

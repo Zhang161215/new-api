@@ -37,12 +37,13 @@ func GetUserAffiliateSummary(c *gin.Context) {
 // GetUserAffiliateConfig 给前端展示活动规则。
 func GetUserAffiliateConfig(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{
-		"enabled":              common.AffiliateRebateEnabled,
-		"percent":              common.AffiliateRebatePercent,
-		"min_threshold_usd":    common.AffiliateRebateMinThresholdUSD,
-		"bonus_usd":            common.AffiliateRebateBonusUSD,
-		"delay_days":           common.AffiliateRebateDelayDays,
-		"quota_per_unit":       common.QuotaPerUnit,
+		"enabled":           common.AffiliateRebateEnabled,
+		"percent":           common.AffiliateRebatePercent,
+		"min_threshold_usd": common.AffiliateRebateMinThresholdUSD,
+		"bonus_usd":         common.AffiliateRebateBonusUSD,
+		"delay_days":        common.AffiliateRebateDelayDays,
+		"quota_per_unit":    common.QuotaPerUnit,
+		"extra_rules":       common.AffiliateRebateExtraRules,
 	})
 }
 
