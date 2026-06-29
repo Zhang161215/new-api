@@ -28,6 +28,7 @@ import {
   Tooltip,
   Collapsible,
   Modal,
+  Banner,
 } from '@douyinfe/semi-ui';
 import {
   CalendarCheck,
@@ -261,11 +262,13 @@ const CheckinCalendar = ({ t, status, turnstileEnabled, turnstileSiteKey }) => {
             <div className='text-xs text-gray-500 dark:text-gray-400'>
               {!initialLoaded
                 ? t('正在加载签到状态...')
-                : checkinData.stats?.checked_in_today
-                  ? t('今日已签到，累计签到') +
-                    ` ${checkinData.stats?.total_checkins || 0} ` +
-                    t('天')
-                  : t('每日签到可获得随机额度奖励')}
+                : checkinData.topup_eligible === false
+                  ? t('充值达标后可签到')
+                  : checkinData.stats?.checked_in_today
+                    ? t('今日已签到，累计签到') +
+                      ` ${checkinData.stats?.total_checkins || 0} ` +
+                      t('天')
+                    : t('每日签到可获得随机额度奖励')}
             </div>
           </div>
         </div>
@@ -275,16 +278,39 @@ const CheckinCalendar = ({ t, status, turnstileEnabled, turnstileSiteKey }) => {
           icon={<Gift size={16} />}
           onClick={() => doCheckin()}
           loading={checkinLoading || !initialLoaded}
-          disabled={!initialLoaded || checkinData.stats?.checked_in_today}
+          disabled={
+            !initialLoaded ||
+            checkinData.stats?.checked_in_today ||
+            checkinData.topup_eligible === false
+          }
           className='!bg-green-600 hover:!bg-green-700'
         >
           {!initialLoaded
             ? t('加载中...')
-            : checkinData.stats?.checked_in_today
-              ? t('今日已签到')
-              : t('立即签到')}
+            : checkinData.topup_eligible === false
+              ? t('充值不足')
+              : checkinData.stats?.checked_in_today
+                ? t('今日已签到')
+                : t('立即签到')}
         </Button>
       </div>
+
+      {/* 充值不足提示 */}
+      {initialLoaded && checkinData.topup_eligible === false && (
+        <Banner
+          type='warning'
+          description={
+            t('累计充值满') +
+            ` ${checkinData.min_topup_amount} ` +
+            t('元后可使用签到功能') +
+            (checkinData.user_topup_total !== undefined
+              ? `，${t('当前累计充值')} ${checkinData.user_topup_total.toFixed(2)} ${t('元')}`
+              : '')
+          }
+          className='mt-3'
+          closeIcon={null}
+        />
+      )}
 
       {/* 可折叠内容 */}
       <Collapsible isOpen={isCollapsed === false} keepDOM>

@@ -32,13 +32,26 @@ func GetCheckinStatus(c *gin.Context) {
 		return
 	}
 
+	// 检查用户是否满足最低充值金额要求
+	topupEligible := true
+	var userTopUpAmount float64
+	if setting.MinTopUpAmount > 0 {
+		userTopUpAmount, _ = model.GetUserTotalTopUpAmount(userId)
+		if userTopUpAmount < setting.MinTopUpAmount {
+			topupEligible = false
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"enabled":   setting.Enabled,
-			"min_quota": setting.MinQuota,
-			"max_quota": setting.MaxQuota,
-			"stats":     stats,
+			"enabled":          setting.Enabled,
+			"min_quota":        setting.MinQuota,
+			"max_quota":        setting.MaxQuota,
+			"min_topup_amount": setting.MinTopUpAmount,
+			"topup_eligible":   topupEligible,
+			"user_topup_total": userTopUpAmount,
+			"stats":            stats,
 		},
 	})
 }
@@ -52,6 +65,25 @@ func DoCheckin(c *gin.Context) {
 	}
 
 	userId := c.GetInt("id")
+
+	// 校验最低充值金额
+	if setting.MinTopUpAmount > 0 {
+		userTopUpAmount, err := model.GetUserTotalTopUpAmount(userId)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "查询充值记录失败",
+			})
+			return
+		}
+		if userTopUpAmount < setting.MinTopUpAmount {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": fmt.Sprintf("累计充值满 %.2f 元后可使用签到功能，当前累计充值 %.2f 元", setting.MinTopUpAmount, userTopUpAmount),
+			})
+			return
+		}
+	}
 
 	checkin, err := model.UserCheckin(userId)
 	if err != nil {

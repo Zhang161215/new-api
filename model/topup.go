@@ -33,6 +33,12 @@ func fireAffiliateRebate(topUp *TopUp) {
 	}
 }
 
+// FireAffiliateRebate 公开导出版本，供 controller 包在第三方支付回调成功后触发返利。
+// 注意：仅当 topUp.Status 为 success 时才会触发；钩子未注册时为 no-op。
+func FireAffiliateRebate(topUp *TopUp) {
+	fireAffiliateRebate(topUp)
+}
+
 type TopUp struct {
 	Id            int     `json:"id"`
 	UserId        int     `json:"user_id" gorm:"index"`
@@ -481,4 +487,14 @@ func RechargeWaffo(tradeNo string) (err error) {
 	fireAffiliateRebate(topUp)
 
 	return nil
+}
+
+// GetUserTotalTopUpAmount 获取用户累计成功充值金额(元)
+func GetUserTotalTopUpAmount(userId int) (float64, error) {
+	var total float64
+	err := DB.Model(&TopUp{}).
+		Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).
+		Select("COALESCE(SUM(money), 0)").
+		Scan(&total).Error
+	return total, err
 }

@@ -35,6 +35,7 @@ export default function SettingsCheckin(props) {
     'checkin_setting.enabled': false,
     'checkin_setting.min_quota': 1000,
     'checkin_setting.max_quota': 10000,
+    'checkin_setting.min_topup_amount': 0,
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
@@ -84,7 +85,12 @@ export default function SettingsCheckin(props) {
     const currentInputs = {};
     for (let key in props.options) {
       if (Object.keys(inputs).includes(key)) {
-        currentInputs[key] = props.options[key];
+        if (typeof inputs[key] === 'boolean') {
+          currentInputs[key] = props.options[key];
+        } else {
+          // 数值类字段确保转为 number，避免字符串比较问题
+          currentInputs[key] = Number(props.options[key]);
+        }
       }
     }
     setInputs(currentInputs);
@@ -136,6 +142,24 @@ export default function SettingsCheckin(props) {
                   onChange={handleFieldChange('checkin_setting.max_quota')}
                   min={0}
                   disabled={!inputs['checkin_setting.enabled']}
+                />
+              </Col>
+            </Row>
+            <Row gutter={16} style={{ marginTop: 12 }}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  field={'checkin_setting.min_topup_amount'}
+                  label={t('签到最低充值金额')}
+                  placeholder={t('设为 0 表示不限制')}
+                  onChange={handleFieldChange(
+                    'checkin_setting.min_topup_amount',
+                  )}
+                  min={0}
+                  step={0.01}
+                  disabled={!inputs['checkin_setting.enabled']}
+                  extraText={t(
+                    '用户累计充值金额低于此值时无法签到，设为 0 表示不限制',
+                  )}
                 />
               </Col>
             </Row>
