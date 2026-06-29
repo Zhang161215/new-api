@@ -489,12 +489,24 @@ func RechargeWaffo(tradeNo string) (err error) {
 	return nil
 }
 
-// GetUserTotalTopUpAmount 获取用户累计成功充值金额(元)
+// GetUserTotalTopUpAmount 获取用户累计成功付费金额(元)
+// 包含充值订单(top_ups)和订阅订单(subscription_orders)的实际支付金额
 func GetUserTotalTopUpAmount(userId int) (float64, error) {
-	var total float64
-	err := DB.Model(&TopUp{}).
+	var topupTotal float64
+	if err := DB.Model(&TopUp{}).
 		Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).
 		Select("COALESCE(SUM(money), 0)").
-		Scan(&total).Error
-	return total, err
+		Scan(&topupTotal).Error; err != nil {
+		return 0, err
+	}
+
+	var subTotal float64
+	if err := DB.Model(&SubscriptionOrder{}).
+		Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).
+		Select("COALESCE(SUM(money), 0)").
+		Scan(&subTotal).Error; err != nil {
+		return 0, err
+	}
+
+	return topupTotal + subTotal, nil
 }
