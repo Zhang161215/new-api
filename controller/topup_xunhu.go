@@ -252,6 +252,9 @@ func XunhuPayNotify(c *gin.Context) {
 		}
 		log.Printf("虎皮椒回调充值成功: userId=%d, amount=%d, money=%.2f", topUp.UserId, topUp.Amount, topUp.Money)
 		model.RecordLog(topUp.UserId, model.LogTypeTopup, fmt.Sprintf("使用虎皮椒在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money))
+		if completed := model.GetTopUpByTradeNo(tradeNo); completed != nil {
+			model.FireAffiliateRebate(completed)
+		}
 	}
 
 	c.String(200, "success")
