@@ -253,6 +253,23 @@ export const useModelPricingData = () => {
       setVendorsMap(vendorMap);
       setEndpointMap(supported_endpoint || {});
       setAutoGroups(auto_groups || []);
+
+      // 拉取模型可用性状态并合并（失败静默，不影响广场主体展示）
+      let statusMap = {};
+      try {
+        const statusRes = await API.get('/api/pricing/status');
+        if (statusRes.data?.success && statusRes.data?.data) {
+          statusMap = statusRes.data.data;
+        }
+      } catch (e) {
+        statusMap = {};
+      }
+      if (Array.isArray(data)) {
+        data.forEach((m) => {
+          m.status = statusMap[m.model_name];
+        });
+      }
+
       setModelsFormat(data, group_ratio, vendorMap);
     } else {
       showError(message);

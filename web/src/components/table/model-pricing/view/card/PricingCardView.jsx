@@ -41,6 +41,7 @@ import {
   getLobeHubIcon,
 } from '../../../../../helpers';
 import PricingCardSkeleton from './PricingCardSkeleton';
+import ModelStatusRow from './ModelStatusRow';
 import { useMinimumLoadingTime } from '../../../../../hooks/common/useMinimumLoadingTime';
 import { renderLimitedItems } from '../../../../common/ui/RenderUtils';
 import { useIsMobile } from '../../../../../hooks/common/useIsMobile';
@@ -312,6 +313,9 @@ const PricingCardView = ({
                 <div className='mt-auto'>
                   {/* 标签区域 */}
                   {renderTags(model)}
+
+                  {/* 可用性状态行（吞吐/延迟/24格/可用率） */}
+                  <ModelStatusRow status={model.status} t={t} />
 
                   {/* 倍率信息（可选） */}
                   {showRatio && (

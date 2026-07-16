@@ -76,6 +76,15 @@ func GetPricing(c *gin.Context) {
 	})
 }
 
+// GetPricingStatus 返回各模型的可用性状态（吞吐/延迟/可用率/24格），
+// 数据来自真实用量日志聚合，带 60s 内存缓存。独立于 /pricing，互不影响。
+func GetPricingStatus(c *gin.Context) {
+	c.JSON(200, gin.H{
+		"success": true,
+		"data":    model.GetModelStatuses(),
+	})
+}
+
 func ResetModelRatio(c *gin.Context) {
 	defaultStr := ratio_setting.DefaultModelRatio2JSONString()
 	err := model.UpdateOption("ModelRatio", defaultStr)
