@@ -193,9 +193,12 @@ const PricingCardView = ({
     }
 
     return (
-      <div className='flex items-center justify-between'>
-        <div className='flex items-center gap-2'>{billingTag}</div>
-        <div className='flex items-center gap-1'>
+      <div className='flex items-center justify-between gap-2'>
+        <div className='flex items-center gap-2 flex-wrap min-w-0'>
+          {billingTag}
+          <ModelStatusRow status={record.status} t={t} />
+        </div>
+        <div className='flex items-center gap-1 shrink-0'>
           {customTags.length > 0 &&
             renderLimitedItems({
               items: customTags.map((tag, idx) => ({
@@ -311,11 +314,8 @@ const PricingCardView = ({
 
                 {/* 底部区域 */}
                 <div className='mt-auto'>
-                  {/* 标签区域 */}
+                  {/* 标签区域（含可用性状态：吞吐/延迟/24格/可用率） */}
                   {renderTags(model)}
-
-                  {/* 可用性状态行（吞吐/延迟/24格/可用率） */}
-                  <ModelStatusRow status={model.status} t={t} />
 
                   {/* 倍率信息（可选） */}
                   {showRatio && (

@@ -19,10 +19,7 @@ import (
 
 // 桶颜色状态
 const (
-	statusBucketNoData = 0 // 灰：无数据
-	statusBucketGreen  = 1 // 绿：可用率 >= 99%
-	statusBucketYellow = 2 // 黄：可用率 >= 90%
-	statusBucketRed    = 3 // 红：可用率 < 90%
+	statusNoData = float64(-1) // 无数据哨兵值
 )
 
 const (
@@ -33,11 +30,11 @@ const (
 
 // ModelStatus 单个模型的状态快照（前端卡片直接消费）。
 type ModelStatus struct {
-	Availability float64 `json:"availability"` // 0~100
-	Latency      float64 `json:"latency"`      // 平均秒
-	Throughput   float64 `json:"throughput"`   // tokens/s
-	Buckets      []int   `json:"buckets"`      // 长度 24，0=无数据 1=绿 2=黄 3=红（旧→新）
-	HasData      bool    `json:"has_data"`
+	Availability float64   `json:"availability"` // 0~100 整体可用率
+	Latency      float64   `json:"latency"`      // 平均秒
+	Throughput   float64   `json:"throughput"`   // tokens/s
+	Buckets      []float64 `json:"buckets"`      // 长度 24，每小时可用率%（-1=无数据，旧→新）
+	HasData      bool      `json:"has_data"`
 }
 
 var (
@@ -146,11 +143,15 @@ func computeModelStatuses() (map[string]ModelStatus, error) {
 	// 当前小时桶编号；索引 = statusBucketCount-1 - (currentBucket - bucket)
 	currentBucket := now / 3600
 
-	// 先把桶按模型归档
-	bucketsByModel := make(map[string][]int) // 每模型 24 长度切片
-	ensure := func(m string) []int {
+	// 先把桶按模型归档：每模型 24 长度切片，默认 -1（无数据）
+	bucketsByModel := make(map[string][]float64)
+	ensure := func(m string) []float64 {
 		if _, ok := bucketsByModel[m]; !ok {
-			bucketsByModel[m] = make([]int, statusBucketCount)
+			arr := make([]float64, statusBucketCount)
+			for i := range arr {
+				arr[i] = statusNoData
+			}
+			bucketsByModel[m] = arr
 		}
 		return bucketsByModel[m]
 	}
@@ -160,7 +161,10 @@ func computeModelStatuses() (map[string]ModelStatus, error) {
 			continue
 		}
 		arr := ensure(b.ModelName)
-		arr[idx] = bucketColor(b.Success, b.Failure)
+		total := b.Success + b.Failure
+		if total > 0 {
+			arr[idx] = float64(b.Success) / float64(total) * 100
+		}
 	}
 
 	// 组装最终结果
@@ -183,21 +187,4 @@ func computeModelStatuses() (map[string]ModelStatus, error) {
 		result[s.ModelName] = st
 	}
 	return result, nil
-}
-
-// bucketColor 根据单桶成功/失败数返回颜色状态。
-func bucketColor(success, failure int64) int {
-	total := success + failure
-	if total == 0 {
-		return statusBucketNoData
-	}
-	avail := float64(success) / float64(total) * 100
-	switch {
-	case avail >= 99:
-		return statusBucketGreen
-	case avail >= 90:
-		return statusBucketYellow
-	default:
-		return statusBucketRed
-	}
 }
