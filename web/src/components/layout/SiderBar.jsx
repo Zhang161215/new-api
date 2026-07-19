@@ -96,6 +96,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('每日排行'),
         itemKey: 'dailyRanking',
         to: '/daily-ranking',
+        className: isAdmin() ? '' : 'tableHiddle',
       },
       {
         text: t('绘图日志'),

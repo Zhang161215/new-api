@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -50,6 +52,8 @@ const (
 	LogTypeRefund  = 6
 	// LogTypeAffiliateRebate 邀请充值返利记录（生成 / 到账 / 撤销）
 	LogTypeAffiliateRebate = 7
+	// LogTypeSensitiveHit 敏感词命中记录（内容安全）
+	LogTypeSensitiveHit = 8
 )
 
 func formatUserLogs(logs []*Log, startIdx int) {
@@ -128,6 +132,38 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	err := LOG_DB.Create(log).Error
 	if err != nil {
 		logger.LogError(c, "failed to record log: "+err.Error())
+	}
+}
+
+// sensitiveLogLastRecord 记录每个用户上次落库时间戳（unix 秒），用于落库限频
+var sensitiveLogLastRecord sync.Map // userId(int) -> int64
+
+// RecordSensitiveLog 记录一条敏感词命中日志（type=8）。
+// docker 运行日志照旧全量记录；此处落库做限频：同一用户 10 秒内只写一条，
+// 避免聊天客户端流式失败自动重试把命中记录刷爆日志表。
+// content 仅存命中的词，不存请求原文。
+func RecordSensitiveLog(c *gin.Context, userId int, modelName string, group string, words []string) {
+	now := common.GetTimestamp()
+	if last, ok := sensitiveLogLastRecord.Load(userId); ok {
+		if now-last.(int64) < 10 {
+			return
+		}
+	}
+	sensitiveLogLastRecord.Store(userId, now)
+
+	log := &Log{
+		UserId:    userId,
+		Username:  c.GetString("username"),
+		CreatedAt: now,
+		Type:      LogTypeSensitiveHit,
+		Content:   strings.Join(words, ", "),
+		ModelName: modelName,
+		Group:     group,
+		Ip:        c.ClientIP(),
+		RequestId: c.GetString(common.RequestIdKey),
+	}
+	if err := LOG_DB.Create(log).Error; err != nil {
+		logger.LogError(c, "failed to record sensitive log: "+err.Error())
 	}
 }
 

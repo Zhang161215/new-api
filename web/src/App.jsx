@@ -307,9 +307,9 @@ function App() {
         <Route
           path='/console/daily-ranking'
           element={
-            <PrivateRoute>
+            <AdminRoute>
               <DailyRanking />
-            </PrivateRoute>
+            </AdminRoute>
           }
         />
         <Route

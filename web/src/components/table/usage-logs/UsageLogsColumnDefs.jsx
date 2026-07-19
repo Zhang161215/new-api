@@ -132,6 +132,18 @@ function renderType(type, t) {
           {t('退款')}
         </Tag>
       );
+    case 7:
+      return (
+        <Tag color='gold' shape='circle'>
+          {t('邀请返利')}
+        </Tag>
+      );
+    case 8:
+      return (
+        <Tag color='red' shape='circle'>
+          {t('敏感词命中')}
+        </Tag>
+      );
     default:
       return (
         <Tag color='grey' shape='circle'>
