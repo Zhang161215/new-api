@@ -364,6 +364,9 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	} else {
 		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
 	}
+	// 敏感词命中记录（type=8）为管理员专属，普通用户端一律不可见，
+	// 无论前端如何请求（含 type=0 全部 或显式 type=8），后端强制排除，防止暴露风控机制
+	tx = tx.Where("logs.type <> ?", LogTypeSensitiveHit)
 
 	if modelName != "" {
 		modelNamePattern, err := sanitizeLikePattern(modelName)
