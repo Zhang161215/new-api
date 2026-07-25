@@ -1,6 +1,10 @@
 package operation_setting
 
-import "github.com/QuantumNous/new-api/setting/config"
+import (
+	"strings"
+
+	"github.com/QuantumNous/new-api/setting/config"
+)
 
 // PromptAuditImmutablePrompt 内容安全审核模块的固定系统提示词（不可被用户输入覆盖）。
 // 审核模型只输出 JSON：{"confidence": 0.00, "reason": "..."}
@@ -63,6 +67,9 @@ type PromptAuditSetting struct {
 	FailOpen bool `json:"fail_open"`
 	// 自定义系统提示词，为空时使用内置 PromptAuditImmutablePrompt
 	SystemPrompt string `json:"system_prompt"`
+	// 只审核这些分组（英文逗号分隔）。留空表示审核所有分组。
+	// 生效分组取 token 分组，为空时回落到用户分组（与 relay 一致）
+	Groups string `json:"groups"`
 }
 
 var promptAuditSetting = PromptAuditSetting{
@@ -76,6 +83,7 @@ var promptAuditSetting = PromptAuditSetting{
 	MaxInputChars: 8000,
 	FailOpen:      true,
 	SystemPrompt:  "",
+	Groups:        "",
 }
 
 func init() {
@@ -85,6 +93,31 @@ func init() {
 // GetPromptAuditSetting 返回当前审核配置指针
 func GetPromptAuditSetting() *PromptAuditSetting {
 	return &promptAuditSetting
+}
+
+// GroupList 返回配置的分组白名单（已去空白，留空表示不限制）
+func (s *PromptAuditSetting) GroupList() []string {
+	out := make([]string, 0)
+	for _, g := range strings.Split(s.Groups, ",") {
+		if g = strings.TrimSpace(g); g != "" {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+// ShouldAuditGroup 判断某分组是否需要审核；白名单为空时审核全部分组
+func (s *PromptAuditSetting) ShouldAuditGroup(group string) bool {
+	list := s.GroupList()
+	if len(list) == 0 {
+		return true
+	}
+	for _, g := range list {
+		if g == group {
+			return true
+		}
+	}
+	return false
 }
 
 // GetPrompt 返回实际使用的系统提示词

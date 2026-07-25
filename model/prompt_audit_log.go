@@ -12,6 +12,7 @@ type PromptAuditLog struct {
 	UserId     int     `json:"user_id" gorm:"index"`
 	Username   string  `json:"username" gorm:"index;default:''"`
 	TokenName  string  `json:"token_name"`
+	Group      string  `json:"group" gorm:"index;default:''"`
 	ModelName  string  `json:"model_name" gorm:"index"`
 	ChannelId  int     `json:"channel_id"`
 	Endpoint   string  `json:"endpoint"`
@@ -37,7 +38,7 @@ func RecordPromptAuditLog(log *PromptAuditLog) error {
 }
 
 // GetPromptAuditLogs 分页查询审核记录。blocked 为 nil 时不按拦截状态过滤。
-func GetPromptAuditLogs(startTimestamp, endTimestamp int64, username, modelName string,
+func GetPromptAuditLogs(startTimestamp, endTimestamp int64, username, modelName, group string,
 	blocked *bool, startIdx, num int) (logs []*PromptAuditLog, total int64, err error) {
 
 	tx := DB.Model(&PromptAuditLog{})
@@ -52,6 +53,9 @@ func GetPromptAuditLogs(startTimestamp, endTimestamp int64, username, modelName 
 	}
 	if modelName != "" {
 		tx = tx.Where("model_name = ?", modelName)
+	}
+	if group != "" {
+		tx = tx.Where("\"group\" = ?", group)
 	}
 	if blocked != nil {
 		tx = tx.Where("blocked = ?", *blocked)

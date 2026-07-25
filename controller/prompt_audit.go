@@ -26,6 +26,7 @@ func GetPromptAuditLogs(c *gin.Context) {
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	username := c.Query("username")
 	modelName := c.Query("model_name")
+	group := c.Query("group")
 
 	var blocked *bool
 	switch c.Query("blocked") {
@@ -37,7 +38,7 @@ func GetPromptAuditLogs(c *gin.Context) {
 		blocked = &v
 	}
 
-	logs, total, err := model.GetPromptAuditLogs(startTimestamp, endTimestamp, username, modelName,
+	logs, total, err := model.GetPromptAuditLogs(startTimestamp, endTimestamp, username, modelName, group,
 		blocked, p*pageSize, pageSize)
 	if err != nil {
 		common.ApiError(c, err)

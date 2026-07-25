@@ -79,6 +79,12 @@ func PromptAudit() gin.HandlerFunc {
 			return
 		}
 
+		// 分组白名单：只审核指定分组（留空=全部）。生效分组与 relay 口径一致
+		if !cfg.ShouldAuditGroup(effectiveGroup(c)) {
+			c.Next()
+			return
+		}
+
 		storage, err := common.GetBodyStorage(c)
 		if err != nil {
 			c.Next()
@@ -149,10 +155,21 @@ func PromptAudit() gin.HandlerFunc {
 	}
 }
 
+// effectiveGroup 取本次请求实际生效的分组：token 分组优先，为空回落用户分组。
+// 口径与 relay/common/relay_info.go 保持一致，避免两处判断不同分组。
+func effectiveGroup(c *gin.Context) string {
+	group := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
+	if group == "" {
+		group = common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+	}
+	return group
+}
+
 // promptAuditMeta 命中记录所需的请求上下文快照（在 goroutine 里用，故先取值再脱离 gin.Context）
 type promptAuditMeta struct {
 	userId    int
 	tokenName string
+	group     string
 	modelName string
 	channelId int
 	endpoint  string
@@ -164,6 +181,7 @@ func newPromptAuditMeta(c *gin.Context, userInput string) *promptAuditMeta {
 	return &promptAuditMeta{
 		userId:    c.GetInt("id"),
 		tokenName: c.GetString("token_name"),
+		group:     effectiveGroup(c),
 		modelName: c.GetString("original_model"),
 		channelId: c.GetInt(string(constant.ContextKeyChannelId)),
 		endpoint:  c.Request.URL.Path,
@@ -194,6 +212,7 @@ func (m *promptAuditMeta) record(ctx context.Context, cfg *operation_setting.Pro
 		UserId:     m.userId,
 		Username:   username,
 		TokenName:  m.tokenName,
+		Group:      m.group,
 		ModelName:  m.modelName,
 		ChannelId:  m.channelId,
 		Endpoint:   m.endpoint,

@@ -66,3 +66,25 @@ func TestPromptAuditSetting_GetPrompt(t *testing.T) {
 	s.SystemPrompt = "自定义审核提示词"
 	require.Equal(t, "自定义审核提示词", s.GetPrompt())
 }
+
+func TestPromptAuditSetting_GroupWhitelist(t *testing.T) {
+	s := &PromptAuditSetting{}
+	// 留空：审核所有分组
+	require.Empty(t, s.GroupList())
+	require.True(t, s.ShouldAuditGroup("default"))
+	require.True(t, s.ShouldAuditGroup(""))
+
+	// 指定白名单：只审核名单内分组
+	s.Groups = "default, Codex_GPT ,Claude_Aws"
+	require.Equal(t, []string{"default", "Codex_GPT", "Claude_Aws"}, s.GroupList())
+	require.True(t, s.ShouldAuditGroup("default"))
+	require.True(t, s.ShouldAuditGroup("Codex_GPT"))
+	require.True(t, s.ShouldAuditGroup("Claude_Aws"))
+	require.False(t, s.ShouldAuditGroup("Gemini_Google"))
+	require.False(t, s.ShouldAuditGroup(""))
+
+	// 全是空白/逗号时视为不限制
+	s.Groups = " , , "
+	require.Empty(t, s.GroupList())
+	require.True(t, s.ShouldAuditGroup("anything"))
+}

@@ -56,7 +56,7 @@ import { useTranslation } from 'react-i18next';
 
 const { Text, Paragraph } = Typography;
 
-const EMPTY_FILTERS = { username: '', model_name: '', blocked: '' };
+const EMPTY_FILTERS = { username: '', model_name: '', group: '', blocked: '' };
 
 export default function PromptAuditLogs() {
   const { t } = useTranslation();
@@ -81,6 +81,7 @@ export default function PromptAuditLogs() {
       });
       if (f.username) params.set('username', f.username);
       if (f.model_name) params.set('model_name', f.model_name);
+      if (f.group) params.set('group', f.group);
       if (f.blocked) params.set('blocked', f.blocked);
 
       const res = await API.get(`/api/prompt_audit/logs?${params.toString()}`);
@@ -293,6 +294,14 @@ export default function PromptAuditLogs() {
         style={{ width: 170 }}
         showClear
       />
+      <Input
+        placeholder={t('分组')}
+        value={filters.group}
+        onChange={(v) => setFilters((f) => ({ ...f, group: v }))}
+        onEnterPress={onSearch}
+        style={{ width: 130 }}
+        showClear
+      />
       <Select
         placeholder={t('处置')}
         value={filters.blocked || undefined}
@@ -414,6 +423,19 @@ export default function PromptAuditLogs() {
       ),
     },
     {
+      title: t('分组'),
+      dataIndex: 'group',
+      width: 120,
+      render: (v) =>
+        v ? (
+          <Tag color='blue' shape='circle'>
+            {v}
+          </Tag>
+        ) : (
+          <Text type='tertiary'>-</Text>
+        ),
+    },
+    {
       // 模型与端点合并：一眼看出哪个模型、走的哪个接口
       title: t('请求模型 / 端点'),
       dataIndex: 'model_name',
@@ -487,7 +509,7 @@ export default function PromptAuditLogs() {
           loading={loading}
           rowKey='id'
           pagination={false}
-          scroll={{ x: 1100 }}
+          scroll={{ x: 1220 }}
           empty={
             <Empty
               image={<IllustrationNoResult style={{ width: 140, height: 140 }} />}
@@ -528,6 +550,7 @@ export default function PromptAuditLogs() {
                   value: `${detail.username} (#${detail.user_id})`,
                 },
                 { key: t('令牌'), value: detail.token_name || '-' },
+                { key: t('分组'), value: detail.group || '-' },
                 { key: t('请求模型'), value: detail.model_name || '-' },
                 { key: t('渠道 ID'), value: detail.channel_id || '-' },
                 { key: t('端点'), value: detail.endpoint || '-' },

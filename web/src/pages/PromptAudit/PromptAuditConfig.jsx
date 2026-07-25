@@ -51,6 +51,7 @@ const KEYS = {
   maxInputChars: 'prompt_audit_setting.max_input_chars',
   failOpen: 'prompt_audit_setting.fail_open',
   systemPrompt: 'prompt_audit_setting.system_prompt',
+  groups: 'prompt_audit_setting.groups',
 };
 
 export default function PromptAuditConfig(props) {
@@ -69,10 +70,23 @@ export default function PromptAuditConfig(props) {
     [KEYS.maxInputChars]: 8000,
     [KEYS.failOpen]: true,
     [KEYS.systemPrompt]: '',
+    [KEYS.groups]: '',
   });
   const [inputsRow, setInputsRow] = useState(inputs);
   const [apiKeySet, setApiKeySet] = useState(false);
+  const [groupOptions, setGroupOptions] = useState([]);
   const refForm = useRef();
+
+  // 分组列表用于「限定审核分组」选择器
+  useEffect(() => {
+    API.get('/api/group/')
+      .then((res) => {
+        if (res.data.success) {
+          setGroupOptions((res.data.data || []).map((g) => ({ label: g, value: g })));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // API Key 按站点约定不会下发前端，只能查询「是否已配置」
   useEffect(() => {
@@ -204,6 +218,38 @@ export default function PromptAuditConfig(props) {
                 checkedText='｜'
                 uncheckedText='〇'
                 onChange={handleFieldChange(KEYS.failOpen)}
+                disabled={!enabled}
+              />
+            </Col>
+          </Row>
+        </Form.Section>
+
+        <Form.Section text={t('审核范围')}>
+          <Row gutter={16}>
+            <Col xs={24} md={16}>
+              <Form.Select
+                field={KEYS.groups}
+                label={t('限定审核分组')}
+                extraText={t('留空 = 审核所有分组；选中后只审核这些分组的请求')}
+                placeholder={t('留空表示所有分组')}
+                multiple
+                filter
+                allowCreate
+                style={{ width: '100%' }}
+                optionList={groupOptions}
+                value={
+                  inputs[KEYS.groups]
+                    ? String(inputs[KEYS.groups])
+                        .split(',')
+                        .map((g) => g.trim())
+                        .filter(Boolean)
+                    : []
+                }
+                onChange={(v) =>
+                  handleFieldChange(KEYS.groups)(
+                    Array.isArray(v) ? v.join(',') : v || '',
+                  )
+                }
                 disabled={!enabled}
               />
             </Col>
