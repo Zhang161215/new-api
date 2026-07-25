@@ -123,8 +123,12 @@ func PromptAudit() gin.HandlerFunc {
 					logger.LogWarn(auditCtx, fmt.Sprintf("[prompt_audit] 影子审核失败: %s", auditErr.Error()))
 					return
 				}
-				if confidence >= cfg.Threshold {
+				hit := confidence >= cfg.Threshold
+				if hit {
 					logger.LogWarn(auditCtx, fmt.Sprintf("[prompt_audit] 影子命中(未拦截) user=%d token=%s confidence=%.2f reason=%s", meta.userId, meta.tokenName, confidence, reason))
+				}
+				// 命中必记；开启「记录全部」时合规结果也记，便于确认审核在正常工作
+				if hit || cfg.RecordAll {
 					meta.record(auditCtx, cfg, confidence, reason, false, time.Since(started))
 				}
 			})
@@ -150,6 +154,9 @@ func PromptAudit() gin.HandlerFunc {
 			meta.record(c.Request.Context(), cfg, confidence, reason, true, time.Since(started))
 			abortWithOpenAiMessage(c, http.StatusBadRequest, "请求内容未通过安全审核，已被拦截。如为误判请联系管理员。")
 			return
+		}
+		if cfg.RecordAll {
+			meta.record(c.Request.Context(), cfg, confidence, reason, false, time.Since(started))
 		}
 		c.Next()
 	}

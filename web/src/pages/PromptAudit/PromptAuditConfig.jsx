@@ -24,6 +24,7 @@ import {
   Col,
   Form,
   Row,
+  Select,
   Space,
   Spin,
   Tag,
@@ -52,6 +53,7 @@ const KEYS = {
   failOpen: 'prompt_audit_setting.fail_open',
   systemPrompt: 'prompt_audit_setting.system_prompt',
   groups: 'prompt_audit_setting.groups',
+  recordAll: 'prompt_audit_setting.record_all',
 };
 
 export default function PromptAuditConfig(props) {
@@ -71,6 +73,7 @@ export default function PromptAuditConfig(props) {
     [KEYS.failOpen]: true,
     [KEYS.systemPrompt]: '',
     [KEYS.groups]: '',
+    [KEYS.recordAll]: false,
   });
   const [inputsRow, setInputsRow] = useState(inputs);
   const [apiKeySet, setApiKeySet] = useState(false);
@@ -163,6 +166,12 @@ export default function PromptAuditConfig(props) {
     }
   }
 
+  // 逗号字符串 → 数组，供多选 Select 使用
+  const groupValue = String(inputs[KEYS.groups] || '')
+    .split(',')
+    .map((g) => g.trim())
+    .filter(Boolean);
+
   const enabled = String(inputs[KEYS.enabled]) === 'true';
   const blocking = String(inputs[KEYS.blocking]) === 'true';
 
@@ -211,6 +220,18 @@ export default function PromptAuditConfig(props) {
             </Col>
             <Col xs={24} sm={12} md={8}>
               <Form.Switch
+                field={KEYS.recordAll}
+                label={t('记录全部审核结果')}
+                extraText={t('开启后合规请求也入库，便于确认审核在正常工作；默认只记录命中')}
+                size='default'
+                checkedText='｜'
+                uncheckedText='〇'
+                onChange={handleFieldChange(KEYS.recordAll)}
+                disabled={!enabled}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Form.Switch
                 field={KEYS.failOpen}
                 label={t('审核失败时放行')}
                 extraText={t('开启保可用性，关闭保安全（审核挂了就拒绝请求）')}
@@ -227,31 +248,30 @@ export default function PromptAuditConfig(props) {
         <Form.Section text={t('审核范围')}>
           <Row gutter={16}>
             <Col xs={24} md={16}>
-              <Form.Select
-                field={KEYS.groups}
-                label={t('限定审核分组')}
-                extraText={t('留空 = 审核所有分组；选中后只审核这些分组的请求')}
-                placeholder={t('留空表示所有分组')}
-                multiple
-                filter
-                allowCreate
-                style={{ width: '100%' }}
-                optionList={groupOptions}
-                value={
-                  inputs[KEYS.groups]
-                    ? String(inputs[KEYS.groups])
-                        .split(',')
-                        .map((g) => g.trim())
-                        .filter(Boolean)
-                    : []
-                }
-                onChange={(v) =>
-                  handleFieldChange(KEYS.groups)(
-                    Array.isArray(v) ? v.join(',') : v || '',
-                  )
-                }
-                disabled={!enabled}
-              />
+              {/* 用 Form.Slot + 独立 Select：表单值保持逗号字符串（与后端一致、
+                  compareObjects 才能正确比较），多选数组交由 Select 自己管理 */}
+              <Form.Slot label={t('限定审核分组')}>
+                <Select
+                  multiple
+                  allowAdditions
+                  additionLabel={t('直接回车可添加未列出的分组：')}
+                  placeholder={t('留空表示审核所有分组')}
+                  style={{ width: '100%' }}
+                  optionList={groupOptions}
+                  value={groupValue}
+                  onChange={(v) =>
+                    handleFieldChange(KEYS.groups)(
+                      (Array.isArray(v) ? v : [v]).filter(Boolean).join(','),
+                    )
+                  }
+                  disabled={!enabled}
+                />
+                <div style={{ marginTop: 4 }}>
+                  <Text type='tertiary' size='small'>
+                    {t('留空 = 审核所有分组；选中后只审核这些分组的请求')}
+                  </Text>
+                </div>
+              </Form.Slot>
             </Col>
           </Row>
         </Form.Section>

@@ -30,6 +30,7 @@ const PROMPT_AUDIT_BOOLEAN_KEYS = [
   'prompt_audit_setting.enabled',
   'prompt_audit_setting.blocking',
   'prompt_audit_setting.fail_open',
+  'prompt_audit_setting.record_all',
 ];
 
 const TAB_CONFIG = 'config';

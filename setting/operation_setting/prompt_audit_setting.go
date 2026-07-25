@@ -67,6 +67,9 @@ type PromptAuditSetting struct {
 	FailOpen bool `json:"fail_open"`
 	// 自定义系统提示词，为空时使用内置 PromptAuditImmutablePrompt
 	SystemPrompt string `json:"system_prompt"`
+	// RecordAll 为 true 时把每次审核结果都入库（含合规的），便于确认审核在正常工作；
+	// 默认只记录命中（confidence >= Threshold）的请求，避免记录量膨胀
+	RecordAll bool `json:"record_all"`
 	// 只审核这些分组（英文逗号分隔）。留空表示审核所有分组。
 	// 生效分组取 token 分组，为空时回落到用户分组（与 relay 一致）
 	Groups string `json:"groups"`
@@ -83,6 +86,7 @@ var promptAuditSetting = PromptAuditSetting{
 	MaxInputChars: 8000,
 	FailOpen:      true,
 	SystemPrompt:  "",
+	RecordAll:     false,
 	Groups:        "",
 }
 
