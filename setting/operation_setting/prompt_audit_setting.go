@@ -1,6 +1,7 @@
 package operation_setting
 
 import (
+	"math/rand"
 	"strings"
 
 	"github.com/QuantumNous/new-api/setting/config"
@@ -67,6 +68,9 @@ type PromptAuditSetting struct {
 	FailOpen bool `json:"fail_open"`
 	// 自定义系统提示词，为空时使用内置 PromptAuditImmutablePrompt
 	SystemPrompt string `json:"system_prompt"`
+	// SampleRate 抽查比例（0~100）。100=全量审核；例如 20 表示随机抽 20% 的请求送审，
+	// 用于降低成本与延迟。0 视为 100（避免误配成 0 导致完全不审核）
+	SampleRate int `json:"sample_rate"`
 	// RecordAll 为 true 时把每次审核结果都入库（含合规的），便于确认审核在正常工作；
 	// 默认只记录命中（confidence >= Threshold）的请求，避免记录量膨胀
 	RecordAll bool `json:"record_all"`
@@ -87,6 +91,7 @@ var promptAuditSetting = PromptAuditSetting{
 	FailOpen:      true,
 	SystemPrompt:  "",
 	RecordAll:     false,
+	SampleRate:    100,
 	Groups:        "",
 }
 
@@ -97,6 +102,23 @@ func init() {
 // GetPromptAuditSetting 返回当前审核配置指针
 func GetPromptAuditSetting() *PromptAuditSetting {
 	return &promptAuditSetting
+}
+
+// EffectiveSampleRate 返回实际生效的抽查比例（0 或越界值均视为 100 全量）
+func (s *PromptAuditSetting) EffectiveSampleRate() int {
+	if s.SampleRate <= 0 || s.SampleRate >= 100 {
+		return 100
+	}
+	return s.SampleRate
+}
+
+// ShouldSample 按抽查比例决定本次请求是否送审
+func (s *PromptAuditSetting) ShouldSample() bool {
+	rate := s.EffectiveSampleRate()
+	if rate >= 100 {
+		return true
+	}
+	return rand.Intn(100) < rate
 }
 
 // GroupList 返回配置的分组白名单（已去空白，留空表示不限制）

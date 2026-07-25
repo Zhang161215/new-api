@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 )
@@ -81,6 +82,13 @@ func PromptAudit() gin.HandlerFunc {
 
 		// 分组白名单：只审核指定分组（留空=全部）。生效分组与 relay 口径一致
 		if !cfg.ShouldAuditGroup(effectiveGroup(c)) {
+			c.Next()
+			return
+		}
+
+		// 抽查：未抽中的请求直接放行，不读 body、不调审核模型，零额外开销。
+		// 放在读 body 之前，抽查比例越低省得越多。
+		if !cfg.ShouldSample() {
 			c.Next()
 			return
 		}
@@ -152,7 +160,11 @@ func PromptAudit() gin.HandlerFunc {
 		if confidence >= cfg.Threshold {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("[prompt_audit] 拦截 user=%d token=%s confidence=%.2f reason=%s", meta.userId, meta.tokenName, confidence, reason))
 			meta.record(c.Request.Context(), cfg, confidence, reason, true, time.Since(started))
-			abortWithOpenAiMessage(c, http.StatusBadRequest, "请求内容未通过安全审核，已被拦截。如为误判请联系管理员。")
+			// 错误码与站内敏感词拦截保持一致（types.ErrorCodeSensitiveWordsDetected），
+			// 客户端可用同一套逻辑识别「内容被风控拦截」
+			abortWithOpenAiMessage(c, http.StatusBadRequest,
+				"请求内容未通过安全审核，已被拦截。如为误判请联系管理员。",
+				types.ErrorCodeSensitiveWordsDetected)
 			return
 		}
 		if cfg.RecordAll {

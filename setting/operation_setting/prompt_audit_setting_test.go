@@ -88,3 +88,37 @@ func TestPromptAuditSetting_GroupWhitelist(t *testing.T) {
 	require.Empty(t, s.GroupList())
 	require.True(t, s.ShouldAuditGroup("anything"))
 }
+
+func TestPromptAuditSetting_SampleRate(t *testing.T) {
+	s := &PromptAuditSetting{}
+	// 0 / 负数 / >=100 都视为全量，避免误配成 0 导致完全不审核
+	for _, v := range []int{0, -1, 100, 150} {
+		s.SampleRate = v
+		require.Equal(t, 100, s.EffectiveSampleRate(), "SampleRate=%d", v)
+		require.True(t, s.ShouldSample())
+	}
+	// 正常区间原样返回
+	s.SampleRate = 20
+	require.Equal(t, 20, s.EffectiveSampleRate())
+
+	// 抽样命中率应大致贴合设定比例（1000 次采样，容忍统计波动）
+	s.SampleRate = 30
+	hit := 0
+	for i := 0; i < 1000; i++ {
+		if s.ShouldSample() {
+			hit++
+		}
+	}
+	require.InDelta(t, 300, hit, 70, "30%% 抽样 1000 次命中数应接近 300，实际 %d", hit)
+
+	// 1% 也要能工作（不能因取整变成 0 或全量）
+	s.SampleRate = 1
+	hit = 0
+	for i := 0; i < 2000; i++ {
+		if s.ShouldSample() {
+			hit++
+		}
+	}
+	require.Greater(t, hit, 0, "1%% 抽样不应完全不命中")
+	require.Less(t, hit, 200, "1%% 抽样不应接近全量")
+}

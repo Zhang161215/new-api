@@ -54,6 +54,7 @@ const KEYS = {
   systemPrompt: 'prompt_audit_setting.system_prompt',
   groups: 'prompt_audit_setting.groups',
   recordAll: 'prompt_audit_setting.record_all',
+  sampleRate: 'prompt_audit_setting.sample_rate',
 };
 
 export default function PromptAuditConfig(props) {
@@ -74,6 +75,7 @@ export default function PromptAuditConfig(props) {
     [KEYS.systemPrompt]: '',
     [KEYS.groups]: '',
     [KEYS.recordAll]: false,
+    [KEYS.sampleRate]: 100,
   });
   const [inputsRow, setInputsRow] = useState(inputs);
   const [apiKeySet, setApiKeySet] = useState(false);
@@ -174,6 +176,24 @@ export default function PromptAuditConfig(props) {
 
   const enabled = String(inputs[KEYS.enabled]) === 'true';
   const blocking = String(inputs[KEYS.blocking]) === 'true';
+  const recordAll = String(inputs[KEYS.recordAll]) === 'true';
+  const rate = Number(inputs[KEYS.sampleRate]) || 100;
+
+  // 把开关组合翻译成一句话，避免管理员自己推演各开关的叠加效果
+  const modeDescription = !enabled
+    ? t('当前：未启用。不产生任何额外请求，也不会有审核记录。')
+    : blocking
+      ? t(
+          '当前：拦截模式。命中即拒绝请求（同步审核，会给用户增加延迟）。命中记录含完整提示词，仅管理员可见。',
+        ) +
+        (rate < 100 ? t('（仅抽查 {{rate}}% 的请求）', { rate }) : '')
+      : t(
+          '当前：观察模式（不拦截）。异步审核、用户无感知，仅记录判定结果供复核。',
+        ) +
+        (recordAll
+          ? t('已开启记录全部结果，合规请求也会入库。')
+          : t('当前只记录命中的请求，若想确认审核在工作请开启「记录全部审核结果」。')) +
+        (rate < 100 ? t('（仅抽查 {{rate}}% 的请求）', { rate }) : '');
 
   return (
     <Spin spinning={loading}>
@@ -184,10 +204,8 @@ export default function PromptAuditConfig(props) {
       >
         <Form.Section text={t('提示词安全审核')}>
           <Banner
-            type='info'
-            description={t(
-              '开启后，用户发往对话类端点的提示词会先送审核模型判定。命中记录（含完整提示词）入库仅供管理员复核。建议先用「影子模式」观察若干天，确认误判率后再开启拦截。',
-            )}
+            type={enabled ? (blocking ? 'warning' : 'info') : 'info'}
+            description={modeDescription}
             style={{ marginBottom: 16 }}
           />
           <Row gutter={16}>
@@ -272,6 +290,20 @@ export default function PromptAuditConfig(props) {
                   </Text>
                 </div>
               </Form.Slot>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.InputNumber
+                field={KEYS.sampleRate}
+                label={t('抽查比例 (%)')}
+                extraText={t('100=全量审核；如填 20 则随机抽两成请求送审，未抽中的零开销')}
+                min={1}
+                max={100}
+                step={5}
+                suffix='%'
+                style={{ width: '100%' }}
+                onChange={handleFieldChange(KEYS.sampleRate)}
+                disabled={!enabled}
+              />
             </Col>
           </Row>
         </Form.Section>
