@@ -55,6 +55,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     analytics: true,
     affiliateRebates: true,
     subscription: true,
+    promptAudit: true,
     setting: true,
   },
 };

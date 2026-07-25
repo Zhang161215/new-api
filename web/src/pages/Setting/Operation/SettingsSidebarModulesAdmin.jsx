@@ -67,6 +67,7 @@ export default function SettingsSidebarModulesAdmin(props) {
       user: true,
       subscription: true,
       affiliateRebates: true,
+      promptAudit: true,
       setting: true,
     },
   });
@@ -129,6 +130,7 @@ export default function SettingsSidebarModulesAdmin(props) {
         user: true,
         subscription: true,
         affiliateRebates: true,
+        promptAudit: true,
         setting: true,
       },
     };
@@ -198,6 +200,7 @@ export default function SettingsSidebarModulesAdmin(props) {
             redemption: true,
             user: true,
             subscription: true,
+            promptAudit: true,
             setting: true,
           },
         };
@@ -277,6 +280,11 @@ export default function SettingsSidebarModulesAdmin(props) {
           key: 'affiliateRebates',
           title: t('返利管理'),
           description: t('邀请充值返利记录管理'),
+        },
+        {
+          key: 'promptAudit',
+          title: t('安全审核'),
+          description: t('提示词安全审核配置与命中记录'),
         },
         {
           key: 'setting',

@@ -221,6 +221,16 @@ func SetApiRouter(router *gin.Engine) {
 			performanceRoute.GET("/logs", controller.GetLogFiles)
 			performanceRoute.DELETE("/logs", controller.CleanupLogFiles)
 		}
+		// 提示词安全审核：配置试跑与命中记录复核，仅管理员可见（含完整提示词，不可下放给普通用户）
+		promptAuditRoute := apiRouter.Group("/prompt_audit")
+		promptAuditRoute.Use(middleware.RootAuth())
+		{
+			promptAuditRoute.GET("/config", controller.GetPromptAuditConfigMeta)
+			promptAuditRoute.GET("/logs", controller.GetPromptAuditLogs)
+			promptAuditRoute.GET("/stat", controller.GetPromptAuditStat)
+			promptAuditRoute.DELETE("/logs", controller.DeletePromptAuditLogs)
+			promptAuditRoute.POST("/test", controller.TestPromptAudit)
+		}
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
 		ratioSyncRoute.Use(middleware.RootAuth())
 		{

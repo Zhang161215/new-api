@@ -83,6 +83,8 @@ func SetRelayRouter(router *gin.Engine) {
 		//http router
 		httpRouter := relayV1Router.Group("")
 		httpRouter.Use(middleware.Distribute())
+		// 前置提示词安全审核（仅对携带用户文本的对话类端点生效，其余自动放行）
+		httpRouter.Use(middleware.PromptAudit())
 
 		// claude related routes
 		httpRouter.POST("/messages", func(c *gin.Context) {

@@ -55,6 +55,7 @@ import AffiliateRebates from './pages/AffiliateRebates';
 
 const Home = lazy(() => import('./pages/Home'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const PromptAudit = lazy(() => import('./pages/PromptAudit'));
 const About = lazy(() => import('./pages/About'));
 const UserAgreement = lazy(() => import('./pages/UserAgreement'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
@@ -264,6 +265,16 @@ function App() {
             <Suspense fallback={<Loading></Loading>} key={location.pathname}>
               <DynamicOAuth2Callback />
             </Suspense>
+          }
+        />
+        <Route
+          path='/console/prompt-audit'
+          element={
+            <AdminRoute>
+              <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <PromptAudit />
+              </Suspense>
+            </AdminRoute>
           }
         />
         <Route

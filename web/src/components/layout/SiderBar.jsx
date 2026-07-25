@@ -43,6 +43,7 @@ const routerMap = {
   subscription: '/console/subscription',
   log: '/console/log',
   midjourney: '/console/midjourney',
+  promptAudit: '/console/prompt-audit',
   setting: '/console/setting',
   about: '/about',
   detail: '/console',
@@ -203,6 +204,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         itemKey: 'affiliateRebates',
         to: '/affiliate-rebates',
         className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('安全审核'),
+        itemKey: 'promptAudit',
+        to: '/prompt-audit',
+        className: isRoot() ? '' : 'tableHiddle',
       },
       {
         text: t('系统设置'),
