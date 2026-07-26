@@ -535,7 +535,24 @@ func (user *User) Update(updatePassword bool) error {
 	return updateUserCache(*user)
 }
 
-func (user *User) Edit(updatePassword bool) error {
+// EditableUserFields 管理员可编辑字段的 JSON 键 -> 数据库列映射
+var EditableUserFields = map[string]string{
+	"username":     "username",
+	"display_name": "display_name",
+	"group":        "group",
+	"quota":        "quota",
+	"remark":       "remark",
+	"expired_time": "expired_time",
+}
+
+// Edit 更新管理员可编辑的用户字段。
+//
+// provided 是本次请求里**实际提交过**的 JSON 键集合，只有其中的字段才会被写库。
+// 这一点至关重要：GORM 用 map 更新时不会跳过零值，早先版本无条件写入全部字段，
+// 于是前端没提交的字段会被解码成 Go 零值再覆盖进库——后台只改分组却把用户额度
+// 清零就是这么来的（前端为走原子调额接口，提交时特意剔除了 quota）。
+// provided 为 nil 时不更新任何业务字段，避免调用方漏传集合就静默清库。
+func (user *User) Edit(updatePassword bool, provided map[string]struct{}) error {
 	var err error
 	if updatePassword {
 		user.Password, err = common.Password2Hash(user.Password)
@@ -545,7 +562,7 @@ func (user *User) Edit(updatePassword bool) error {
 	}
 
 	newUser := *user
-	updates := map[string]interface{}{
+	values := map[string]interface{}{
 		"username":     newUser.Username,
 		"display_name": newUser.DisplayName,
 		"group":        newUser.Group,
@@ -553,13 +570,21 @@ func (user *User) Edit(updatePassword bool) error {
 		"remark":       newUser.Remark,
 		"expired_time": newUser.ExpiredTime,
 	}
+	updates := make(map[string]interface{}, len(values)+1)
+	for key, column := range EditableUserFields {
+		if _, ok := provided[key]; ok {
+			updates[column] = values[column]
+		}
+	}
 	if updatePassword {
 		updates["password"] = newUser.Password
 	}
 
 	DB.First(&user, user.Id)
-	if err = DB.Model(user).Updates(updates).Error; err != nil {
-		return err
+	if len(updates) > 0 {
+		if err = DB.Model(user).Updates(updates).Error; err != nil {
+			return err
+		}
 	}
 
 	// Update cache

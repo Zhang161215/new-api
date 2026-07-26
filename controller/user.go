@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -570,12 +571,29 @@ func GetUserModels(c *gin.Context) {
 }
 
 func UpdateUser(c *gin.Context) {
-	var updatedUser model.User
-	err := json.NewDecoder(c.Request.Body).Decode(&updatedUser)
-	if err != nil || updatedUser.Id == 0 {
+	// 需要知道请求里到底提交了哪些字段：未提交的字段会被解码成 Go 零值，
+	// 若照单写库就会把用户原有数据抹掉（如只改分组却清空额度），
+	// 故先读原始 JSON 记下键集合，再交给 Edit 按需更新。
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
+	var updatedUser model.User
+	if err := json.Unmarshal(body, &updatedUser); err != nil || updatedUser.Id == 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	var rawFields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &rawFields); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	provided := make(map[string]struct{}, len(rawFields))
+	for key := range rawFields {
+		provided[key] = struct{}{}
+	}
+	_, quotaProvided := provided["quota"]
 	if updatedUser.Password == "" {
 		updatedUser.Password = "$I_LOVE_U" // make Validator happy :)
 	}
@@ -601,11 +619,11 @@ func UpdateUser(c *gin.Context) {
 		updatedUser.Password = "" // rollback to what it should be
 	}
 	updatePassword := updatedUser.Password != ""
-	if err := updatedUser.Edit(updatePassword); err != nil {
+	if err := updatedUser.Edit(updatePassword, provided); err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	if originUser.Quota != updatedUser.Quota {
+	if quotaProvided && originUser.Quota != updatedUser.Quota {
 		model.RecordLog(originUser.Id, model.LogTypeManage, fmt.Sprintf("管理员将用户额度从 %s修改为 %s", logger.LogQuota(originUser.Quota), logger.LogQuota(updatedUser.Quota)))
 	}
 	c.JSON(http.StatusOK, gin.H{
