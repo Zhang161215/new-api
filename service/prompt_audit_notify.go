@@ -46,7 +46,7 @@ func promptAuditNotifyAllowed(userId int, cooldown time.Duration) bool {
 	if cooldown <= 0 {
 		return true
 	}
-	if common.RedisEnabled {
+	if promptAuditRedisReady() {
 		key := fmt.Sprintf("prompt_audit_notify:%d", userId)
 		if v, err := common.RedisGet(key); err == nil && v != "" {
 			return false
