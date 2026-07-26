@@ -122,3 +122,42 @@ func TestPromptAuditSetting_SampleRate(t *testing.T) {
 	require.Greater(t, hit, 0, "1%% 抽样不应完全不命中")
 	require.Less(t, hit, 200, "1%% 抽样不应接近全量")
 }
+
+func TestPromptAuditNotifyEmailList(t *testing.T) {
+	s := &PromptAuditSetting{}
+	// 留空
+	require.Empty(t, s.NotifyEmailList())
+	// 逗号、分号、空格、换行混排都要能切开，且去掉空项
+	s.NotifyEmail = " a@x.com, b@y.com ;; c@z.com\nd@w.com "
+	require.Equal(t, []string{"a@x.com", "b@y.com", "c@z.com", "d@w.com"}, s.NotifyEmailList())
+}
+
+func TestPromptAuditEffectiveNotifyThreshold(t *testing.T) {
+	s := &PromptAuditSetting{Threshold: 0.6}
+	// 未单独设置时回落到拦截阈值
+	require.Equal(t, 0.6, s.EffectiveNotifyThreshold())
+	// 单独设置后以它为准（可高于拦截阈值，只对高危告警）
+	s.NotifyThreshold = 0.9
+	require.Equal(t, 0.9, s.EffectiveNotifyThreshold())
+}
+
+func TestPromptAuditShouldNotify(t *testing.T) {
+	s := &PromptAuditSetting{Threshold: 0.6}
+
+	// 总开关关闭时一律不通知
+	require.False(t, s.ShouldNotify(1.0, true))
+
+	s.NotifyEnabled = true
+	require.True(t, s.ShouldNotify(0.6, false), "达到阈值即通知")
+	require.False(t, s.ShouldNotify(0.59, false), "低于阈值不通知")
+
+	// 只对高危告警
+	s.NotifyThreshold = 0.9
+	require.False(t, s.ShouldNotify(0.7, true), "高于拦截阈值但低于通知阈值不通知")
+	require.True(t, s.ShouldNotify(0.95, true))
+
+	// 仅拦截时通知：观察模式的命中要被过滤掉
+	s.NotifyBlockedOnly = true
+	require.False(t, s.ShouldNotify(0.95, false))
+	require.True(t, s.ShouldNotify(0.95, true))
+}

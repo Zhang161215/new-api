@@ -77,22 +77,39 @@ type PromptAuditSetting struct {
 	// 只审核这些分组（英文逗号分隔）。留空表示审核所有分组。
 	// 生效分组取 token 分组，为空时回落到用户分组（与 relay 一致）
 	Groups string `json:"groups"`
+	// NotifyEnabled 命中违规时是否通知管理员（复用站点通知渠道：邮件/Webhook/Bark/Gotify）
+	NotifyEnabled bool `json:"notify_enabled"`
+	// NotifyEmail 额外收件邮箱（逗号或分号分隔）。留空则按 root 用户的通知方式发送；
+	// 填了则直接走 SMTP 发到这些地址，不受站内「通知方式」设置限制
+	NotifyEmail string `json:"notify_email"`
+	// NotifyThreshold 触发通知的置信度下限。<=0 时回落到拦截阈值 Threshold。
+	// 可设得比拦截阈值更高，只对高危命中告警，避免误判噪音刷邮箱
+	NotifyThreshold float64 `json:"notify_threshold"`
+	// NotifyBlockedOnly 为 true 时只有真的被拦截才通知；false 则观察模式的命中也通知
+	NotifyBlockedOnly bool `json:"notify_blocked_only"`
+	// NotifyCooldownSec 同一用户的通知冷却秒数，防止单个用户刷爆邮箱。<=0 表示不限制
+	NotifyCooldownSec int `json:"notify_cooldown_sec"`
 }
 
 var promptAuditSetting = PromptAuditSetting{
-	Enabled:       false,
-	Blocking:      false,
-	BaseURL:       "https://api.deepseek.com",
-	APIKey:        "",
-	Model:         "deepseek-v4-flash",
-	Threshold:     0.6,
-	TimeoutMs:     8000,
-	MaxInputChars: 8000,
-	FailOpen:      true,
-	SystemPrompt:  "",
-	RecordAll:     false,
-	SampleRate:    100,
-	Groups:        "",
+	Enabled:           false,
+	Blocking:          false,
+	BaseURL:           "https://api.deepseek.com",
+	APIKey:            "",
+	Model:             "deepseek-v4-flash",
+	Threshold:         0.6,
+	TimeoutMs:         8000,
+	MaxInputChars:     8000,
+	FailOpen:          true,
+	SystemPrompt:      "",
+	RecordAll:         false,
+	SampleRate:        100,
+	Groups:            "",
+	NotifyEnabled:     false,
+	NotifyEmail:       "",
+	NotifyThreshold:   0,
+	NotifyBlockedOnly: false,
+	NotifyCooldownSec: 300,
 }
 
 func init() {
@@ -152,4 +169,36 @@ func (s *PromptAuditSetting) GetPrompt() string {
 		return s.SystemPrompt
 	}
 	return PromptAuditImmutablePrompt
+}
+
+// EffectiveNotifyThreshold 返回通知阈值；未单独配置时与拦截阈值一致
+func (s *PromptAuditSetting) EffectiveNotifyThreshold() float64 {
+	if s.NotifyThreshold > 0 {
+		return s.NotifyThreshold
+	}
+	return s.Threshold
+}
+
+// NotifyEmailList 返回额外收件邮箱列表（同时兼容逗号与分号分隔）
+func (s *PromptAuditSetting) NotifyEmailList() []string {
+	out := make([]string, 0)
+	for _, part := range strings.FieldsFunc(s.NotifyEmail, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == ' '
+	}) {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+// ShouldNotify 判断一条审核结果是否需要发通知
+func (s *PromptAuditSetting) ShouldNotify(confidence float64, blocked bool) bool {
+	if !s.NotifyEnabled {
+		return false
+	}
+	if s.NotifyBlockedOnly && !blocked {
+		return false
+	}
+	return confidence >= s.EffectiveNotifyThreshold()
 }

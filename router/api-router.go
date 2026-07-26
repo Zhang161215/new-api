@@ -230,6 +230,7 @@ func SetApiRouter(router *gin.Engine) {
 			promptAuditRoute.GET("/stat", controller.GetPromptAuditStat)
 			promptAuditRoute.DELETE("/logs", controller.DeletePromptAuditLogs)
 			promptAuditRoute.POST("/test", controller.TestPromptAudit)
+			promptAuditRoute.POST("/test_notify", controller.TestPromptAuditNotify)
 		}
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
 		ratioSyncRoute.Use(middleware.RootAuth())

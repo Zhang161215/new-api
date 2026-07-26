@@ -139,6 +139,9 @@ func PromptAudit() gin.HandlerFunc {
 				if hit || cfg.RecordAll {
 					meta.record(auditCtx, cfg, confidence, reason, false, time.Since(started))
 				}
+				if hit {
+					meta.notify(auditCtx, cfg, confidence, reason, false, time.Since(started))
+				}
 			})
 			c.Next()
 			return
@@ -159,7 +162,12 @@ func PromptAudit() gin.HandlerFunc {
 
 		if confidence >= cfg.Threshold {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("[prompt_audit] 拦截 user=%d token=%s confidence=%.2f reason=%s", meta.userId, meta.tokenName, confidence, reason))
-			meta.record(c.Request.Context(), cfg, confidence, reason, true, time.Since(started))
+			latency := time.Since(started)
+			meta.record(c.Request.Context(), cfg, confidence, reason, true, latency)
+			// 通知异步发：SMTP/Webhook 可能慢到几秒，不能让拦截响应等它
+			gopool.Go(func() {
+				meta.notify(context.Background(), cfg, confidence, reason, true, latency)
+			})
 			// 错误码与站内敏感词拦截保持一致（types.ErrorCodeSensitiveWordsDetected），
 			// 客户端可用同一套逻辑识别「内容被风控拦截」
 			abortWithOpenAiMessage(c, http.StatusBadRequest,
@@ -223,13 +231,9 @@ func (m *promptAuditMeta) record(ctx context.Context, cfg *operation_setting.Pro
 		return
 	}
 
-	username, err := model.GetUsernameById(m.userId, false)
-	if err != nil {
-		username = ""
-	}
 	entry := &model.PromptAuditLog{
 		UserId:     m.userId,
-		Username:   username,
+		Username:   m.username(),
 		TokenName:  m.tokenName,
 		Group:      m.group,
 		ModelName:  m.modelName,
@@ -246,6 +250,45 @@ func (m *promptAuditMeta) record(ctx context.Context, cfg *operation_setting.Pro
 	if err := model.RecordPromptAuditLog(entry); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("[prompt_audit] 写入审核记录失败: %s", err.Error()))
 	}
+}
+
+// notify 命中时给管理员发告警。是否真的发送由配置（开关/阈值/冷却）决定，
+// 这里只负责把上下文交出去；同 record 一样属于旁路，失败不影响用户请求。
+func (m *promptAuditMeta) notify(ctx context.Context, cfg *operation_setting.PromptAuditSetting,
+	confidence float64, reason string, blocked bool, latency time.Duration) {
+
+	if cfg == nil || !cfg.ShouldNotify(confidence, blocked) {
+		return
+	}
+	username := m.username()
+	service.NotifyPromptAuditHit(ctx, cfg, service.PromptAuditNotifyEvent{
+		UserId:     m.userId,
+		Username:   username,
+		TokenName:  m.tokenName,
+		Group:      m.group,
+		ModelName:  m.modelName,
+		Endpoint:   m.endpoint,
+		Ip:         m.ip,
+		AuditModel: cfg.Model,
+		Confidence: confidence,
+		Reason:     reason,
+		Blocked:    blocked,
+		Prompt:     m.prompt,
+		LatencyMs:  int(latency.Milliseconds()),
+		CreatedAt:  time.Now(),
+	})
+}
+
+// username 取用户名用于展示，查不到就留空（DB 未就绪时也不能 panic）
+func (m *promptAuditMeta) username() string {
+	if model.DB == nil {
+		return ""
+	}
+	name, err := model.GetUsernameById(m.userId, false)
+	if err != nil {
+		return ""
+	}
+	return name
 }
 
 // extractUserInput 提取最近一条用户输入文本

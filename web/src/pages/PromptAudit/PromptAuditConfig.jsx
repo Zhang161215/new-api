@@ -55,6 +55,11 @@ const KEYS = {
   groups: 'prompt_audit_setting.groups',
   recordAll: 'prompt_audit_setting.record_all',
   sampleRate: 'prompt_audit_setting.sample_rate',
+  notifyEnabled: 'prompt_audit_setting.notify_enabled',
+  notifyEmail: 'prompt_audit_setting.notify_email',
+  notifyThreshold: 'prompt_audit_setting.notify_threshold',
+  notifyBlockedOnly: 'prompt_audit_setting.notify_blocked_only',
+  notifyCooldownSec: 'prompt_audit_setting.notify_cooldown_sec',
 };
 
 export default function PromptAuditConfig(props) {
@@ -76,10 +81,16 @@ export default function PromptAuditConfig(props) {
     [KEYS.groups]: '',
     [KEYS.recordAll]: false,
     [KEYS.sampleRate]: 100,
+    [KEYS.notifyEnabled]: false,
+    [KEYS.notifyEmail]: '',
+    [KEYS.notifyThreshold]: 0,
+    [KEYS.notifyBlockedOnly]: false,
+    [KEYS.notifyCooldownSec]: 300,
   });
   const [inputsRow, setInputsRow] = useState(inputs);
   const [apiKeySet, setApiKeySet] = useState(false);
   const [groupOptions, setGroupOptions] = useState([]);
+  const [notifying, setNotifying] = useState(false);
   const refForm = useRef();
 
   // 分组列表用于「限定审核分组」选择器
@@ -168,6 +179,25 @@ export default function PromptAuditConfig(props) {
     }
   }
 
+  // 用当前填写的（可能未保存的）邮箱试发一封告警，验证 SMTP 链路
+  async function onTestNotify() {
+    setNotifying(true);
+    try {
+      const res = await API.post('/api/prompt_audit/test_notify', {
+        notify_email: inputs[KEYS.notifyEmail],
+      });
+      if (res.data.success) {
+        showSuccess(res.data.data?.message || t('测试告警已发送'));
+      } else {
+        showError(res.data.message || t('发送失败'));
+      }
+    } catch (e) {
+      showError(t('发送失败'));
+    } finally {
+      setNotifying(false);
+    }
+  }
+
   // 逗号字符串 → 数组，供多选 Select 使用
   const groupValue = String(inputs[KEYS.groups] || '')
     .split(',')
@@ -178,6 +208,21 @@ export default function PromptAuditConfig(props) {
   const blocking = String(inputs[KEYS.blocking]) === 'true';
   const recordAll = String(inputs[KEYS.recordAll]) === 'true';
   const rate = Number(inputs[KEYS.sampleRate]) || 100;
+  const notifyEnabled = String(inputs[KEYS.notifyEnabled]) === 'true';
+  const notifyBlockedOnly = String(inputs[KEYS.notifyBlockedOnly]) === 'true';
+  const notifyMails = String(inputs[KEYS.notifyEmail] || '').trim();
+  // 通知阈值为 0 时实际用拦截阈值，界面上直接把生效值算出来，免得管理员自己推
+  const effectiveNotifyThreshold =
+    Number(inputs[KEYS.notifyThreshold]) > 0
+      ? Number(inputs[KEYS.notifyThreshold])
+      : Number(inputs[KEYS.threshold]) || 0;
+  const notifyDescription = !notifyEnabled
+    ? t('当前：不发通知。命中只写入审核记录，需要主动来后台查看。')
+    : t('当前：置信度 ≥ {{th}} 的{{scope}}会发通知到 {{target}}。', {
+        th: effectiveNotifyThreshold.toFixed(2),
+        scope: notifyBlockedOnly ? t('拦截事件') : t('命中'),
+        target: notifyMails || t('root 用户配置的通知方式'),
+      });
 
   // 把开关组合翻译成一句话，避免管理员自己推演各开关的叠加效果
   const modeDescription = !enabled
@@ -423,6 +468,87 @@ export default function PromptAuditConfig(props) {
               </Text>
             </div>
           )}
+        </Form.Section>
+
+        <Form.Section text={t('告警通知')}>
+          <Banner
+            type='info'
+            description={notifyDescription}
+            style={{ marginBottom: 16 }}
+          />
+          <Row gutter={16}>
+            <Col xs={24} sm={12} md={8}>
+              <Form.Switch
+                field={KEYS.notifyEnabled}
+                label={t('命中时通知我')}
+                extraText={t('命中违规即发告警，含用户、模型与提示词摘要')}
+                size='default'
+                checkedText='｜'
+                uncheckedText='〇'
+                onChange={handleFieldChange(KEYS.notifyEnabled)}
+                disabled={!enabled}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Form.Switch
+                field={KEYS.notifyBlockedOnly}
+                label={t('仅拦截时通知')}
+                extraText={t('开启后观察模式的命中不发通知，只有真被拦截才告警')}
+                size='default'
+                checkedText='｜'
+                uncheckedText='〇'
+                onChange={handleFieldChange(KEYS.notifyBlockedOnly)}
+                disabled={!enabled || !notifyEnabled}
+              />
+            </Col>
+            <Col xs={24} md={16}>
+              <Form.Input
+                field={KEYS.notifyEmail}
+                label={t('告警邮箱')}
+                extraText={t(
+                  '多个用逗号分隔。留空则按 root 用户在「个人设置」里配置的通知方式发送（邮件/Webhook/Bark/Gotify）',
+                )}
+                placeholder='you@example.com, ops@example.com'
+                onChange={handleFieldChange(KEYS.notifyEmail)}
+                disabled={!enabled || !notifyEnabled}
+                showClear
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Form.InputNumber
+                field={KEYS.notifyThreshold}
+                label={t('通知阈值')}
+                extraText={t('0 表示与拦截阈值一致；调高可只对高危命中告警')}
+                min={0}
+                max={1}
+                step={0.05}
+                style={{ width: '100%' }}
+                onChange={handleFieldChange(KEYS.notifyThreshold)}
+                disabled={!enabled || !notifyEnabled}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Form.InputNumber
+                field={KEYS.notifyCooldownSec}
+                label={t('同一用户冷却 (秒)')}
+                extraText={t('同个用户在此时间内只发一封，防止连续触发刷爆邮箱；0 不限制')}
+                min={0}
+                max={86400}
+                step={60}
+                style={{ width: '100%' }}
+                onChange={handleFieldChange(KEYS.notifyCooldownSec)}
+                disabled={!enabled || !notifyEnabled}
+              />
+            </Col>
+          </Row>
+          <Space style={{ marginTop: 8 }} align='center' wrap>
+            <Button onClick={onTestNotify} loading={notifying}>
+              {t('发送测试告警')}
+            </Button>
+            <Text type='tertiary' size='small'>
+              {t('测试会忽略开关与冷却直接发一封样例告警，用于验证 SMTP 是否配好。')}
+            </Text>
+          </Space>
         </Form.Section>
 
         <Form.Section text={t('审核提示词')}>

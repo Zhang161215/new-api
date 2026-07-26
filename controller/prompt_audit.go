@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -87,6 +88,65 @@ func DeletePromptAuditLogs(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, gin.H{"deleted": deleted})
+}
+
+type promptAuditNotifyTestRequest struct {
+	// 允许用「尚未保存」的收件邮箱试发，先验证再保存
+	NotifyEmail string `json:"notify_email"`
+}
+
+// TestPromptAuditNotify 发一封样例告警，验证通知链路是否通（仅管理员）。
+// 有意绕过开关/阈值/冷却：这是管理员主动点的测试，不该被这些限制挡住。
+func TestPromptAuditNotify(c *gin.Context) {
+	var req promptAuditNotifyTestRequest
+	_ = c.ShouldBindJSON(&req)
+
+	cfg := *operation_setting.GetPromptAuditSetting()
+	if req.NotifyEmail != "" {
+		cfg.NotifyEmail = req.NotifyEmail
+	}
+	cfg.NotifyEnabled = true
+	cfg.NotifyBlockedOnly = false
+	cfg.NotifyThreshold = 0
+	cfg.Threshold = 0
+	cfg.NotifyCooldownSec = 0
+
+	targets := cfg.NotifyEmailList()
+	if len(targets) == 0 {
+		root := model.GetRootUser()
+		if root == nil || (root.Email == "" && root.GetSetting().NotificationEmail == "") {
+			common.ApiErrorMsg(c, "未填写告警邮箱，且 root 用户也没有可用的通知邮箱")
+			return
+		}
+	}
+
+	started := time.Now()
+	service.NotifyPromptAuditHit(c.Request.Context(), &cfg, service.PromptAuditNotifyEvent{
+		UserId:     c.GetInt("id"),
+		Username:   c.GetString("username"),
+		TokenName:  "test-token",
+		Group:      "default",
+		ModelName:  "gpt-5-codex",
+		Endpoint:   "/v1/chat/completions",
+		Ip:         c.ClientIP(),
+		AuditModel: cfg.Model,
+		Confidence: 0.95,
+		Reason:     "这是一封测试告警，用于验证通知链路",
+		Blocked:    true,
+		Prompt:     promptAuditProbeInput,
+		LatencyMs:  int(time.Since(started).Milliseconds()),
+		CreatedAt:  time.Now(),
+	})
+
+	channel := "root 用户配置的通知方式"
+	if len(targets) > 0 {
+		channel = strings.Join(targets, ", ")
+	}
+	common.ApiSuccess(c, gin.H{
+		"sent":    true,
+		"channel": channel,
+		"message": fmt.Sprintf("已尝试发送测试告警到：%s。若未收到请检查系统设置里的 SMTP 配置与容器日志", channel),
+	})
 }
 
 type promptAuditTestRequest struct {
