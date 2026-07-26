@@ -199,3 +199,26 @@ func TestPromptAuditNewKeysExported(t *testing.T) {
 		require.True(t, ok, "缺少可配置项 %s", key)
 	}
 }
+
+func TestPromptAuditPromptStorage(t *testing.T) {
+	s := &PromptAuditSetting{}
+	// 未配置时保持旧行为：全量留存，升级不改变既有语义
+	require.Equal(t, PromptAuditStorageAll, s.GetPromptStorage())
+	require.True(t, s.ShouldStorePrompt(true))
+	require.True(t, s.ShouldStorePrompt(false))
+
+	// 非法值同样回落到 all，不能因误配就悄悄丢掉命中证据
+	s.PromptStorage = "乱填的"
+	require.Equal(t, PromptAuditStorageAll, s.GetPromptStorage())
+	require.True(t, s.ShouldStorePrompt(false))
+
+	// 只留命中的：合规请求不落原文
+	s.PromptStorage = PromptAuditStorageHitOnly
+	require.True(t, s.ShouldStorePrompt(true), "命中必须留证据")
+	require.False(t, s.ShouldStorePrompt(false), "合规请求不该留用户原文")
+
+	// 一律不留
+	s.PromptStorage = PromptAuditStorageNone
+	require.False(t, s.ShouldStorePrompt(true))
+	require.False(t, s.ShouldStorePrompt(false))
+}

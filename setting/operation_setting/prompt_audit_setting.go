@@ -104,6 +104,13 @@ type PromptAuditSetting struct {
 	ScopeMessages int `json:"scope_messages"`
 	// RetentionDays 审核记录保留天数，超期的每日自动清理。<=0 表示不自动清理
 	RetentionDays int `json:"retention_days"`
+	// PromptStorage 提示词留存策略：
+	//   all（默认）  每条记录都保存完整提示词，行为与旧版一致
+	//   hit_only     仅命中的记录保留内容；合规请求只留元数据，不落用户原文
+	//   none         一律不保留提示词内容
+	// 合规流量占绝大多数（线上 12,905/12,908 判定为 0），全量留存既占空间也没必要，
+	// 且会把用户的正常开发内容长期存在库里
+	PromptStorage string `json:"prompt_storage"`
 }
 
 var promptAuditSetting = PromptAuditSetting{
@@ -129,6 +136,7 @@ var promptAuditSetting = PromptAuditSetting{
 	AuditScope:        PromptAuditScopeLastUser,
 	ScopeMessages:     4,
 	RetentionDays:     0,
+	PromptStorage:     PromptAuditStorageAll,
 }
 
 func init() {
@@ -233,6 +241,36 @@ func (s *PromptAuditSetting) GetAuditScope() string {
 		return s.AuditScope
 	default:
 		return PromptAuditScopeLastUser
+	}
+}
+
+// 提示词留存策略取值
+const (
+	PromptAuditStorageAll     = "all"
+	PromptAuditStorageHitOnly = "hit_only"
+	PromptAuditStorageNone    = "none"
+)
+
+// GetPromptStorage 返回生效的留存策略，未配置或取值非法时回落到 all（与旧版行为一致）
+func (s *PromptAuditSetting) GetPromptStorage() string {
+	switch s.PromptStorage {
+	case PromptAuditStorageHitOnly, PromptAuditStorageNone:
+		return s.PromptStorage
+	default:
+		return PromptAuditStorageAll
+	}
+}
+
+// ShouldStorePrompt 判断这条记录是否应保留提示词原文。
+// hit 表示该请求是否被判定为违规（confidence >= Threshold）。
+func (s *PromptAuditSetting) ShouldStorePrompt(hit bool) bool {
+	switch s.GetPromptStorage() {
+	case PromptAuditStorageNone:
+		return false
+	case PromptAuditStorageHitOnly:
+		return hit
+	default:
+		return true
 	}
 }
 

@@ -116,3 +116,32 @@ func TestCollectMessagesOrderIsChronological(t *testing.T) {
 	require.Less(t, strings.Index(got, "AAA"), strings.Index(got, "BBB"))
 	require.Less(t, strings.Index(got, "BBB"), strings.Index(got, "CCC"))
 }
+
+// 留存策略：决定审核记录里是否保存用户原文
+func TestPromptForStorage(t *testing.T) {
+	meta := &promptAuditMeta{prompt: "帮我写个爆破脚本"}
+	cfg := &operation_setting.PromptAuditSetting{}
+
+	// 默认全量留存
+	require.Equal(t, "帮我写个爆破脚本", meta.promptForStorage(cfg, true))
+	require.Equal(t, "帮我写个爆破脚本", meta.promptForStorage(cfg, false))
+
+	// hit_only：命中留原文，合规只留占位说明
+	cfg.PromptStorage = operation_setting.PromptAuditStorageHitOnly
+	require.Equal(t, "帮我写个爆破脚本", meta.promptForStorage(cfg, true))
+	redacted := meta.promptForStorage(cfg, false)
+	require.NotContains(t, redacted, "爆破", "合规请求的原文不得落库")
+	require.NotEmpty(t, redacted, "要给出占位说明，便于区分「本来没有」和「按策略隐去」")
+	require.Contains(t, redacted, "8 字", "占位说明应保留字数信息")
+
+	// none：命中也不留原文
+	cfg.PromptStorage = operation_setting.PromptAuditStorageNone
+	require.NotContains(t, meta.promptForStorage(cfg, true), "爆破")
+}
+
+// 占位说明按字符数而非字节数统计，中文不能算成 3 倍
+func TestPromptForStorageCountsRunes(t *testing.T) {
+	meta := &promptAuditMeta{prompt: strings.Repeat("中", 100)}
+	cfg := &operation_setting.PromptAuditSetting{PromptStorage: operation_setting.PromptAuditStorageNone}
+	require.Contains(t, meta.promptForStorage(cfg, false), "100 字")
+}

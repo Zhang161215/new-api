@@ -64,6 +64,7 @@ const KEYS = {
   auditScope: 'prompt_audit_setting.audit_scope',
   scopeMessages: 'prompt_audit_setting.scope_messages',
   retentionDays: 'prompt_audit_setting.retention_days',
+  promptStorage: 'prompt_audit_setting.prompt_storage',
 };
 
 export default function PromptAuditConfig(props) {
@@ -94,6 +95,7 @@ export default function PromptAuditConfig(props) {
     [KEYS.auditScope]: 'last_user',
     [KEYS.scopeMessages]: 4,
     [KEYS.retentionDays]: 0,
+    [KEYS.promptStorage]: 'all',
   });
   const [inputsRow, setInputsRow] = useState(inputs);
   const [apiKeySet, setApiKeySet] = useState(false);
@@ -216,6 +218,7 @@ export default function PromptAuditConfig(props) {
   const blocking = String(inputs[KEYS.blocking]) === 'true';
   const recordAll = String(inputs[KEYS.recordAll]) === 'true';
   const rate = Number(inputs[KEYS.sampleRate]) || 100;
+  const promptStorage = String(inputs[KEYS.promptStorage] || 'all');
   const auditScope = String(inputs[KEYS.auditScope] || 'last_user');
   // 只审最后一条 user 消息是旧默认值：线上实测这常常只是「继续」两个字，
   // 真实意图在 system 或更早轮次里，既漏审也容易被绕过，故明确提示管理员
@@ -300,6 +303,21 @@ export default function PromptAuditConfig(props) {
               />
             </Col>
             <Col xs={24} sm={12} md={8}>
+              <Form.Select
+                field={KEYS.promptStorage}
+                label={t('提示词留存')}
+                extraText={t('合规请求占绝大多数，全量留存既占空间也会长期保存用户原文')}
+                style={{ width: '100%' }}
+                optionList={[
+                  { label: t('全部保存'), value: 'all' },
+                  { label: t('仅保存命中的'), value: 'hit_only' },
+                  { label: t('都不保存'), value: 'none' },
+                ]}
+                onChange={handleFieldChange(KEYS.promptStorage)}
+                disabled={!enabled}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8}>
               <Form.InputNumber
                 field={KEYS.retentionDays}
                 label={t('记录保留天数')}
@@ -336,6 +354,21 @@ export default function PromptAuditConfig(props) {
               />
             </Col>
           </Row>
+          {promptStorage !== 'all' && (
+            <Banner
+              type='info'
+              description={t(
+                '{{scope}}此设置只影响之后新增的记录，库里已保存的提示词不会被自动清除——如需处理请用下方「保留天数」或记录页的清理功能。',
+                {
+                  scope:
+                    promptStorage === 'none'
+                      ? t('已选择不保存任何提示词原文（含命中的）。')
+                      : t('已选择只保存命中请求的提示词，合规请求仅留元数据。'),
+                },
+              )}
+              style={{ marginTop: 8 }}
+            />
+          )}
         </Form.Section>
 
         <Form.Section text={t('审核范围')}>

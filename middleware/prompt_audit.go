@@ -246,7 +246,7 @@ func (m *promptAuditMeta) record(ctx context.Context, cfg *operation_setting.Pro
 		Reason:     reason,
 		Blocked:    blocked,
 		AuditModel: cfg.Model,
-		Prompt:     m.prompt,
+		Prompt:     m.promptForStorage(cfg, confidence >= cfg.Threshold),
 		LatencyMs:  int(latency.Milliseconds()),
 		Ip:         m.ip,
 	}
@@ -276,10 +276,21 @@ func (m *promptAuditMeta) notify(ctx context.Context, cfg *operation_setting.Pro
 		Confidence: confidence,
 		Reason:     reason,
 		Blocked:    blocked,
-		Prompt:     m.prompt,
-		LatencyMs:  int(latency.Milliseconds()),
-		CreatedAt:  time.Now(),
+		// 告警邮件同样遵守留存策略：邮箱里的副本也是一种留存
+		Prompt:    m.promptForStorage(cfg, confidence >= cfg.Threshold),
+		LatencyMs: int(latency.Milliseconds()),
+		CreatedAt: time.Now(),
 	})
+}
+
+// promptForStorage 按留存策略返回可落库/外发的提示词内容。
+// 不保留原文时给出占位说明而非留空，否则管理员分不清「本来就没提示词」
+// 和「按策略隐去了」，仍保留字数便于判断请求规模。
+func (m *promptAuditMeta) promptForStorage(cfg *operation_setting.PromptAuditSetting, hit bool) string {
+	if cfg.ShouldStorePrompt(hit) {
+		return m.prompt
+	}
+	return fmt.Sprintf("（按提示词留存策略未保存原文，原长 %d 字）", len([]rune(m.prompt)))
 }
 
 // username 取用户名用于展示，查不到就留空（DB 未就绪时也不能 panic）
