@@ -112,6 +112,9 @@ func main() {
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
 
+	// 提示词审核记录按保留天数自动清理（每小时检查一次）
+	service.StartPromptAuditRetentionTask()
+
 	// Affiliate rebate auto-release task (pending -> released after delay)
 	model.SetAffiliateRebateHook(service.TriggerAffiliateRebate)
 	service.StartAffiliateRebateTask()

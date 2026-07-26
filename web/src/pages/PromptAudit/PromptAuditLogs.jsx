@@ -224,6 +224,21 @@ export default function PromptAuditLogs() {
         ))}
       </div>
 
+      {(stat?.cache_hit ?? 0) + (stat?.cache_miss ?? 0) > 0 && (
+        <div className='!mt-3 px-1'>
+          <Text type='tertiary' size='small'>
+            {t(
+              '判定缓存：命中 {{hit}} / 未命中 {{miss}}，命中率 {{rate}}%。重复内容复用上次判定，省下同等次数的审核调用与延迟（自本次服务启动起算）',
+              {
+                hit: stat.cache_hit,
+                miss: stat.cache_miss,
+                rate: ((stat.cache_hit_rate || 0) * 100).toFixed(1),
+              },
+            )}
+          </Text>
+        </div>
+      )}
+
       {(stat?.top_users?.length > 0 || stat?.top_models?.length > 0) && (
         <Card
           bordered={false}

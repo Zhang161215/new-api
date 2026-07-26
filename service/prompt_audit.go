@@ -98,11 +98,24 @@ func postAuditRequest(ctx context.Context, cfg *operation_setting.PromptAuditSet
 	return respBytes, resp.StatusCode, nil
 }
 
-// RunPromptAudit 调用审核模型判定一段用户输入，返回 (违规置信度, 理由, 错误)
+// RunPromptAudit 调用审核模型判定一段用户输入，返回 (违规置信度, 理由, 错误)。
+// 相同内容直接复用缓存里的判定，不再重复调用审核模型（详见 prompt_audit_cache.go）。
 func RunPromptAudit(ctx context.Context, cfg *operation_setting.PromptAuditSetting, userInput string) (float64, string, error) {
 	if cfg.BaseURL == "" || cfg.Model == "" {
 		return 0, "", fmt.Errorf("审核节点未配置 base_url 或 model")
 	}
+
+	cacheTTL := cfg.CacheTTL()
+	var cacheKey string
+	if cacheTTL > 0 {
+		cacheKey = promptAuditCacheKey(cfg, userInput)
+		if conf, reason, ok := getPromptAuditCache(cacheKey); ok {
+			recordPromptAuditCacheStat(true)
+			return conf, reason, nil
+		}
+		recordPromptAuditCacheStat(false)
+	}
+
 	timeout := time.Duration(cfg.TimeoutMs) * time.Millisecond
 	if timeout <= 0 {
 		timeout = 4 * time.Second
@@ -162,6 +175,10 @@ func RunPromptAudit(ctx context.Context, cfg *operation_setting.PromptAuditSetti
 			return 0, "", fmt.Errorf("审核输出被截断（疑似模型推理占满 token 预算），已收到内容: %q。建议换非推理模型或调低送审字符数", TruncateRunes(trimmed, 120))
 		}
 		return 0, "", fmt.Errorf("审核输出无法解析为 JSON 裁决: %s", TruncateRunes(content, 200))
+	}
+	// 只缓存成功的判定：失败多是超时/限流等瞬时问题，缓存下来会把故障放大到整个 TTL
+	if cacheKey != "" {
+		setPromptAuditCache(cacheKey, conf, reason, cacheTTL)
 	}
 	return conf, reason, nil
 }

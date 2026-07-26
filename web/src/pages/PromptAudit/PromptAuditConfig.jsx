@@ -60,6 +60,10 @@ const KEYS = {
   notifyThreshold: 'prompt_audit_setting.notify_threshold',
   notifyBlockedOnly: 'prompt_audit_setting.notify_blocked_only',
   notifyCooldownSec: 'prompt_audit_setting.notify_cooldown_sec',
+  cacheTtlSec: 'prompt_audit_setting.cache_ttl_sec',
+  auditScope: 'prompt_audit_setting.audit_scope',
+  scopeMessages: 'prompt_audit_setting.scope_messages',
+  retentionDays: 'prompt_audit_setting.retention_days',
 };
 
 export default function PromptAuditConfig(props) {
@@ -86,6 +90,10 @@ export default function PromptAuditConfig(props) {
     [KEYS.notifyThreshold]: 0,
     [KEYS.notifyBlockedOnly]: false,
     [KEYS.notifyCooldownSec]: 300,
+    [KEYS.cacheTtlSec]: 3600,
+    [KEYS.auditScope]: 'last_user',
+    [KEYS.scopeMessages]: 4,
+    [KEYS.retentionDays]: 0,
   });
   const [inputsRow, setInputsRow] = useState(inputs);
   const [apiKeySet, setApiKeySet] = useState(false);
@@ -208,6 +216,16 @@ export default function PromptAuditConfig(props) {
   const blocking = String(inputs[KEYS.blocking]) === 'true';
   const recordAll = String(inputs[KEYS.recordAll]) === 'true';
   const rate = Number(inputs[KEYS.sampleRate]) || 100;
+  const auditScope = String(inputs[KEYS.auditScope] || 'last_user');
+  // 只审最后一条 user 消息是旧默认值：线上实测这常常只是「继续」两个字，
+  // 真实意图在 system 或更早轮次里，既漏审也容易被绕过，故明确提示管理员
+  const scopeHint =
+    auditScope === 'last_user'
+      ? t(
+          '当前只审最后一条用户消息。若客户端是 Codex/Cursor 这类 agent，最后一条常常只是「继续」，真实意图在 system 或更早轮次里——建议改为「system + 最近若干条」。',
+        )
+      : t('已覆盖 system 与历史消息，送审文本更长，建议同时开启判定缓存以控制成本。');
+  const scopeHintType = auditScope === 'last_user' ? 'warning' : 'info';
   const notifyEnabled = String(inputs[KEYS.notifyEnabled]) === 'true';
   const notifyBlockedOnly = String(inputs[KEYS.notifyBlockedOnly]) === 'true';
   const notifyMails = String(inputs[KEYS.notifyEmail] || '').trim();
@@ -282,6 +300,18 @@ export default function PromptAuditConfig(props) {
               />
             </Col>
             <Col xs={24} sm={12} md={8}>
+              <Form.InputNumber
+                field={KEYS.retentionDays}
+                label={t('记录保留天数')}
+                extraText={t('超期记录每小时自动清理，0=不自动清理。记录含完整提示词，增长很快')}
+                min={0}
+                max={365}
+                style={{ width: '100%' }}
+                onChange={handleFieldChange(KEYS.retentionDays)}
+                disabled={!enabled}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8}>
               <Form.Switch
                 field={KEYS.recordAll}
                 label={t('记录全部审核结果')}
@@ -351,6 +381,51 @@ export default function PromptAuditConfig(props) {
               />
             </Col>
           </Row>
+          <Row gutter={16}>
+            <Col xs={24} md={8}>
+              <Form.Select
+                field={KEYS.auditScope}
+                label={t('送审范围')}
+                extraText={t('决定把请求里的哪些内容交给审核模型判定')}
+                style={{ width: '100%' }}
+                optionList={[
+                  { label: t('仅最后一条用户消息'), value: 'last_user' },
+                  { label: t('system + 最近若干条'), value: 'recent' },
+                  { label: t('system + 全部用户消息'), value: 'full' },
+                ]}
+                onChange={handleFieldChange(KEYS.auditScope)}
+                disabled={!enabled}
+              />
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.InputNumber
+                field={KEYS.scopeMessages}
+                label={t('回溯消息条数')}
+                extraText={t('「最近若干条」模式下往前追溯的消息数')}
+                min={1}
+                max={50}
+                style={{ width: '100%' }}
+                onChange={handleFieldChange(KEYS.scopeMessages)}
+                disabled={!enabled || auditScope !== 'recent'}
+              />
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.InputNumber
+                field={KEYS.cacheTtlSec}
+                label={t('判定缓存 (秒)')}
+                extraText={t('相同内容在此时间内复用上次判定，0=关闭。agent 流量重复率极高，开启可大幅省钱降延迟')}
+                min={0}
+                max={86400}
+                step={300}
+                style={{ width: '100%' }}
+                onChange={handleFieldChange(KEYS.cacheTtlSec)}
+                disabled={!enabled}
+              />
+            </Col>
+          </Row>
+          {scopeHint && (
+            <Banner type={scopeHintType} description={scopeHint} style={{ marginTop: 8 }} />
+          )}
         </Form.Section>
 
         <Form.Section text={t('审核模型节点')}>

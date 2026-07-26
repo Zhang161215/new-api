@@ -76,6 +76,10 @@ func withAuditConfig(t *testing.T, mutate func(cfg *operation_setting.PromptAudi
 	cfg.TimeoutMs = 4000
 	cfg.MaxInputChars = 8000
 	cfg.FailOpen = true
+	// 各用例共用 chatBody：若开着判定缓存，上个用例的结论会被复用，
+	// 后续用例就不会真的去调（可能已关停的）上游节点，断言便失去意义
+	cfg.CacheTTLSec = 0
+	service.ResetPromptAuditCacheStats()
 	mutate(cfg)
 }
 
@@ -192,4 +196,36 @@ func TestPromptAudit_SkipsLoopbackAndDisabledAndOtherPaths(t *testing.T) {
 	r3, called3, _ := buildAuditRouter()
 	require.Equal(t, http.StatusOK, doPost(r3, "/v1/chat/completions", chatBody, nil).Code)
 	require.True(t, *called3)
+}
+
+// 缓存必须真的省掉上游调用：相同内容第二次请求不应再打审核节点，
+// 但判定结果（拦截）要与第一次完全一致
+func TestPromptAudit_CacheAvoidsSecondUpstreamCall(t *testing.T) {
+	var upstreamCalls int
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"confidence\":0.95,\"reason\":\"违规\"}"}}]}`))
+	}))
+	defer up.Close()
+
+	withAuditConfig(t, func(c *operation_setting.PromptAuditSetting) {
+		c.BaseURL = up.URL
+		c.CacheTTLSec = 60 // 本用例专门验证缓存，需显式打开
+	})
+
+	r, called, _ := buildAuditRouter()
+
+	w1 := doPost(r, "/v1/chat/completions", chatBody, nil)
+	require.Equal(t, http.StatusBadRequest, w1.Code)
+	require.Equal(t, 1, upstreamCalls)
+
+	w2 := doPost(r, "/v1/chat/completions", chatBody, nil)
+	require.Equal(t, http.StatusBadRequest, w2.Code, "缓存命中也必须照样拦截")
+	require.Equal(t, 1, upstreamCalls, "第二次应命中缓存，不再调用审核节点")
+	require.False(t, *called, "两次都不应放行到业务上游")
+
+	hit, miss, _ := service.GetPromptAuditCacheStats()
+	require.Equal(t, int64(1), hit)
+	require.Equal(t, int64(1), miss)
 }

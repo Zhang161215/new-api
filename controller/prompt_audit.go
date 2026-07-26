@@ -71,6 +71,8 @@ func GetPromptAuditStat(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// 附带缓存命中情况，让管理员看得到去重实际省了多少次审核调用
+	stat.CacheHit, stat.CacheMiss, stat.CacheHitRate = service.GetPromptAuditCacheStats()
 	common.ApiSuccess(c, stat)
 }
 

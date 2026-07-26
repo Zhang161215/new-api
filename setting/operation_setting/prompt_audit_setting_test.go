@@ -2,6 +2,7 @@ package operation_setting
 
 import (
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/stretchr/testify/require"
@@ -160,4 +161,41 @@ func TestPromptAuditShouldNotify(t *testing.T) {
 	s.NotifyBlockedOnly = true
 	require.False(t, s.ShouldNotify(0.95, false))
 	require.True(t, s.ShouldNotify(0.95, true))
+}
+
+func TestPromptAuditCacheTTL(t *testing.T) {
+	s := &PromptAuditSetting{}
+	// <=0 表示关闭缓存
+	require.Zero(t, s.CacheTTL())
+	s.CacheTTLSec = -5
+	require.Zero(t, s.CacheTTL())
+
+	s.CacheTTLSec = 3600
+	require.Equal(t, time.Hour, s.CacheTTL())
+}
+
+func TestPromptAuditEffectiveScopeMessages(t *testing.T) {
+	s := &PromptAuditSetting{}
+	// 未配置/非法值回落到 4，避免配成 0 导致 recent 模式什么都不回溯
+	require.Equal(t, 4, s.EffectiveScopeMessages())
+	s.ScopeMessages = -1
+	require.Equal(t, 4, s.EffectiveScopeMessages())
+
+	s.ScopeMessages = 8
+	require.Equal(t, 8, s.EffectiveScopeMessages())
+}
+
+func TestPromptAuditNewKeysExported(t *testing.T) {
+	all := config.GlobalConfig.ExportAllConfigs()
+	for _, key := range []string{
+		"prompt_audit_setting.cache_ttl_sec",
+		"prompt_audit_setting.audit_scope",
+		"prompt_audit_setting.scope_messages",
+		"prompt_audit_setting.retention_days",
+		"prompt_audit_setting.notify_enabled",
+		"prompt_audit_setting.notify_email",
+	} {
+		_, ok := all[key]
+		require.True(t, ok, "缺少可配置项 %s", key)
+	}
 }

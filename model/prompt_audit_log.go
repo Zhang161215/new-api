@@ -86,6 +86,10 @@ type PromptAuditStat struct {
 	TopModels []PromptAuditModelStat `json:"top_models"`
 	// TopUsers 命中最多的用户
 	TopUsers []PromptAuditUserStat `json:"top_users"`
+	// 判定缓存命中情况（本进程自启动以来累计），用于观察去重实际省下多少次审核调用
+	CacheHit     int64   `json:"cache_hit"`
+	CacheMiss    int64   `json:"cache_miss"`
+	CacheHitRate float64 `json:"cache_hit_rate"`
 }
 
 type PromptAuditModelStat struct {

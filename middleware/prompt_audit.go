@@ -20,14 +20,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// promptAuditMessage 请求体里的单条消息
+type promptAuditMessage struct {
+	Role    string          `json:"role"`
+	Content json.RawMessage `json:"content"`
+}
+
 // promptAuditPeek 用于从原始请求体里轻量提取用户输入，兼容 OpenAI / Claude / Responses 三种格式
 type promptAuditPeek struct {
-	Messages []struct {
-		Role    string          `json:"role"`
-		Content json.RawMessage `json:"content"`
-	} `json:"messages"`
-	Input  json.RawMessage `json:"input"`  // OpenAI Responses
-	Prompt json.RawMessage `json:"prompt"` // 图片生成 / legacy completions
+	Messages []promptAuditMessage `json:"messages"`
+	Input    json.RawMessage      `json:"input"`  // OpenAI Responses
+	Prompt   json.RawMessage      `json:"prompt"` // 图片生成 / legacy completions
 }
 
 // 仅审核这些携带用户提示词的端点，其余（embeddings/audio/rerank/models…）直接放行，避免无谓延迟
@@ -108,7 +111,7 @@ func PromptAudit() gin.HandlerFunc {
 			c.Request.Body = io.NopCloser(storage)
 		}
 
-		userInput := extractUserInput(body)
+		userInput := extractAuditInput(body, cfg.GetAuditScope(), cfg.EffectiveScopeMessages())
 		if strings.TrimSpace(userInput) == "" {
 			c.Next()
 			return
@@ -291,20 +294,32 @@ func (m *promptAuditMeta) username() string {
 	return name
 }
 
-// extractUserInput 提取最近一条用户输入文本
+// extractUserInput 按默认范围（仅最后一条 user 消息）提取送审文本
 func extractUserInput(body []byte) string {
+	return extractAuditInput(body, operation_setting.PromptAuditScopeLastUser, 0)
+}
+
+// extractAuditInput 按配置的范围提取送审文本。
+//
+// last_user 只取最后一条 user 消息——线上实测这常常只是「继续」两个字，
+// 真实意图在更早轮次或 system 里，既漏审也容易被绕过；
+// recent/full 会把 system 与更早的消息一并纳入，代价是送审文本变长。
+func extractAuditInput(body []byte, scope string, recentN int) string {
 	var peek promptAuditPeek
 	if err := json.Unmarshal(body, &peek); err != nil {
 		return ""
 	}
-	// OpenAI / Claude: messages[]，取最后一条 role=user
+	// OpenAI / Claude: messages[]
 	if len(peek.Messages) > 0 {
-		for i := len(peek.Messages) - 1; i >= 0; i-- {
-			if peek.Messages[i].Role == "user" {
-				return collectText(peek.Messages[i].Content)
+		if scope == operation_setting.PromptAuditScopeLastUser {
+			for i := len(peek.Messages) - 1; i >= 0; i-- {
+				if peek.Messages[i].Role == "user" {
+					return collectText(peek.Messages[i].Content)
+				}
 			}
+			return ""
 		}
-		return ""
+		return collectMessages(peek.Messages, scope, recentN)
 	}
 	// OpenAI Responses: input 可能是 string 或 数组
 	if len(peek.Input) > 0 {
@@ -354,6 +369,56 @@ func extractUserInput(body []byte) string {
 		}
 	}
 	return ""
+}
+
+// collectMessages 汇总多条消息的文本。
+// system 一律纳入（agent 的真实任务描述常写在这里）；recent 模式再补上最近 recentN 条消息，
+// full 模式则纳入全部 user 消息。assistant 的回复不审——那是模型自己的输出，不是用户意图。
+func collectMessages(messages []promptAuditMessage, scope string, recentN int) string {
+	if recentN <= 0 {
+		recentN = 4
+	}
+	// 先标记要纳入的下标，再按原始顺序拼接，保证上下文顺序可读
+	picked := make([]bool, len(messages))
+	for i, m := range messages {
+		switch m.Role {
+		case "system", "developer":
+			picked[i] = true
+		case "user":
+			if scope == operation_setting.PromptAuditScopeFull {
+				picked[i] = true
+			}
+		}
+	}
+	if scope == operation_setting.PromptAuditScopeRecent {
+		for i := len(messages) - 1; i >= 0 && recentN > 0; i-- {
+			if messages[i].Role == "assistant" {
+				continue
+			}
+			if !picked[i] {
+				picked[i] = true
+			}
+			recentN--
+		}
+	}
+
+	var sb strings.Builder
+	for i, m := range messages {
+		if !picked[i] {
+			continue
+		}
+		text := collectText(m.Content)
+		if strings.TrimSpace(text) == "" {
+			continue
+		}
+		// 标注角色，让审核模型能区分「系统设定」与「用户这次说的话」
+		sb.WriteString("[")
+		sb.WriteString(m.Role)
+		sb.WriteString("] ")
+		sb.WriteString(text)
+		sb.WriteString("\n\n")
+	}
+	return strings.TrimSpace(sb.String())
 }
 
 // collectText 递归提取 content 中的文本（string / []{type,text|input_text} / 嵌套）

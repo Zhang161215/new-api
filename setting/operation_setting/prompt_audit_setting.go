@@ -3,6 +3,7 @@ package operation_setting
 import (
 	"math/rand"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/setting/config"
 )
@@ -89,6 +90,20 @@ type PromptAuditSetting struct {
 	NotifyBlockedOnly bool `json:"notify_blocked_only"`
 	// NotifyCooldownSec 同一用户的通知冷却秒数，防止单个用户刷爆邮箱。<=0 表示不限制
 	NotifyCooldownSec int `json:"notify_cooldown_sec"`
+	// CacheTTLSec 判定结果缓存秒数。相同内容在此时间内复用上次判定，不再调审核模型。
+	// agent 流量重复率极高（线上实测 85.8%），这是无损的省钱与降延迟手段。<=0 关闭缓存
+	CacheTTLSec int `json:"cache_ttl_sec"`
+	// AuditScope 送审范围：
+	//   last_user（默认，仅最后一条 user 消息，行为与旧版一致）
+	//   recent   （system + 最近 ScopeMessages 条消息）
+	//   full     （system + 全部 user 消息）
+	// 实测最后一条 user 常常只是「继续」，真实意图在更早轮次或 system 里，
+	// 只审最后一条既会漏审也容易被绕过
+	AuditScope string `json:"audit_scope"`
+	// ScopeMessages recent 模式下回溯的消息条数，<=0 时按 4 处理
+	ScopeMessages int `json:"scope_messages"`
+	// RetentionDays 审核记录保留天数，超期的每日自动清理。<=0 表示不自动清理
+	RetentionDays int `json:"retention_days"`
 }
 
 var promptAuditSetting = PromptAuditSetting{
@@ -110,6 +125,10 @@ var promptAuditSetting = PromptAuditSetting{
 	NotifyThreshold:   0,
 	NotifyBlockedOnly: false,
 	NotifyCooldownSec: 300,
+	CacheTTLSec:       3600,
+	AuditScope:        PromptAuditScopeLastUser,
+	ScopeMessages:     4,
+	RetentionDays:     0,
 }
 
 func init() {
@@ -190,6 +209,39 @@ func (s *PromptAuditSetting) NotifyEmailList() []string {
 		}
 	}
 	return out
+}
+
+// 送审范围取值
+const (
+	PromptAuditScopeLastUser = "last_user"
+	PromptAuditScopeRecent   = "recent"
+	PromptAuditScopeFull     = "full"
+)
+
+// CacheTTL 返回判定结果缓存时长，<=0 表示不缓存
+func (s *PromptAuditSetting) CacheTTL() time.Duration {
+	if s.CacheTTLSec <= 0 {
+		return 0
+	}
+	return time.Duration(s.CacheTTLSec) * time.Second
+}
+
+// GetAuditScope 返回生效的送审范围，未配置或取值非法时回落到 last_user（与旧版行为一致）
+func (s *PromptAuditSetting) GetAuditScope() string {
+	switch s.AuditScope {
+	case PromptAuditScopeRecent, PromptAuditScopeFull:
+		return s.AuditScope
+	default:
+		return PromptAuditScopeLastUser
+	}
+}
+
+// EffectiveScopeMessages 返回 recent 模式下回溯的消息条数
+func (s *PromptAuditSetting) EffectiveScopeMessages() int {
+	if s.ScopeMessages <= 0 {
+		return 4
+	}
+	return s.ScopeMessages
 }
 
 // ShouldNotify 判断一条审核结果是否需要发通知
