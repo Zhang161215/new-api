@@ -90,7 +90,15 @@ type PromptAuditStat struct {
 	CacheHit     int64   `json:"cache_hit"`
 	CacheMiss    int64   `json:"cache_miss"`
 	CacheHitRate float64 `json:"cache_hit_rate"`
+	// Failed 审核未完成的记录数（confidence < 0）。fail-open 时这些请求未经审核即放行，
+	// 是真实的漏审量；与「审过且合规」必须分开统计，否则会高估审核覆盖率
+	Failed int64 `json:"failed"`
+	// FailedLast24h 近 24 小时的未完成数，用于判断当前审核链路是否在持续异常
+	FailedLast24h int64 `json:"failed_last_24h"`
 }
+
+// PromptAuditFailureConfidence 审核未完成记录的置信度哨兵值（与 middleware 保持一致）
+const PromptAuditFailureConfidence = -1
 
 type PromptAuditModelStat struct {
 	ModelName string `json:"model_name"`
@@ -108,12 +116,24 @@ func GetPromptAuditStat() (*PromptAuditStat, error) {
 	if err := DB.Model(&PromptAuditLog{}).Count(&stat.Total).Error; err != nil {
 		return nil, err
 	}
-	if err := DB.Model(&PromptAuditLog{}).Where("blocked = ?", true).Count(&stat.Blocked).Error; err != nil {
+	// 未判定记录（审核链路失败）单独统计，不计入命中/拦截口径
+	if err := DB.Model(&PromptAuditLog{}).
+		Where("confidence < ?", 0).Count(&stat.Failed).Error; err != nil {
 		return nil, err
 	}
-	stat.Shadow = stat.Total - stat.Blocked
+	if err := DB.Model(&PromptAuditLog{}).
+		Where("blocked = ? AND confidence >= ?", true, 0).
+		Count(&stat.Blocked).Error; err != nil {
+		return nil, err
+	}
+	stat.Shadow = stat.Total - stat.Blocked - stat.Failed
 
 	now := time.Now().Unix()
+	if err := DB.Model(&PromptAuditLog{}).
+		Where("confidence < ? AND created_at >= ?", 0, now-24*3600).
+		Count(&stat.FailedLast24h).Error; err != nil {
+		return nil, err
+	}
 	if err := DB.Model(&PromptAuditLog{}).Where("created_at >= ?", now-24*3600).Count(&stat.Last24h).Error; err != nil {
 		return nil, err
 	}

@@ -44,6 +44,10 @@ var promptAuditPathSuffixes = []string{
 	"/images/edits",
 }
 
+// promptAuditFailureConfidence 审核未完成时写入的置信度哨兵值。
+// 用负数而非 0，才能把「漏审」和「审过且合规」在库里区分开。
+const promptAuditFailureConfidence = -1
+
 // promptAuditAsyncTimeout 影子模式下后台审核的超时（比同步略宽松，不影响用户）
 func promptAuditAsyncTimeout(cfg *operation_setting.PromptAuditSetting) time.Duration {
 	if cfg.TimeoutMs > 0 {
@@ -132,6 +136,7 @@ func PromptAudit() gin.HandlerFunc {
 				confidence, reason, auditErr := service.RunPromptAudit(bgCtx, cfg, userInput)
 				if auditErr != nil {
 					logger.LogWarn(auditCtx, fmt.Sprintf("[prompt_audit] 影子审核失败: %s", auditErr.Error()))
+					meta.recordFailure(auditCtx, cfg, auditErr, time.Since(started))
 					return
 				}
 				hit := confidence >= cfg.Threshold
@@ -156,9 +161,13 @@ func PromptAudit() gin.HandlerFunc {
 			// 审核链路异常
 			if cfg.FailOpen {
 				logger.LogWarn(c.Request.Context(), fmt.Sprintf("[prompt_audit] 审核失败放行(fail-open): %s", auditErr.Error()))
+				// fail-open 曾经只打一行日志就放行：请求没被审、库里没有痕迹、也不告警，
+				// 事后完全无法统计「到底漏审了多少」。这里补上落库与限频告警。
+				meta.recordFailure(c.Request.Context(), cfg, auditErr, time.Since(started))
 				c.Next()
 				return
 			}
+			meta.recordFailure(c.Request.Context(), cfg, auditErr, time.Since(started))
 			abortWithOpenAiMessage(c, http.StatusServiceUnavailable, "内容安全审核暂时不可用，请稍后再试")
 			return
 		}
@@ -280,6 +289,62 @@ func (m *promptAuditMeta) notify(ctx context.Context, cfg *operation_setting.Pro
 		Prompt:    m.promptForStorage(cfg, confidence >= cfg.Threshold),
 		LatencyMs: int(latency.Milliseconds()),
 		CreatedAt: time.Now(),
+	})
+}
+
+// recordFailure 记录一次审核失败（fail-open 放行或 fail-closed 拒绝）。
+// confidence 用 -1 标记「未判定」，与「判定为合规的 0」区分开，
+// 否则事后统计会把漏审当成审过且合规。属旁路行为，任何异常都不影响用户请求。
+func (m *promptAuditMeta) recordFailure(ctx context.Context, cfg *operation_setting.PromptAuditSetting,
+	auditErr error, latency time.Duration) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("[prompt_audit] 记录审核失败 panic: %v", r))
+		}
+	}()
+	if cfg == nil || auditErr == nil {
+		return
+	}
+	service.RecordPromptAuditFailure()
+
+	if model.DB != nil {
+		entry := &model.PromptAuditLog{
+			UserId:     m.userId,
+			Username:   m.username(),
+			TokenName:  m.tokenName,
+			Group:      m.group,
+			ModelName:  m.modelName,
+			ChannelId:  m.channelId,
+			Endpoint:   m.endpoint,
+			Confidence: promptAuditFailureConfidence,
+			Reason:     "审核未完成: " + service.TruncateRunes(auditErr.Error(), 300),
+			Blocked:    !cfg.FailOpen,
+			AuditModel: cfg.Model,
+			// 未判定按「命中」口径留存原文：漏审的内容恰恰是最需要人工回看的
+			Prompt:    m.promptForStorage(cfg, true),
+			LatencyMs: int(latency.Milliseconds()),
+			Ip:        m.ip,
+		}
+		if err := model.RecordPromptAuditLog(entry); err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("[prompt_audit] 写入审核失败记录失败: %s", err.Error()))
+		}
+	}
+
+	// 失败告警单独限频：审核节点抖动时可能瞬间几百条失败，不能逐条发邮件
+	gopool.Go(func() {
+		service.NotifyPromptAuditFailure(context.Background(), cfg, service.PromptAuditFailureEvent{
+			UserId:    m.userId,
+			Username:  m.username(),
+			Group:     m.group,
+			ModelName: m.modelName,
+			Endpoint:  m.endpoint,
+			Ip:        m.ip,
+			Error:     auditErr.Error(),
+			FailOpen:  cfg.FailOpen,
+			LatencyMs: int(latency.Milliseconds()),
+			CreatedAt: time.Now(),
+		})
 	})
 }
 
