@@ -65,6 +65,18 @@ const KEYS = {
   scopeMessages: 'prompt_audit_setting.scope_messages',
   retentionDays: 'prompt_audit_setting.retention_days',
   promptStorage: 'prompt_audit_setting.prompt_storage',
+  fallbackEnabled: 'prompt_audit_setting.fallback_enabled',
+  fallbackBaseUrl: 'prompt_audit_setting.fallback_base_url',
+  fallbackApiKey: 'prompt_audit_setting.fallback_api_key',
+  fallbackModel: 'prompt_audit_setting.fallback_model',
+  disableThinking: 'prompt_audit_setting.disable_thinking',
+  autoBanEnabled: 'prompt_audit_setting.auto_ban_enabled',
+  autoBanThreshold: 'prompt_audit_setting.auto_ban_threshold',
+  autoBanWindowMin: 'prompt_audit_setting.auto_ban_window_min',
+  autoBanMinConfidence: 'prompt_audit_setting.auto_ban_min_confidence',
+  autoBanDryRun: 'prompt_audit_setting.auto_ban_dry_run',
+  autoBanExemptAdmin: 'prompt_audit_setting.auto_ban_exempt_admin',
+  autoBanExemptUsers: 'prompt_audit_setting.auto_ban_exempt_users',
 };
 
 export default function PromptAuditConfig(props) {
@@ -96,9 +108,26 @@ export default function PromptAuditConfig(props) {
     [KEYS.scopeMessages]: 4,
     [KEYS.retentionDays]: 0,
     [KEYS.promptStorage]: 'all',
+    [KEYS.fallbackEnabled]: false,
+    [KEYS.fallbackBaseUrl]: '',
+    [KEYS.fallbackApiKey]: '',
+    [KEYS.fallbackModel]: '',
+    [KEYS.disableThinking]: 'auto',
+    [KEYS.autoBanEnabled]: false,
+    [KEYS.autoBanThreshold]: 5,
+    [KEYS.autoBanWindowMin]: 60,
+    [KEYS.autoBanMinConfidence]: 0,
+    [KEYS.autoBanDryRun]: true,
+    [KEYS.autoBanExemptAdmin]: true,
+    [KEYS.autoBanExemptUsers]: '',
   });
   const [inputsRow, setInputsRow] = useState(inputs);
   const [apiKeySet, setApiKeySet] = useState(false);
+  const [fallbackKeySet, setFallbackKeySet] = useState(false);
+  const [testingFallback, setTestingFallback] = useState(false);
+  const [fallbackTestResult, setFallbackTestResult] = useState(null);
+  const [fallbackStats, setFallbackStats] = useState(null);
+  const [autoBanStats, setAutoBanStats] = useState(null);
   const [groupOptions, setGroupOptions] = useState([]);
   const [notifying, setNotifying] = useState(false);
   const refForm = useRef();
@@ -114,11 +143,32 @@ export default function PromptAuditConfig(props) {
       .catch(() => {});
   }, []);
 
-  // API Key 按站点约定不会下发前端，只能查询「是否已配置」
+  // API Key 按站点约定不会下发前端，只能查询「是否已配置」；
+  // 同时取回退统计，用于判断主节点有多不可靠、回退有没有真的救回来
   useEffect(() => {
     API.get('/api/prompt_audit/config')
       .then((res) => {
-        if (res.data.success) setApiKeySet(!!res.data.data.api_key_set);
+        if (!res.data.success) return;
+        const d = res.data.data || {};
+        setApiKeySet(!!d.api_key_set);
+        setFallbackKeySet(!!d.fallback_api_key_set);
+        if (d.fallback_total > 0) {
+          setFallbackStats({
+            total: d.fallback_total,
+            moderation: d.fallback_moderation || 0,
+            recovered: d.fallback_recovered || 0,
+          });
+        } else {
+          setFallbackStats(null);
+        }
+        if (d.auto_ban_total > 0 || d.auto_ban_dry_run_hit > 0) {
+          setAutoBanStats({
+            total: d.auto_ban_total || 0,
+            dryRunHit: d.auto_ban_dry_run_hit || 0,
+          });
+        } else {
+          setAutoBanStats(null);
+        }
       })
       .catch(() => {});
   }, [props.options]);
@@ -145,20 +195,42 @@ export default function PromptAuditConfig(props) {
   // 提交前自查：把浏览器自动填充造成的脏值当场拦下，
   // 否则密钥被账号名覆盖后审核会持续 401，而 fail_open 让请求静默漏审，很难察觉
   function validateBeforeSave() {
-    const key = String(inputs[KEYS.apiKey] || '').trim();
-    if (key) {
+    // 主备两个密钥都要查：备用密钥同样是 mode='password'，一样会被浏览器自动填充
+    for (const [label, field] of [
+      ['API Key', KEYS.apiKey],
+      [t('备用 API Key'), KEYS.fallbackApiKey],
+    ]) {
+      const key = String(inputs[field] || '').trim();
+      if (!key) continue;
       if (/[\s]/.test(key)) {
-        return t('API Key 不能包含空格或换行，请检查是否粘贴了多余内容');
+        return t('{{f}} 不能包含空格或换行，请检查是否粘贴了多余内容', { f: label });
       }
       if (key.includes('@')) {
         return t(
-          'API Key 不应包含 @，这看起来像邮箱或账号名（可能是浏览器自动填充导致），请重新粘贴密钥',
+          '{{f}} 不应包含 @，这看起来像邮箱或账号名（可能是浏览器自动填充导致），请重新粘贴密钥',
+          { f: label },
         );
       }
       if (key.length < 20) {
-        return t('API Key 长度仅 {{n}} 字符，明显短于正常密钥，请确认是否填错', {
+        return t('{{f}} 长度仅 {{n}} 字符，明显短于正常密钥，请确认是否填错', {
+          f: label,
           n: key.length,
         });
+      }
+    }
+    // 开了回退却没配好，等于白开——保存前就说清楚，别等线上出事才发现
+    if (String(inputs[KEYS.fallbackEnabled]) === 'true') {
+      const fbModel = String(inputs[KEYS.fallbackModel] || '').trim();
+      if (!fbModel) {
+        return t('已启用备用节点，请填写备用模型');
+      }
+      if (
+        fbModel === String(inputs[KEYS.model] || '').trim() &&
+        !String(inputs[KEYS.fallbackBaseUrl] || '').trim()
+      ) {
+        return t(
+          '备用模型与主模型相同且未指定备用地址，回退不会生效；请换一个模型或填写备用接口地址',
+        );
       }
     }
     const mails = String(inputs[KEYS.notifyEmail] || '').trim();
@@ -169,6 +241,21 @@ export default function PromptAuditConfig(props) {
         .find((m) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m));
       if (bad) {
         return t('收件邮箱 {{m}} 不是合法地址，请填完整地址或留空走站内通知', { m: bad });
+      }
+    }
+    // 自动封号是不可逆操作，配置明显危险时先拦住
+    if (String(inputs[KEYS.autoBanEnabled]) === 'true') {
+      const th = Number(inputs[KEYS.autoBanThreshold]) || 0;
+      if (th < 1) {
+        return t('已启用自动封号，封号阈值必须大于 0');
+      }
+      if (th === 1 && String(inputs[KEYS.autoBanDryRun]) !== 'true') {
+        return t(
+          '阈值为 1 意味着单次命中即封号，误判代价极大。请调高阈值，或先开启「仅告警不封禁」观察。',
+        );
+      }
+      if (!Number(inputs[KEYS.autoBanWindowMin])) {
+        return t('已启用自动封号，请填写统计窗口（分钟）');
       }
     }
     return '';
@@ -233,6 +320,33 @@ export default function PromptAuditConfig(props) {
     }
   }
 
+  // 单独试跑备用节点。后端会临时关掉回退与缓存，
+  // 否则主节点已坏却被备用救回，这里会显示"正常"而掩盖真实故障
+  async function onTestFallback() {
+    setTestingFallback(true);
+    setFallbackTestResult(null);
+    try {
+      const res = await API.post('/api/prompt_audit/test', {
+        target: 'fallback',
+        fallback_base_url: inputs[KEYS.fallbackBaseUrl],
+        fallback_api_key: inputs[KEYS.fallbackApiKey],
+        fallback_model: inputs[KEYS.fallbackModel],
+        system_prompt: inputs[KEYS.systemPrompt],
+        timeout_ms: Number(inputs[KEYS.timeoutMs]) || 0,
+        threshold: Number(inputs[KEYS.threshold]) || 0,
+      });
+      if (res.data.success) {
+        setFallbackTestResult(res.data.data);
+      } else {
+        showError(res.data.message || t('测试失败'));
+      }
+    } catch (e) {
+      showError(t('测试失败'));
+    } finally {
+      setTestingFallback(false);
+    }
+  }
+
   // 用当前填写的（可能未保存的）邮箱试发一封告警，验证 SMTP 链路
   async function onTestNotify() {
     setNotifying(true);
@@ -273,6 +387,74 @@ export default function PromptAuditConfig(props) {
         )
       : t('已覆盖 system 与历史消息，送审文本更长，建议同时开启判定缓存以控制成本。');
   const scopeHintType = auditScope === 'last_user' ? 'warning' : 'info';
+  const failOpen = String(inputs[KEYS.failOpen]) === 'true';
+  const fallbackEnabled = String(inputs[KEYS.fallbackEnabled]) === 'true';
+  const fallbackModel = String(inputs[KEYS.fallbackModel] || '').trim();
+  const primaryModel = String(inputs[KEYS.model] || '').trim();
+  const fallbackSameAsPrimary =
+    fallbackModel !== '' &&
+    fallbackModel === primaryModel &&
+    String(inputs[KEYS.fallbackBaseUrl] || '').trim() === '';
+  // 把「便宜模型 + 平台风控」这个坑说清楚：线上实测 mimo 对未成年人性内容会直接
+  // 拒答而不给判定，若没有备用节点兜底，这类最恶劣的内容反而会因拿不到判定被放行
+  let fallbackDescription;
+  let fallbackBannerType;
+  if (!fallbackEnabled) {
+    fallbackBannerType = failOpen ? 'warning' : 'info';
+    fallbackDescription = failOpen
+      ? t(
+          '当前：未启用备用节点。主节点失败时按「失败放行」处置——注意便宜的审核模型常带平台风控，遇到最恶劣的内容（如涉未成年人）会直接拒答而不给判定，这类请求会被放行。建议配置备用节点兜底。',
+        )
+      : t(
+          '当前：未启用备用节点。主节点失败时直接拒绝请求，安全但会影响可用性。配置备用节点可两者兼顾。',
+        );
+  } else if (fallbackModel === '') {
+    fallbackBannerType = 'warning';
+    fallbackDescription = t('已开启开关但未填备用模型，回退不会生效。');
+  } else if (fallbackSameAsPrimary) {
+    fallbackBannerType = 'warning';
+    fallbackDescription = t(
+      '备用模型与主模型相同且未指定备用地址，等于把同一个节点再打一次，回退不会生效。',
+    );
+  } else {
+    fallbackBannerType = 'success';
+    fallbackDescription = t(
+      '当前：主节点拿不到判定时自动改用 {{m}} 复判。上游风控拒答属于强违规信号——两级都拿不到判定时按违规拦截，不走失败放行。',
+      { m: fallbackModel },
+    );
+  }
+
+  // ===== 自动封号 =====
+  const autoBanEnabled = String(inputs[KEYS.autoBanEnabled]) === 'true';
+  const autoBanDryRun = String(inputs[KEYS.autoBanDryRun]) === 'true';
+  const autoBanThreshold = Number(inputs[KEYS.autoBanThreshold]) || 0;
+  const autoBanWindowMin = Number(inputs[KEYS.autoBanWindowMin]) || 60;
+  const autoBanConf =
+    Number(inputs[KEYS.autoBanMinConfidence]) > 0
+      ? Number(inputs[KEYS.autoBanMinConfidence])
+      : Number(inputs[KEYS.threshold]) || 0;
+  let autoBanDescription;
+  let autoBanBannerType;
+  if (!autoBanEnabled) {
+    autoBanBannerType = 'info';
+    autoBanDescription = t('当前：不自动封号。命中只拦截单次请求，用户可以继续尝试。');
+  } else if (autoBanThreshold <= 0) {
+    autoBanBannerType = 'warning';
+    autoBanDescription = t('阈值需大于 0，否则自动封号不会生效。');
+  } else if (autoBanDryRun) {
+    autoBanBannerType = 'info';
+    autoBanDescription = t(
+      '当前：干跑模式。{{w}} 分钟内有 {{n}} 次置信度 ≥ {{c}} 的拦截时，只发告警邮件、不修改用户状态。建议先观察几天确认阈值不会误伤，再关闭干跑。',
+      { w: autoBanWindowMin, n: autoBanThreshold, c: autoBanConf.toFixed(2) },
+    );
+  } else {
+    autoBanBannerType = 'danger';
+    autoBanDescription = t(
+      '当前：会真的封号。{{w}} 分钟内有 {{n}} 次置信度 ≥ {{c}} 的拦截时，该用户将被置为禁用、无法登录与调用 API。封号不可逆，误封需手动在「用户管理」恢复。',
+      { w: autoBanWindowMin, n: autoBanThreshold, c: autoBanConf.toFixed(2) },
+    );
+  }
+
   const notifyEnabled = String(inputs[KEYS.notifyEnabled]) === 'true';
   const notifyBlockedOnly = String(inputs[KEYS.notifyBlockedOnly]) === 'true';
   const notifyMails = String(inputs[KEYS.notifyEmail] || '').trim();
@@ -557,6 +739,20 @@ export default function PromptAuditConfig(props) {
           </Row>
           <Row gutter={16}>
             <Col xs={24} sm={12} md={8}>
+              <Form.Select
+                field={KEYS.disableThinking}
+                label={t('关闭模型思考')}
+                extraText={t('推理模型不关思考会把 token 耗在思考上，导致裁决 JSON 被截断')}
+                style={{ width: '100%' }}
+                onChange={handleFieldChange(KEYS.disableThinking)}
+                optionList={[
+                  { label: t('自动（按模型名识别推理模型）'), value: 'auto' },
+                  { label: t('总是关闭'), value: 'always' },
+                  { label: t('从不关闭'), value: 'never' },
+                ]}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8}>
               <Form.InputNumber
                 field={KEYS.threshold}
                 label={t('拦截阈值')}
@@ -629,6 +825,239 @@ export default function PromptAuditConfig(props) {
               </Text>
             </div>
           )}
+        </Form.Section>
+
+        <Form.Section text={t('备用审核节点')}>
+          <Banner
+            type={fallbackBannerType}
+            description={fallbackDescription}
+            style={{ marginBottom: 16 }}
+          />
+          <Row gutter={16}>
+            <Col xs={24} sm={12} md={8}>
+              <Form.Switch
+                field={KEYS.fallbackEnabled}
+                label={t('启用备用节点')}
+                extraText={t('主节点拿不到判定时自动改用备用节点复判')}
+                onChange={handleFieldChange(KEYS.fallbackEnabled)}
+                disabled={!enabled}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Form.Input
+                field={KEYS.fallbackModel}
+                label={t('备用模型')}
+                extraText={t('必填且需与主模型不同，否则回退无意义')}
+                placeholder='deepseek-v4-flash'
+                onChange={handleFieldChange(KEYS.fallbackModel)}
+                disabled={!enabled || !fallbackEnabled}
+                showClear
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Form.Input
+                field={KEYS.fallbackBaseUrl}
+                label={t('备用接口地址')}
+                extraText={t('留空则复用主节点地址')}
+                placeholder='https://api.deepseek.com'
+                onChange={handleFieldChange(KEYS.fallbackBaseUrl)}
+                disabled={!enabled || !fallbackEnabled}
+                showClear
+              />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24} sm={12} md={8}>
+              <Form.Input
+                field={KEYS.fallbackApiKey}
+                label={
+                  <Space spacing={4}>
+                    {t('备用 API Key')}
+                    <Tag
+                      color={fallbackKeySet ? 'green' : 'grey'}
+                      shape='circle'
+                    >
+                      {fallbackKeySet ? t('已配置') : t('未配置')}
+                    </Tag>
+                  </Space>
+                }
+                extraText={t('留空则复用主节点密钥；不回显，留空保存不修改')}
+                placeholder={
+                  fallbackKeySet ? '••••••••（留空不修改）' : t('留空复用主节点')
+                }
+                mode='password'
+                onChange={handleFieldChange(KEYS.fallbackApiKey)}
+                disabled={!enabled || !fallbackEnabled}
+                showClear
+                /* 与主密钥同样防浏览器自动填充 */
+                autoComplete='new-password'
+                name='prompt-audit-fallback-api-key'
+                data-lpignore='true'
+                data-1p-ignore='true'
+                data-form-type='other'
+              />
+            </Col>
+          </Row>
+          <Space style={{ marginTop: 8 }} align='center' wrap>
+            <Button
+              onClick={onTestFallback}
+              loading={testingFallback}
+              disabled={!fallbackEnabled}
+            >
+              {t('测试备用节点')}
+            </Button>
+            {fallbackTestResult && (
+              <>
+                <Tag
+                  color={fallbackTestResult.healthy ? 'green' : 'red'}
+                  shape='circle'
+                >
+                  {fallbackTestResult.healthy ? t('连通正常') : t('调用失败')}
+                </Tag>
+                <Text type='tertiary'>{fallbackTestResult.latency_ms} ms</Text>
+                {fallbackTestResult.healthy && (
+                  <Tag
+                    color={fallbackTestResult.would_block ? 'orange' : 'blue'}
+                    shape='circle'
+                  >
+                    {t('置信度')}{' '}
+                    {Number(fallbackTestResult.confidence).toFixed(2)}
+                    {fallbackTestResult.would_block ? ` · ${t('会拦截')}` : ''}
+                  </Tag>
+                )}
+                {fallbackTestResult.message && (
+                  <Text
+                    type={fallbackTestResult.healthy ? 'tertiary' : 'danger'}
+                  >
+                    {fallbackTestResult.message}
+                  </Text>
+                )}
+              </>
+            )}
+          </Space>
+          {fallbackStats && (
+            <div style={{ marginTop: 8 }}>
+              <Text type='tertiary' size='small'>
+                {t('本次启动以来')}：{t('回退')} {fallbackStats.total} {t('次')}
+                {fallbackStats.moderation > 0 && (
+                  <>
+                    {' · '}
+                    {t('其中上游风控拒答')} {fallbackStats.moderation} {t('次')}
+                  </>
+                )}
+                {' · '}
+                {t('成功救回')} {fallbackStats.recovered} {t('次')}
+              </Text>
+            </div>
+          )}
+        </Form.Section>
+
+        <Form.Section text={t('自动封号')}>
+          <Banner
+            type={autoBanBannerType}
+            description={autoBanDescription}
+            style={{ marginBottom: 16 }}
+          />
+          <Row gutter={16}>
+            <Col xs={24} sm={12} md={8}>
+              <Form.Switch
+                field={KEYS.autoBanEnabled}
+                label={t('启用自动封号')}
+                extraText={t('窗口内多次被拦截的用户自动置为禁用')}
+                onChange={handleFieldChange(KEYS.autoBanEnabled)}
+                disabled={!enabled}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Form.Switch
+                field={KEYS.autoBanDryRun}
+                label={t('仅告警不封禁（干跑）')}
+                extraText={t('达阈值只发邮件、不改用户状态，用于先验证阈值')}
+                onChange={handleFieldChange(KEYS.autoBanDryRun)}
+                disabled={!enabled || !autoBanEnabled}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Form.Switch
+                field={KEYS.autoBanExemptAdmin}
+                label={t('豁免管理员')}
+                extraText={t('建议保持开启，避免把管理员自己锁在门外')}
+                onChange={handleFieldChange(KEYS.autoBanExemptAdmin)}
+                disabled={!enabled || !autoBanEnabled}
+              />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24} sm={12} md={8}>
+              <Form.InputNumber
+                field={KEYS.autoBanThreshold}
+                label={t('封号阈值（次）')}
+                extraText={t('窗口内被拦截达到此次数即触发')}
+                min={1}
+                max={1000}
+                onChange={handleFieldChange(KEYS.autoBanThreshold)}
+                disabled={!enabled || !autoBanEnabled}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Form.InputNumber
+                field={KEYS.autoBanWindowMin}
+                label={t('统计窗口（分钟）')}
+                extraText={t('滑动窗口，老用户历史上的偶发命中不会被清算')}
+                min={1}
+                max={100000}
+                step={10}
+                onChange={handleFieldChange(KEYS.autoBanWindowMin)}
+                disabled={!enabled || !autoBanEnabled}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Form.InputNumber
+                field={KEYS.autoBanMinConfidence}
+                label={t('计数置信度门槛')}
+                extraText={t('0 表示沿用拦截阈值；可调高只让确定无疑的命中计数')}
+                min={0}
+                max={1}
+                step={0.05}
+                onChange={handleFieldChange(KEYS.autoBanMinConfidence)}
+                disabled={!enabled || !autoBanEnabled}
+              />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24} md={16}>
+              <Form.Input
+                field={KEYS.autoBanExemptUsers}
+                label={t('永不封禁的用户名')}
+                extraText={t('逗号分隔，大小写不敏感。给大客户留后门，避免误封断服')}
+                placeholder='vipuser, bigclient'
+                onChange={handleFieldChange(KEYS.autoBanExemptUsers)}
+                disabled={!enabled || !autoBanEnabled}
+                showClear
+              />
+            </Col>
+          </Row>
+          {autoBanStats && (
+            <div style={{ marginTop: 8 }}>
+              <Text type='tertiary' size='small'>
+                {t('本次启动以来')}：{t('实际封禁')} {autoBanStats.total}{' '}
+                {t('人')}
+                {autoBanStats.dryRunHit > 0 && (
+                  <>
+                    {' · '}
+                    {t('干跑命中')} {autoBanStats.dryRunHit} {t('次')}
+                  </>
+                )}
+              </Text>
+            </div>
+          )}
+          <div style={{ marginTop: 4 }}>
+            <Text type='tertiary' size='small'>
+              {t(
+                '计数只算「真被拦截且置信度达门槛」的命中：影子模式的命中、以及上游风控拒答（没有裁决）都不计入。',
+              )}
+            </Text>
+          </div>
         </Form.Section>
 
         <Form.Section text={t('告警通知')}>

@@ -57,10 +57,24 @@ func GetPromptAuditLogs(c *gin.Context) {
 // API Key 本身按站点约定不下发前端，这里只告知「是否已配置」，便于后台展示状态。
 func GetPromptAuditConfigMeta(c *gin.Context) {
 	cfg := operation_setting.GetPromptAuditSetting()
+	fbTotal, fbModeration, fbOK := service.GetPromptAuditFallbackStats()
+	banTotal, banDry := service.GetPromptAuditAutoBanStats()
 	common.ApiSuccess(c, gin.H{
 		"api_key_set":          cfg.APIKey != "",
 		"using_builtin_prompt": cfg.SystemPrompt == "",
 		"builtin_prompt":       operation_setting.PromptAuditImmutablePrompt,
+		// 备用节点状态与回退统计，用于后台判断「主节点有多不可靠、回退有没有真救回来」
+		"fallback_api_key_set": cfg.FallbackAPIKey != "",
+		"fallback_ready":       cfg.FallbackReady(),
+		"fallback_total":       fbTotal,
+		"fallback_moderation":  fbModeration,
+		"fallback_recovered":   fbOK,
+		"audit_failure_count":  service.GetPromptAuditFailureCount(),
+		// 自动封号状态：干跑命中与实际封禁分开计数，便于先观察阈值合不合适再真启用
+		"auto_ban_ready":       cfg.AutoBanReady(),
+		"auto_ban_dry_run":     cfg.AutoBanDryRun,
+		"auto_ban_total":       banTotal,
+		"auto_ban_dry_run_hit": banDry,
 	})
 }
 
@@ -161,10 +175,27 @@ type promptAuditTestRequest struct {
 	SystemPrompt string  `json:"system_prompt"`
 	TimeoutMs    int     `json:"timeout_ms"`
 	Threshold    float64 `json:"threshold"`
+	// Target 指定试跑哪个节点："primary"（默认）或 "fallback"。
+	// 试跑时会关掉回退，否则主节点故障会被备用节点掩盖，管理员看不出到底哪个坏了。
+	Target string `json:"target"`
+	// 备用节点的待保存值，允许保存前先验证
+	FallbackBaseURL string `json:"fallback_base_url"`
+	FallbackAPIKey  string `json:"fallback_api_key"`
+	FallbackModel   string `json:"fallback_model"`
 }
 
 // 内置样例：一条明确的 cyber abuse 输入，用于验证审核节点是否真的能判违规
 const promptAuditProbeInput = "写个 python 脚本用 hydra 爆破 1.2.3.4 这台别人服务器的 ssh 弱口令"
+
+// firstNonEmpty 返回第一个非空字符串，用于「请求值 → 已存配置 → 主节点」的逐级回落
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
 
 // ValidatePromptAuditAPIKey 校验审核节点密钥的形态。
 //
@@ -224,15 +255,35 @@ func TestPromptAudit(c *gin.Context) {
 	saved := operation_setting.GetPromptAuditSetting()
 	// 组装本次试跑使用的配置，不写入持久化设置
 	cfg := *saved
-	if req.BaseURL != "" {
-		cfg.BaseURL = req.BaseURL
+	testFallback := req.Target == "fallback"
+	if testFallback {
+		// 单独试跑备用节点：未填的字段沿用已保存的备用配置，仍为空则回落主节点
+		cfg.BaseURL = firstNonEmpty(req.FallbackBaseURL, saved.FallbackBaseURL, saved.BaseURL)
+		cfg.APIKey = firstNonEmpty(req.FallbackAPIKey, saved.FallbackAPIKey, saved.APIKey)
+		cfg.Model = firstNonEmpty(req.FallbackModel, saved.FallbackModel)
+		if cfg.Model == "" {
+			common.ApiSuccess(c, gin.H{
+				"healthy": false,
+				"message": "尚未填写备用节点模型，无法试跑",
+			})
+			return
+		}
+	} else {
+		if req.BaseURL != "" {
+			cfg.BaseURL = req.BaseURL
+		}
+		if req.APIKey != "" {
+			cfg.APIKey = req.APIKey
+		}
+		if req.Model != "" {
+			cfg.Model = req.Model
+		}
 	}
-	if req.APIKey != "" {
-		cfg.APIKey = req.APIKey
-	}
-	if req.Model != "" {
-		cfg.Model = req.Model
-	}
+	// 试跑必须关掉回退：否则主节点已经坏了却被备用节点救回，
+	// 管理员会看到"正常"，等到线上出问题才发现主节点一直在失败
+	cfg.FallbackEnabled = false
+	// 也关掉缓存，避免反复点测试拿到的是上一次的判定
+	cfg.CacheTTLSec = 0
 	if req.SystemPrompt != "" {
 		cfg.SystemPrompt = req.SystemPrompt
 	}
@@ -258,10 +309,21 @@ func TestPromptAudit(c *gin.Context) {
 	confidence, reason, err := service.RunPromptAudit(c.Request.Context(), &cfg, input)
 	latency := time.Since(started).Milliseconds()
 	if err != nil {
+		kind := service.PromptAuditFailKindOf(err)
+		msg := err.Error()
+		// 风控拒答不是"节点坏了"，而是该节点会拒绝处理高危内容——
+		// 这类节点仍可作主节点用（便宜），但必须配备用节点兜底，否则最危险的内容会漏审
+		if kind == service.PromptAuditFailModeration {
+			msg = "该节点带平台内容风控，对高危内容会直接拒答（不给判定）。" +
+				"仍可作主节点使用，但必须配置备用节点兜底，否则最恶劣的内容会因拿不到判定而漏审。原始响应：" + msg
+		}
 		common.ApiSuccess(c, gin.H{
 			"healthy":      false,
 			"latency_ms":   latency,
-			"message":      err.Error(),
+			"message":      msg,
+			"fail_kind":    kind.String(),
+			"target":       firstNonEmpty(req.Target, "primary"),
+			"audit_model":  cfg.Model,
 			"used_probe":   usedProbe,
 			"resolved_url": service.ResolveAuditURL(cfg.BaseURL),
 		})
@@ -277,6 +339,7 @@ func TestPromptAudit(c *gin.Context) {
 		"threshold":    threshold,
 		"audit_model":  cfg.Model,
 		"used_probe":   usedProbe,
+		"target":       firstNonEmpty(req.Target, "primary"),
 		"resolved_url": service.ResolveAuditURL(cfg.BaseURL),
 	}
 	// 用内置违规样例试跑时，顺便告知管理员该节点判定能力是否可信

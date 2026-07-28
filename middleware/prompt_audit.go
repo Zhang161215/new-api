@@ -135,7 +135,14 @@ func PromptAudit() gin.HandlerFunc {
 				started := time.Now()
 				confidence, reason, auditErr := service.RunPromptAudit(bgCtx, cfg, userInput)
 				if auditErr != nil {
-					logger.LogWarn(auditCtx, fmt.Sprintf("[prompt_audit] 影子审核失败: %s", auditErr.Error()))
+					// 影子模式不拦截，但风控拒答值得单独提级：它是强违规信号
+					if service.IsPromptAuditModerationRefusal(auditErr) {
+						logger.LogError(auditCtx, fmt.Sprintf(
+							"[prompt_audit] 影子模式遇上游风控拒答（拦截模式下会被拦）user=%d: %s",
+							meta.userId, auditErr.Error()))
+					} else {
+						logger.LogWarn(auditCtx, fmt.Sprintf("[prompt_audit] 影子审核失败: %s", auditErr.Error()))
+					}
 					meta.recordFailure(auditCtx, cfg, auditErr, time.Since(started))
 					return
 				}
@@ -149,6 +156,8 @@ func PromptAudit() gin.HandlerFunc {
 				}
 				if hit {
 					meta.notify(auditCtx, cfg, confidence, reason, false, time.Since(started))
+					// 影子模式下命中并未真的拦截，按「只统计被拦下的命中」的口径
+					// 不计入封号——否则观察模式会悄悄把用户封掉，与其语义相悖
 				}
 			})
 			c.Next()
@@ -158,16 +167,32 @@ func PromptAudit() gin.HandlerFunc {
 		started := time.Now()
 		confidence, reason, auditErr := service.RunPromptAudit(c.Request.Context(), cfg, userInput)
 		if auditErr != nil {
-			// 审核链路异常
+			latency := time.Since(started)
+			// 上游平台风控拒答，说明内容大概率极度违规——这种失败绝不能 fail-open，
+			// 否则最恶劣的内容（线上实测：未成年人性内容、色情站点搭建）反而专门被放行。
+			// 走到这里意味着备用节点也没能给出判定（或未配置备用节点）。
+			if service.IsPromptAuditModerationRefusal(auditErr) {
+				logger.LogError(c.Request.Context(), fmt.Sprintf(
+					"[prompt_audit] 上游风控拒答且无可用判定，按违规拦截 user=%d: %s",
+					meta.userId, auditErr.Error()))
+				meta.recordFailure(c.Request.Context(), cfg, auditErr, latency)
+				// 风控拒答记录的 confidence 是哨兵负值，不满足封号的置信度门槛，
+				// 因此不计入自动封号统计——宁可少封，不能凭一个没有裁决的信号封人
+				abortWithOpenAiMessage(c, http.StatusBadRequest,
+					"请求内容未通过安全审核，已被拦截。如为误判请联系管理员。",
+					types.ErrorCodeSensitiveWordsDetected)
+				return
+			}
+			// 其余失败（超时、限流、5xx、输出无法解析）与内容本身无关，按配置处置
 			if cfg.FailOpen {
 				logger.LogWarn(c.Request.Context(), fmt.Sprintf("[prompt_audit] 审核失败放行(fail-open): %s", auditErr.Error()))
 				// fail-open 曾经只打一行日志就放行：请求没被审、库里没有痕迹、也不告警，
 				// 事后完全无法统计「到底漏审了多少」。这里补上落库与限频告警。
-				meta.recordFailure(c.Request.Context(), cfg, auditErr, time.Since(started))
+				meta.recordFailure(c.Request.Context(), cfg, auditErr, latency)
 				c.Next()
 				return
 			}
-			meta.recordFailure(c.Request.Context(), cfg, auditErr, time.Since(started))
+			meta.recordFailure(c.Request.Context(), cfg, auditErr, latency)
 			abortWithOpenAiMessage(c, http.StatusServiceUnavailable, "内容安全审核暂时不可用，请稍后再试")
 			return
 		}
@@ -175,10 +200,14 @@ func PromptAudit() gin.HandlerFunc {
 		if confidence >= cfg.Threshold {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("[prompt_audit] 拦截 user=%d token=%s confidence=%.2f reason=%s", meta.userId, meta.tokenName, confidence, reason))
 			latency := time.Since(started)
+			// 先落库再评估自动封号：窗口计数走数据库，少这一条就会少算一次
 			meta.record(c.Request.Context(), cfg, confidence, reason, true, latency)
-			// 通知异步发：SMTP/Webhook 可能慢到几秒，不能让拦截响应等它
+			// 通知与封号判定都异步：SMTP 可能慢到几秒、封号要查库，不能让拦截响应等它们
 			gopool.Go(func() {
 				meta.notify(context.Background(), cfg, confidence, reason, true, latency)
+			})
+			gopool.Go(func() {
+				meta.autoBan(context.Background(), cfg, confidence, reason)
 			})
 			// 错误码与站内敏感词拦截保持一致（types.ErrorCodeSensitiveWordsDetected），
 			// 客户端可用同一套逻辑识别「内容被风控拦截」
@@ -292,6 +321,31 @@ func (m *promptAuditMeta) notify(ctx context.Context, cfg *operation_setting.Pro
 	})
 }
 
+// autoBan 评估本次命中是否触发自动封号。必须在命中记录已落库后调用。
+// 属旁路行为：任何失败都不影响用户请求（请求此时已被拦截返回）。
+func (m *promptAuditMeta) autoBan(ctx context.Context, cfg *operation_setting.PromptAuditSetting,
+	confidence float64, reason string) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("[prompt_audit] 自动封号 panic: %v", r))
+		}
+	}()
+	if cfg == nil || !cfg.AutoBanReady() {
+		return
+	}
+	service.PromptAuditAutoBanCheck(ctx, cfg, service.PromptAuditAutoBanEvent{
+		UserId:     m.userId,
+		Username:   m.username(),
+		Group:      m.group,
+		Confidence: confidence,
+		Reason:     reason,
+		ModelName:  m.modelName,
+		Ip:         m.ip,
+		CreatedAt:  time.Now(),
+	})
+}
+
 // recordFailure 记录一次审核失败（fail-open 放行或 fail-closed 拒绝）。
 // confidence 用 -1 标记「未判定」，与「判定为合规的 0」区分开，
 // 否则事后统计会把漏审当成审过且合规。属旁路行为，任何异常都不影响用户请求。
@@ -308,6 +362,16 @@ func (m *promptAuditMeta) recordFailure(ctx context.Context, cfg *operation_sett
 	}
 	service.RecordPromptAuditFailure()
 
+	// 风控拒答是强违规信号，落库时要能与普通失败区分开：
+	// 它在拦截模式下实际被拦，事后复核时属于优先要看的一批
+	moderation := service.IsPromptAuditModerationRefusal(auditErr)
+	reasonPrefix := "审核未完成: "
+	blocked := !cfg.FailOpen
+	if moderation {
+		reasonPrefix = "上游风控拒答（按违规处置）: "
+		blocked = true
+	}
+
 	if model.DB != nil {
 		entry := &model.PromptAuditLog{
 			UserId:     m.userId,
@@ -318,8 +382,8 @@ func (m *promptAuditMeta) recordFailure(ctx context.Context, cfg *operation_sett
 			ChannelId:  m.channelId,
 			Endpoint:   m.endpoint,
 			Confidence: promptAuditFailureConfidence,
-			Reason:     "审核未完成: " + service.TruncateRunes(auditErr.Error(), 300),
-			Blocked:    !cfg.FailOpen,
+			Reason:     reasonPrefix + service.TruncateRunes(auditErr.Error(), 300),
+			Blocked:    blocked,
 			AuditModel: cfg.Model,
 			// 未判定按「命中」口径留存原文：漏审的内容恰恰是最需要人工回看的
 			Prompt:    m.promptForStorage(cfg, true),

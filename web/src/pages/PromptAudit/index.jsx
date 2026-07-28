@@ -33,6 +33,10 @@ const PROMPT_AUDIT_BOOLEAN_KEYS = [
   'prompt_audit_setting.record_all',
   'prompt_audit_setting.notify_enabled',
   'prompt_audit_setting.notify_blocked_only',
+  'prompt_audit_setting.fallback_enabled',
+  'prompt_audit_setting.auto_ban_enabled',
+  'prompt_audit_setting.auto_ban_dry_run',
+  'prompt_audit_setting.auto_ban_exempt_admin',
 ];
 
 const TAB_CONFIG = 'config';

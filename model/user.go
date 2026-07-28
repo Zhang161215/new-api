@@ -1473,3 +1473,32 @@ func enrichUsersInviteStats(tx *gorm.DB, users []*User) error {
 
 	return nil
 }
+
+// DisableUserByAudit 因内容审核自动封禁某用户，返回是否真的发生了状态变更。
+//
+// 不复用 (user *User) Update：那里用 Updates(结构体) 会跳过零值，
+// 而且会连带写入调用方传入的其它字段，风险面比这里需要的大得多。
+// 这里只动 status 一列，并显式刷新用户缓存，否则已缓存的启用状态会让封禁在缓存过期前无效。
+func DisableUserByAudit(userId int) (bool, error) {
+	var user User
+	if err := DB.First(&user, userId).Error; err != nil {
+		return false, err
+	}
+	// 兜底：root 永不封禁，避免把站点管理员自己锁死
+	if user.Role == common.RoleRootUser {
+		return false, nil
+	}
+	if user.Status != common.UserStatusEnabled {
+		return false, nil
+	}
+	if err := DB.Model(&User{}).Where("id = ?", userId).
+		Update("status", common.UserStatusDisabled).Error; err != nil {
+		return false, err
+	}
+	user.Status = common.UserStatusDisabled
+	if err := updateUserCache(user); err != nil {
+		// 库已改成功，缓存刷新失败只记日志：缓存会自然过期，不该因此报失败
+		common.SysLog(fmt.Sprintf("自动封禁后刷新用户缓存失败 user=%d: %s", userId, err.Error()))
+	}
+	return true, nil
+}

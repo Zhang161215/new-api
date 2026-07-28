@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -163,7 +164,7 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
-	case "prompt_audit_setting.api_key":
+	case "prompt_audit_setting.api_key", "prompt_audit_setting.fallback_api_key":
 		// 挡住浏览器自动填充塞进来的账号名/密码，避免密钥被覆盖后审核持续 401 静默漏审
 		if err := ValidatePromptAuditAPIKey(option.Value.(string)); err != nil {
 			c.JSON(http.StatusOK, gin.H{
@@ -179,6 +180,18 @@ func UpdateOption(c *gin.Context) {
 				"message": err.Error(),
 			})
 			return
+		}
+	case "prompt_audit_setting.auto_ban_threshold":
+		// 自动封号不可逆，阈值 1 意味着单次命中即封号，误判代价极大
+		if n, convErr := strconv.Atoi(option.Value.(string)); convErr == nil && n == 1 {
+			cfg := operation_setting.GetPromptAuditSetting()
+			if cfg.AutoBanEnabled && !cfg.AutoBanDryRun {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": "阈值为 1 意味着单次命中即封号，误判代价极大。请调高阈值，或先开启「仅告警不封禁」观察。",
+				})
+				return
+			}
 		}
 	case "WeChatAuthEnabled":
 		if option.Value == "true" && common.WeChatServerAddress == "" {

@@ -164,3 +164,18 @@ func DeletePromptAuditLogsBefore(timestamp int64) (int64, error) {
 	}
 	return tx.RowsAffected, nil
 }
+
+// CountPromptAuditHitsInWindow 统计某用户在时间窗口内被拦截且置信度达标的命中次数。
+//
+// 用数据库而非内存计数：内存计数在进程重启后归零，用户只要卡着重启时间点就能绕过封号；
+// 而且多实例部署时内存计数各算各的，阈值实际被放大 N 倍。
+// blocked 与 confidence 双条件保证只统计"真的被拦下来的高置信度命中"，
+// 观察模式下的命中、以及审核失败记录（confidence 为负）都不会计入。
+func CountPromptAuditHitsInWindow(userId int, since int64, minConfidence float64) (int64, error) {
+	var count int64
+	err := DB.Model(&PromptAuditLog{}).
+		Where("user_id = ? AND created_at >= ? AND blocked = ? AND confidence >= ?",
+			userId, since, true, minConfidence).
+		Count(&count).Error
+	return count, err
+}
