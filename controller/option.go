@@ -163,6 +163,23 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "prompt_audit_setting.api_key":
+		// 挡住浏览器自动填充塞进来的账号名/密码，避免密钥被覆盖后审核持续 401 静默漏审
+		if err := ValidatePromptAuditAPIKey(option.Value.(string)); err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	case "prompt_audit_setting.notify_email":
+		if err := ValidatePromptAuditNotifyEmail(option.Value.(string)); err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
 	case "WeChatAuthEnabled":
 		if option.Value == "true" && common.WeChatServerAddress == "" {
 			c.JSON(http.StatusOK, gin.H{

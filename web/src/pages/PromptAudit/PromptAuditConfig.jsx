@@ -142,7 +142,42 @@ export default function PromptAuditConfig(props) {
     };
   }
 
+  // 提交前自查：把浏览器自动填充造成的脏值当场拦下，
+  // 否则密钥被账号名覆盖后审核会持续 401，而 fail_open 让请求静默漏审，很难察觉
+  function validateBeforeSave() {
+    const key = String(inputs[KEYS.apiKey] || '').trim();
+    if (key) {
+      if (/[\s]/.test(key)) {
+        return t('API Key 不能包含空格或换行，请检查是否粘贴了多余内容');
+      }
+      if (key.includes('@')) {
+        return t(
+          'API Key 不应包含 @，这看起来像邮箱或账号名（可能是浏览器自动填充导致），请重新粘贴密钥',
+        );
+      }
+      if (key.length < 20) {
+        return t('API Key 长度仅 {{n}} 字符，明显短于正常密钥，请确认是否填错', {
+          n: key.length,
+        });
+      }
+    }
+    const mails = String(inputs[KEYS.notifyEmail] || '').trim();
+    if (mails) {
+      const bad = mails
+        .split(/[,;\s\n]+/)
+        .filter(Boolean)
+        .find((m) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m));
+      if (bad) {
+        return t('收件邮箱 {{m}} 不是合法地址，请填完整地址或留空走站内通知', { m: bad });
+      }
+    }
+    return '';
+  }
+
   function onSubmit() {
+    const invalid = validateBeforeSave();
+    if (invalid) return showError(invalid);
+
     const updateArray = compareObjects(inputs, inputsRow);
     if (!updateArray.length) return showWarning(t('你似乎并没有修改什么'));
     const requestQueue = updateArray.map((item) =>
@@ -156,6 +191,15 @@ export default function PromptAuditConfig(props) {
       .then((res) => {
         if (res.includes(undefined)) {
           return showError(t('部分保存失败，请重试'));
+        }
+        // 后端校验不通过时返回 HTTP 200 + success:false，
+        // 原来只判 undefined，会把这种失败当成成功弹「保存成功」，
+        // 导致密钥被拒后管理员以为已生效——必须逐条看 success 并回显原因
+        const failed = res.filter((r) => !r?.data?.success);
+        if (failed.length) {
+          return showError(
+            failed[0]?.data?.message || t('部分保存失败，请重试'),
+          );
         }
         showSuccess(t('保存成功'));
         props.refresh();
@@ -499,6 +543,15 @@ export default function PromptAuditConfig(props) {
                 mode='password'
                 onChange={handleFieldChange(KEYS.apiKey)}
                 showClear
+                /* mode='password' 会让浏览器把这里当登录密码框，进而把保存的账号密码
+                   自动填充进来；管理员一点保存，密钥就被账号名覆盖，审核持续 401。
+                   new-password 是让浏览器不要填入已存凭据的标准做法。 */
+                autoComplete='new-password'
+                name='prompt-audit-api-key'
+                /* 部分密码管理器只认 data 属性，一并标注 */
+                data-lpignore='true'
+                data-1p-ignore='true'
+                data-form-type='other'
               />
             </Col>
           </Row>
@@ -620,6 +673,11 @@ export default function PromptAuditConfig(props) {
                 onChange={handleFieldChange(KEYS.notifyEmail)}
                 disabled={!enabled || !notifyEnabled}
                 showClear
+                /* 同样防自动填充：这里曾被填成用户名，导致告警邮件发不出去 */
+                autoComplete='off'
+                name='prompt-audit-notify-email'
+                data-lpignore='true'
+                data-1p-ignore='true'
               />
             </Col>
             <Col xs={24} sm={12} md={8}>
