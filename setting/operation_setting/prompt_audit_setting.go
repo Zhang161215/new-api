@@ -137,6 +137,43 @@ type PromptAuditSetting struct {
 	ScopeMessages int `json:"scope_messages"`
 	// RetentionDays 审核记录保留天数，超期的每日自动清理。<=0 表示不自动清理
 	RetentionDays int `json:"retention_days"`
+	// ===== 备用审核节点（主节点判定拿不到时接管）=====
+	// 线上实测：便宜的审核模型往往带平台级内容风控，遇到最恶劣的内容（如未成年人性内容）
+	// 会直接拒答 "The request was rejected because it was considered high risk"，
+	// 这种响应解析不出裁决，若按 fail-open 处理就等于把最危险的请求放行了。
+	// 因此主节点拿不到判定时改为回退备用节点复判，只有备用也失败才走 FailOpen。
+	FallbackEnabled bool `json:"fallback_enabled"`
+	// FallbackBaseURL 备用节点基址，留空则复用主节点 BaseURL
+	FallbackBaseURL string `json:"fallback_base_url"`
+	// FallbackAPIKey 备用节点密钥，留空则复用主节点 APIKey
+	FallbackAPIKey string `json:"fallback_api_key"`
+	// FallbackModel 备用节点模型，留空则不启用回退（必须与主节点不同才有意义）
+	FallbackModel string `json:"fallback_model"`
+	// ===== 命中违规自动封号 =====
+	// 封号不可逆且会直接断掉付费用户的服务，因此默认关闭，并设了多重闸门：
+	// 只算高置信度命中、管理员永不自动封、可先用「仅告警」模式观察一段时间再真封。
+	AutoBanEnabled bool `json:"auto_ban_enabled"`
+	// AutoBanThreshold 窗口内命中多少次触发封号，<=0 视为不启用
+	AutoBanThreshold int `json:"auto_ban_threshold"`
+	// AutoBanWindowMin 统计窗口（分钟），<=0 时按 60 处理。
+	// 用滑动窗口而非累计总数：老用户历史上偶发几次命中不该在某天突然被清算
+	AutoBanWindowMin int `json:"auto_ban_window_min"`
+	// AutoBanMinConfidence 计入封号统计的最低置信度，<=0 时回落到拦截阈值。
+	// 可设得比拦截阈值更高，只让确定无疑的命中参与封号计数
+	AutoBanMinConfidence float64 `json:"auto_ban_min_confidence"`
+	// AutoBanDryRun 干跑模式：只记录与告警，不真的改用户状态。
+	// 上线新阈值时先跑几天，确认不会误伤再关掉
+	AutoBanDryRun bool `json:"auto_ban_dry_run"`
+	// AutoBanExemptAdmin 是否豁免管理员及以上角色（默认 true，防止把自己封掉）
+	AutoBanExemptAdmin bool `json:"auto_ban_exempt_admin"`
+	// AutoBanExemptUsers 永不自动封的用户名白名单（逗号分隔），给大客户留后门
+	AutoBanExemptUsers string `json:"auto_ban_exempt_users"`
+	// DisableThinking 是否给审核请求带上关闭思考的参数：
+	//   auto（默认）按模型名自动判断（deepseek / mimo / qwen / glm 等推理模型）
+	//   always    一律带上，网关不支持时会自动去掉重试
+	//   never     一律不带
+	// 推理模型不关思考会把 token 预算耗在思考上，导致裁决 JSON 被截断
+	DisableThinking string `json:"disable_thinking"`
 	// PromptStorage 提示词留存策略：
 	//   all（默认）  每条记录都保存完整提示词，行为与旧版一致
 	//   hit_only     仅命中的记录保留内容；合规请求只留元数据，不落用户原文
@@ -170,6 +207,19 @@ var promptAuditSetting = PromptAuditSetting{
 	ScopeMessages:     4,
 	RetentionDays:     0,
 	PromptStorage:     PromptAuditStorageAll,
+	FallbackEnabled:   false,
+	FallbackBaseURL:   "",
+	FallbackAPIKey:    "",
+	FallbackModel:     "",
+	DisableThinking:   PromptAuditThinkingAuto,
+	// 自动封号默认全关：这是不可逆操作，必须由管理员显式开启
+	AutoBanEnabled:       false,
+	AutoBanThreshold:     5,
+	AutoBanWindowMin:     60,
+	AutoBanMinConfidence: 0,
+	AutoBanDryRun:        true, // 即使开了开关，默认也先干跑，避免一上线就误封
+	AutoBanExemptAdmin:   true,
+	AutoBanExemptUsers:   "",
 }
 
 func init() {
@@ -275,6 +325,130 @@ func (s *PromptAuditSetting) GetAuditScope() string {
 	default:
 		return PromptAuditScopeLastUser
 	}
+}
+
+// 关闭思考的策略取值
+const (
+	PromptAuditThinkingAuto   = "auto"
+	PromptAuditThinkingAlways = "always"
+	PromptAuditThinkingNever  = "never"
+)
+
+// promptAuditThinkingModels 需要显式关闭思考的模型关键字。
+// 这类模型会先输出一段推理再给结论，不关掉就可能把裁决 JSON 挤出 token 预算。
+var promptAuditThinkingModels = []string{"deepseek", "mimo", "qwen", "glm", "kimi", "thinking", "reason"}
+
+// ShouldDisableThinking 判断本次审核请求是否带上关闭思考的参数
+func (s *PromptAuditSetting) ShouldDisableThinking(model string) bool {
+	switch s.DisableThinking {
+	case PromptAuditThinkingAlways:
+		return true
+	case PromptAuditThinkingNever:
+		return false
+	}
+	// auto：按模型名匹配已知的推理模型
+	lower := strings.ToLower(model)
+	for _, kw := range promptAuditThinkingModels {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// FallbackReady 备用节点是否可用。模型名必填且不能与主节点相同，
+// 否则回退只是把同一个节点再打一次，没有意义。
+func (s *PromptAuditSetting) FallbackReady() bool {
+	if !s.FallbackEnabled {
+		return false
+	}
+	model := strings.TrimSpace(s.FallbackModel)
+	if model == "" {
+		return false
+	}
+	baseURL := strings.TrimSpace(s.FallbackBaseURL)
+	if baseURL == "" {
+		baseURL = s.BaseURL
+	}
+	// 同址同模型等于没有备用
+	return !(baseURL == s.BaseURL && model == s.Model)
+}
+
+// FallbackConfig 返回一份指向备用节点的配置副本，未单独配置的字段沿用主节点。
+// 返回副本而非修改原配置，避免并发下互相踩。
+func (s *PromptAuditSetting) FallbackConfig() *PromptAuditSetting {
+	c := *s
+	c.Model = strings.TrimSpace(s.FallbackModel)
+	if v := strings.TrimSpace(s.FallbackBaseURL); v != "" {
+		c.BaseURL = v
+	}
+	if v := strings.TrimSpace(s.FallbackAPIKey); v != "" {
+		c.APIKey = v
+	}
+	// 备用节点自身不再触发下一级回退，避免递归
+	c.FallbackEnabled = false
+	return &c
+}
+
+// AutoBanReady 自动封号是否配置完整可用
+func (s *PromptAuditSetting) AutoBanReady() bool {
+	return s.AutoBanEnabled && s.AutoBanThreshold > 0
+}
+
+// EffectiveAutoBanWindowMin 返回生效的统计窗口（分钟）
+func (s *PromptAuditSetting) EffectiveAutoBanWindowMin() int {
+	if s.AutoBanWindowMin <= 0 {
+		return 60
+	}
+	return s.AutoBanWindowMin
+}
+
+// EffectiveAutoBanMinConfidence 返回计入封号统计的最低置信度。
+// 未单独配置时用拦截阈值——即"被拦下来的才算一次"，不会把观察模式的低分命中也算进去
+func (s *PromptAuditSetting) EffectiveAutoBanMinConfidence() float64 {
+	if s.AutoBanMinConfidence > 0 {
+		return s.AutoBanMinConfidence
+	}
+	return s.Threshold
+}
+
+// AutoBanExemptUserList 返回豁免用户名列表
+func (s *PromptAuditSetting) AutoBanExemptUserList() []string {
+	out := make([]string, 0)
+	for _, part := range strings.FieldsFunc(s.AutoBanExemptUsers, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == ' '
+	}) {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+// IsAutoBanExemptUser 判断某用户名是否在白名单里（大小写不敏感，避免大小写差异导致误封）
+func (s *PromptAuditSetting) IsAutoBanExemptUser(username string) bool {
+	if username == "" {
+		return false
+	}
+	target := strings.ToLower(strings.TrimSpace(username))
+	for _, u := range s.AutoBanExemptUserList() {
+		if strings.ToLower(u) == target {
+			return true
+		}
+	}
+	return false
+}
+
+// CountsTowardAutoBan 判断一次审核结果是否计入封号统计。
+// 只有真正被拦下、且置信度达到门槛的命中才算——观察模式下的命中不应累积成封号。
+func (s *PromptAuditSetting) CountsTowardAutoBan(confidence float64, blocked bool) bool {
+	if !s.AutoBanReady() {
+		return false
+	}
+	if !blocked {
+		return false
+	}
+	return confidence >= s.EffectiveAutoBanMinConfidence()
 }
 
 // 提示词留存策略取值

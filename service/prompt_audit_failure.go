@@ -164,3 +164,39 @@ func promptAuditFailureHTML(cfg *operation_setting.PromptAuditSetting,
 	b.WriteString(`</div>`)
 	return b.String()
 }
+
+// ===== 备用节点回退统计 =====
+// 用于回答两个运营问题：主节点有多不可靠、回退有没有真的救回来。
+
+var (
+	promptAuditFallbackTotal      atomic.Int64 // 触发回退的次数
+	promptAuditFallbackModeration atomic.Int64 // 其中因风控拒答触发的次数
+	promptAuditFallbackOK         atomic.Int64 // 回退后成功拿到判定的次数
+)
+
+// recordPromptAuditFallback 记录一次回退触发，按主节点的失败类型分别计数
+func recordPromptAuditFallback(kind PromptAuditFailKind) {
+	promptAuditFallbackTotal.Add(1)
+	if kind == PromptAuditFailModeration {
+		promptAuditFallbackModeration.Add(1)
+	}
+}
+
+// recordPromptAuditFallbackSuccess 记录一次回退成功救回判定
+func recordPromptAuditFallbackSuccess() {
+	promptAuditFallbackOK.Add(1)
+}
+
+// GetPromptAuditFallbackStats 返回 (回退次数, 其中风控拒答触发数, 回退成功数)
+func GetPromptAuditFallbackStats() (int64, int64, int64) {
+	return promptAuditFallbackTotal.Load(),
+		promptAuditFallbackModeration.Load(),
+		promptAuditFallbackOK.Load()
+}
+
+// ResetPromptAuditFallbackStats 清零（仅测试用）
+func ResetPromptAuditFallbackStats() {
+	promptAuditFallbackTotal.Store(0)
+	promptAuditFallbackModeration.Store(0)
+	promptAuditFallbackOK.Store(0)
+}
