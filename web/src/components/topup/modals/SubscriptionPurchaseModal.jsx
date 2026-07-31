@@ -24,12 +24,11 @@ import {
   Typography,
   Card,
   Button,
-  Select,
   Divider,
   Tooltip,
 } from '@douyinfe/semi-ui';
 import { Crown, CalendarClock, Package } from 'lucide-react';
-import { SiStripe, SiWechat } from 'react-icons/si';
+import { SiStripe, SiWechat, SiAlipay } from 'react-icons/si';
 import { IconCreditCard } from '@douyinfe/semi-icons';
 import { renderQuota } from '../../../helpers';
 import { getCurrencyConfig } from '../../../helpers/render';
@@ -67,7 +66,9 @@ const SubscriptionPurchaseModal = ({
   const displayPrice = convertedPrice.toFixed(
     Number.isInteger(convertedPrice) ? 0 : 2,
   );
-  // 只有当管理员开启支付网关 AND 套餐配置了对应的支付ID时才显示
+  // 只有当管理员开启支付网关 AND 套餐配置了对应的支付ID时才显示。
+  // Stripe 的屏蔽统一在父组件 topup/index.jsx 里做（那里会把开关置 false
+  // 并从 payMethods 剔除），此处无需再判断，避免两处控制同一件事。
   const hasStripe = enableStripeTopUp && !!plan?.stripe_price_id;
   const hasCreem = enableCreemTopUp && !!plan?.creem_product_id;
   const hasEpay = enableOnlineTopUp && epayMethods.length > 0;
@@ -232,29 +233,54 @@ const SubscriptionPurchaseModal = ({
                 </Button>
               )}
 
-              {/* 易支付 */}
+              {/* 易支付：图标卡片式选择，与充值页 RechargeCard 的样式保持一致。
+                  原先是 Select 下拉 + 支付按钮，只有一个支付宝时也要先展开下拉，
+                  多一次无意义的点击且看不出是什么支付方式。 */}
               {hasEpay && (
-                <div className='flex gap-2'>
-                  <Select
-                    value={selectedEpayMethod}
-                    onChange={setSelectedEpayMethod}
-                    style={{ flex: 1 }}
-                    size='default'
-                    placeholder={t('选择支付方式')}
-                    optionList={epayMethods.map((m) => ({
-                      value: m.type,
-                      label: m.name || m.type,
-                    }))}
-                    disabled={purchaseLimitReached}
-                  />
+                <div className='space-y-2'>
+                  <div className='flex flex-wrap gap-2'>
+                    {epayMethods.map((m) => {
+                      const active = selectedEpayMethod === m.type;
+                      return (
+                        <Button
+                          key={m.type}
+                          theme={active ? 'solid' : 'outline'}
+                          type={active ? 'primary' : 'tertiary'}
+                          onClick={() => setSelectedEpayMethod(m.type)}
+                          disabled={purchaseLimitReached}
+                          icon={
+                            m.type === 'alipay' ? (
+                              <SiAlipay
+                                size={18}
+                                color={active ? '#fff' : '#1677FF'}
+                              />
+                            ) : m.type === 'wxpay' ? (
+                              <SiWechat
+                                size={18}
+                                color={active ? '#fff' : '#07C160'}
+                              />
+                            ) : (
+                              <IconCreditCard />
+                            )
+                          }
+                          className='!rounded-lg !px-4'
+                        >
+                          {m.name || m.type}
+                        </Button>
+                      );
+                    })}
+                  </div>
                   <Button
                     theme='solid'
                     type='primary'
+                    block
                     onClick={onPayEpay}
                     loading={paying}
                     disabled={!selectedEpayMethod || purchaseLimitReached}
                   >
-                    {t('支付')}
+                    {selectedEpayMethod
+                      ? `${t('立即支付')} ${symbol}${displayPrice}`
+                      : t('请选择支付方式')}
                   </Button>
                 </div>
               )}

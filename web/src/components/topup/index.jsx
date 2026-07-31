@@ -492,8 +492,21 @@ const TopUp = () => {
           // 如果启用了 Stripe 支付，添加到支付方法列表
           // 这个逻辑现在由后端处理，如果 Stripe 启用，后端会在 pay_methods 中包含它
 
+          // Stripe 通道当前不对外开放。
+          // 后端的 enable_stripe_topup 只判断凭据非空，而线上填的是占位值
+          // （填着它是为了规避「配置为空」时的安全问题，不能清空），
+          // 于是开关为 true、按钮亮着，用户点了必然支付失败。
+          // 在此统一屏蔽：既从支付方式列表剔除，也把开关置 false，
+          // 这样充值页（RechargeCard）与订阅购买弹窗（SubscriptionPurchaseModal）
+          // 一处生效、不会漏。将来接入真实凭据时，把这一段删掉即可恢复。
+          const STRIPE_CHANNEL_AVAILABLE = false;
+          if (!STRIPE_CHANNEL_AVAILABLE) {
+            payMethods = payMethods.filter((m) => m?.type !== 'stripe');
+          }
+
           setPayMethods(payMethods);
-          const enableStripeTopUp = data.enable_stripe_topup || false;
+          const enableStripeTopUp =
+            STRIPE_CHANNEL_AVAILABLE && (data.enable_stripe_topup || false);
           const enableOnlineTopUp = data.enable_online_topup || false;
           const enableCreemTopUp = data.enable_creem_topup || false;
           const minTopUpValue = enableOnlineTopUp
