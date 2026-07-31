@@ -324,23 +324,25 @@ func calcNextResetTime(base time.Time, plan *SubscriptionPlan, endUnix int64) in
 	}
 	var next time.Time
 	switch period {
+	// 以下周期均以 base（上一次重置时点，首次为订阅起始时刻）为锚点向后推，
+	// 而非对齐到自然日 / 周一 / 月初。
+	//
+	// 原实现按日历对齐，使「哪天下单」不影响下次重置时点，用户能凭一份钱
+	// 拿到两份额度。实测（TZ=Asia/Shanghai）：
+	//   月卡 8-31 23:00 购买 → 首次重置 9-01 00:00，间隔 0.0 天
+	//   月卡 8-20 14:30 购买 → 首次重置 9-01 00:00，间隔 11.4 天
+	//   周卡 周日 20:00 购买 → 首次重置 周一 00:00，间隔 0.2 天
+	// 月底 / 周日下单的人几小时后额度就翻倍。改为购买日锚定后，
+	// 8-20 14:30 买的月卡下次重置为 9-20 14:30，恰好一个周期。
 	case SubscriptionResetDaily:
-		next = time.Date(base.Year(), base.Month(), base.Day(), 0, 0, 0, 0, base.Location()).
-			AddDate(0, 0, 1)
+		next = base.AddDate(0, 0, 1)
 	case SubscriptionResetWeekly:
-		// Align to next Monday 00:00
-		weekday := int(base.Weekday()) // Sunday=0
-		// Convert to Monday=1..Sunday=7
-		if weekday == 0 {
-			weekday = 7
-		}
-		daysUntil := 8 - weekday
-		next = time.Date(base.Year(), base.Month(), base.Day(), 0, 0, 0, 0, base.Location()).
-			AddDate(0, 0, daysUntil)
+		next = base.AddDate(0, 0, 7)
 	case SubscriptionResetMonthly:
-		// Align to first day of next month 00:00
-		next = time.Date(base.Year(), base.Month(), 1, 0, 0, 0, 0, base.Location()).
-			AddDate(0, 1, 0)
+		// AddDate 会规范化溢出日期：1-31 加一个月得到 3-02/03（2 月无 31 日）。
+		// 这对计费无害 —— 周期长度仍约一个月，不会缩短或翻倍；且下一轮以新
+		// base 继续推进，不累积漂移。
+		next = base.AddDate(0, 1, 0)
 	case SubscriptionResetCustom:
 		if plan.QuotaResetCustomSeconds <= 0 {
 			return 0
