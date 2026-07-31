@@ -408,6 +408,7 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`quota_reset_custom_seconds`" + ` bigint DEFAULT 0,
 ` + "`created_at`" + ` bigint,
 ` + "`updated_at`" + ` bigint,
+` + "`deleted_at`" + ` datetime,
 PRIMARY KEY (` + "`id`" + `)
 )`
 		return DB.Exec(createSQL).Error
@@ -441,6 +442,11 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "quota_reset_custom_seconds", DDL: "`quota_reset_custom_seconds` bigint DEFAULT 0"},
 		{Name: "created_at", DDL: "`created_at` bigint"},
 		{Name: "updated_at", DDL: "`updated_at` bigint"},
+		// 套餐软删除标记。SQLite 走手工建表分支（glebarez/sqlite 解析不了
+		// decimal(10,6)），不经 AutoMigrate，所以这一列必须在此显式补上，
+		// 否则 GORM 自动附加的 deleted_at IS NULL 会让所有套餐查询报
+		// no such column 而整站崩溃。
+		{Name: "deleted_at", DDL: "`deleted_at` datetime"},
 	}
 	for _, col := range required {
 		if _, ok := existing[col.Name]; ok {

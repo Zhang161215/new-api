@@ -45,7 +45,10 @@ func ensureSubscriptionPlanMigrated(t *testing.T) {
 		quota_reset_custom_seconds INTEGER DEFAULT 0,
 		enabled NUMERIC DEFAULT 1,
 		created_at INTEGER,
-		updated_at INTEGER
+		updated_at INTEGER,
+		-- SubscriptionPlan 带 gorm.DeletedAt（软删除），GORM 会给所有查询
+		-- 自动附加 deleted_at IS NULL，缺这一列会让计费路径取套餐直接报错
+		deleted_at DATETIME
 	)`).Error)
 	require.NoError(t, model.DB.AutoMigrate(&model.SubscriptionPreConsumeRecord{}))
 	subscriptionPlanTableOnce = true

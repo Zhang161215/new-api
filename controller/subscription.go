@@ -15,6 +15,9 @@ import (
 
 type SubscriptionPlanDTO struct {
 	Plan model.SubscriptionPlan `json:"plan"`
+	// Deleted 表示该套餐已被软删除（仅管理员列表会出现 true）。
+	// 用户端接口永远拿不到已删套餐，故该字段对用户端恒为 false。
+	Deleted bool `json:"deleted"`
 }
 
 type BillingPreferenceRequest struct {
@@ -43,13 +46,9 @@ func GetSubscriptionSelf(c *gin.Context) {
 	settingMap, _ := model.GetUserSetting(userId, false)
 	pref := common.NormalizeBillingPreference(settingMap.BillingPreference)
 
-	// Get all subscriptions (including expired)
-	allSubscriptions, err := model.GetAllUserSubscriptions(userId)
-	if err != nil {
-		allSubscriptions = []model.SubscriptionSummary{}
-	}
-
-	// Get active subscriptions for backward compatibility
+	// 用户端只返回生效中的订阅：过期/取消的订阅不下发到浏览器，
+	// 用户在账号信息里看不到（数据根本不出后端）。管理员查历史走
+	// AdminListUserSubscriptions，不受此处影响 —— 满足「只有管理员能看」。
 	activeSubscriptions, err := model.GetAllActiveUserSubscriptions(userId)
 	if err != nil {
 		activeSubscriptions = []model.SubscriptionSummary{}
@@ -57,8 +56,10 @@ func GetSubscriptionSelf(c *gin.Context) {
 
 	common.ApiSuccess(c, gin.H{
 		"billing_preference": pref,
-		"subscriptions":      activeSubscriptions, // all active subscriptions
-		"all_subscriptions":  allSubscriptions,    // all subscriptions including expired
+		"subscriptions":      activeSubscriptions, // 生效中的订阅
+		// all_subscriptions 保留字段名以兼容旧前端，但只含生效订阅，
+		// 不再回传已过期记录（原先前端据此显示「N 个已过期」）。
+		"all_subscriptions": activeSubscriptions,
 	})
 }
 
@@ -90,14 +91,18 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 
 func AdminListSubscriptionPlans(c *gin.Context) {
 	var plans []model.SubscriptionPlan
-	if err := model.DB.Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
+	// Unscoped() 带出已软删除的套餐：管理员需要看到它们，
+	// 且用户订阅弹窗靠这份全量列表把 plan_id 映射成套餐名，
+	// 不带出的话历史订单的套餐名会变空。
+	if err := model.DB.Unscoped().Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
 		result = append(result, SubscriptionPlanDTO{
-			Plan: p,
+			Plan:    p,
+			Deleted: p.DeletedAt.Valid,
 		})
 	}
 	common.ApiSuccess(c, result)
@@ -404,7 +409,10 @@ func AdminUpdateUserSubscriptionEndTime(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{"message": "到期时间已更新"})
 }
 
-// AdminDeleteSubscriptionPlan deletes a subscription plan if no active subscriptions reference it.
+// AdminDeleteSubscriptionPlan 软删除订阅套餐（若无活跃订阅引用）。
+// SubscriptionPlan 带 gorm.DeletedAt，故此处 Delete() 只置 deleted_at，
+// 不物理删除：用户端从此看不到、也无法下单该套餐，而管理员列表
+// （Unscoped）与历史订单的套餐名保持可见。
 func AdminDeleteSubscriptionPlan(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	if id <= 0 {
@@ -423,6 +431,7 @@ func AdminDeleteSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "该套餐下仍有活跃订阅，无法删除")
 		return
 	}
+	// gorm.DeletedAt 使这里成为软删除（UPDATE ... SET deleted_at=...）
 	if err := model.DB.Where("id = ?", id).Delete(&model.SubscriptionPlan{}).Error; err != nil {
 		common.ApiError(c, err)
 		return

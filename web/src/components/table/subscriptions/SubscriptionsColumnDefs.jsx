@@ -228,8 +228,36 @@ const renderPaymentConfig = (text, record, t, enableEpay) => {
   );
 };
 
-const renderOperations = (text, record, { openEdit, setPlanEnabled, t }) => {
+const renderOperations = (
+  text,
+  record,
+  { openEdit, setPlanEnabled, deletePlan, t },
+) => {
   const isEnabled = record?.plan?.enabled;
+  const isDeleted = !!record?.deleted;
+
+  // 已软删除的套餐：用户端已不可见、也无法下单，编辑/启停对它没有意义
+  // （后端那两处 update 会被 deleted_at IS NULL 静默过滤），
+  // 因此只展示状态、不给操作入口，避免管理员点了没反应。
+  if (isDeleted) {
+    return (
+      <Tag color='white' shape='circle' type='light'>
+        {t('已删除')}
+      </Tag>
+    );
+  }
+
+  const handleDelete = () => {
+    Modal.confirm({
+      title: t('确认删除'),
+      content: t(
+        '删除后该套餐在用户端不再可见、也无法再被购买；历史订单与套餐名保留，管理员仍可查看。若仍有生效中的订阅将无法删除。是否继续？',
+      ),
+      centered: true,
+      okType: 'danger',
+      onOk: () => deletePlan(record),
+    });
+  };
 
   const handleToggle = () => {
     if (isEnabled) {
@@ -273,6 +301,9 @@ const renderOperations = (text, record, { openEdit, setPlanEnabled, t }) => {
           {t('启用')}
         </Button>
       )}
+      <Button theme='light' type='danger' size='small' onClick={handleDelete}>
+        {t('删除')}
+      </Button>
     </Space>
   );
 };
@@ -281,6 +312,7 @@ export const getSubscriptionsColumns = ({
   t,
   openEdit,
   setPlanEnabled,
+  deletePlan,
   enableEpay,
 }) => {
   return [
@@ -351,7 +383,12 @@ export const getSubscriptionsColumns = ({
       fixed: 'right',
       width: 160,
       render: (text, record) =>
-        renderOperations(text, record, { openEdit, setPlanEnabled, t }),
+        renderOperations(text, record, {
+          openEdit,
+          setPlanEnabled,
+          deletePlan,
+          t,
+        }),
     },
   ];
 };

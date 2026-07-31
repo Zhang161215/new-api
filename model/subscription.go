@@ -177,6 +177,14 @@ type SubscriptionPlan struct {
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
+
+	// 软删除标记。删除套餐时只置 deleted_at，不物理删除：
+	//   - 用户端 / 购买路径：GORM 默认查询自动加 deleted_at IS NULL，天然过滤，
+	//     已删套餐既不展示也不能被下单；
+	//   - 管理员列表：显式 Unscoped() 带出，历史订单的套餐名得以保留。
+	// json:"-" 避免 gorm.DeletedAt 的 {Time,Valid} 结构污染接口，
+	// 是否已删由 DTO 的 Deleted 字段单独表达。
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 func (p *SubscriptionPlan) BeforeCreate(tx *gorm.DB) error {
