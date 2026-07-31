@@ -399,6 +399,70 @@ func getUserGroupByIdTx(tx *gorm.DB, userId int) (string, error) {
 	return group, nil
 }
 
+// defaultUserGroup 是订阅全部失效后用户应回落到的兜底分组。
+const defaultUserGroup = "default"
+
+// resolveDowngradeTargetTx 计算用户失去 fromGroup 权限后真正该回落到的分组。
+//
+// 取代原先「读最后一条已过期订阅的 prev_user_group」的做法，修掉两个缺陷：
+//
+//  1. prev_user_group 为空就整个放弃回落。早期订阅没记这个字段，
+//     线上因此有 41 个用户永久卡在付费分组白用。现在空值兜底到 default。
+//
+//  2. 只回落一层。用户叠加买过多层订阅时（A 升到 GPT_Month，之后 B 升到
+//     Claude_Aws 且把 prev 记成 GPT_Month），B 过期只会退到 GPT_Month，
+//     而 A 其实也早过期了，于是停在中间层继续白用。这里沿着 prev 链一路
+//     往下追，直到某一层还有生效订阅撑着，或再没有订阅能解释当前分组。
+//
+// 安全边界：若没有任何订阅记录把用户升到某个分组，说明那是管理员手动设置的，
+// 直接停下不动，避免误伤白名单用户。maxHops 防御环形数据。
+func resolveDowngradeTargetTx(tx *gorm.DB, userId int, fromGroup string, now int64) (string, error) {
+	const maxHops = 8
+	group := strings.TrimSpace(fromGroup)
+	if group == "" {
+		return "", nil
+	}
+	for i := 0; i < maxHops; i++ {
+		// 该分组仍有生效订阅撑着 —— 停在这一层
+		var active UserSubscription
+		q := tx.Where("user_id = ? AND status = ? AND end_time > ? AND upgrade_group = ?",
+			userId, "active", now, group).
+			Limit(1).
+			Find(&active)
+		if q.Error != nil {
+			return "", q.Error
+		}
+		if q.RowsAffected > 0 {
+			return group, nil
+		}
+
+		// 找把用户升到该分组、且已失效的订阅
+		var expired UserSubscription
+		q = tx.Where("user_id = ? AND status <> ? AND upgrade_group = ?",
+			userId, "active", group).
+			Order("end_time desc, id desc").
+			Limit(1).
+			Find(&expired)
+		if q.Error != nil {
+			return "", q.Error
+		}
+		if q.RowsAffected == 0 {
+			// 没有订阅能解释这个分组 → 管理员手动设的，不动
+			return group, nil
+		}
+
+		prev := strings.TrimSpace(expired.PrevUserGroup)
+		if prev == "" {
+			prev = defaultUserGroup
+		}
+		if prev == group {
+			return group, nil
+		}
+		group = prev
+	}
+	return group, nil
+}
+
 func downgradeUserGroupForSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now int64) (string, error) {
 	if tx == nil || sub == nil {
 		return "", errors.New("invalid downgrade args")
@@ -423,7 +487,10 @@ func downgradeUserGroupForSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now
 	if activeQuery.Error == nil && activeQuery.RowsAffected > 0 {
 		return "", nil
 	}
-	prevGroup := strings.TrimSpace(sub.PrevUserGroup)
+	prevGroup, err := resolveDowngradeTargetTx(tx, sub.UserId, currentGroup, now)
+	if err != nil {
+		return "", err
+	}
 	if prevGroup == "" || prevGroup == currentGroup {
 		return "", nil
 	}
@@ -987,25 +1054,17 @@ func ExpireDueSubscriptions(limit int) (int, error) {
 			}
 
 			// No active upgraded subscription, downgrade to previous group if needed.
-			var lastExpired UserSubscription
-			expiredQuery := tx.Where("user_id = ? AND status = ? AND upgrade_group <> ''",
-				userId, "expired").
-				Order("end_time desc, id desc").
-				Limit(1).
-				Find(&lastExpired)
-			if expiredQuery.Error != nil || expiredQuery.RowsAffected == 0 {
-				return nil
-			}
-			upgradeGroup := strings.TrimSpace(lastExpired.UpgradeGroup)
-			prevGroup := strings.TrimSpace(lastExpired.PrevUserGroup)
-			if upgradeGroup == "" || prevGroup == "" {
-				return nil
-			}
+			// 顺着 prev 链一路回落：既处理 prev_user_group 为空的历史数据，
+			// 也处理多层订阅叠加时只退一层就停住的情况，详见 resolveDowngradeTargetTx。
 			currentGroup, err := getUserGroupByIdTx(tx, userId)
 			if err != nil {
 				return err
 			}
-			if currentGroup != upgradeGroup || currentGroup == prevGroup {
+			prevGroup, err := resolveDowngradeTargetTx(tx, userId, currentGroup, now)
+			if err != nil {
+				return err
+			}
+			if prevGroup == "" || prevGroup == currentGroup {
 				return nil
 			}
 			if err := tx.Model(&User{}).Where("id = ?", userId).
