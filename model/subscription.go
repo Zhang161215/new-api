@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/cachex"
 	"github.com/samber/hot"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Subscription duration units
@@ -595,7 +596,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 	var upgradeGroup string
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
 		}
 		if order.Status == common.TopUpStatusSuccess {
@@ -690,7 +691,7 @@ func ExpireSubscriptionOrder(tradeNo string) error {
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
 		}
 		if order.Status != common.TopUpStatusPending {
@@ -888,7 +889,7 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 	var userId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 			return err
 		}
@@ -933,7 +934,7 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 	var userId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 			return err
 		}
@@ -990,7 +991,7 @@ func AdminResetUserSubscriptionQuota(userSubscriptionId int) error {
 	now := GetDBTimestamp()
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ? AND status = ?", userSubscriptionId, "active").
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND status = ?", userSubscriptionId, "active").
 			First(&sub).Error; err != nil {
 			return fmt.Errorf("订阅记录不存在或已失效: %w", err)
 		}
@@ -1190,7 +1191,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		}
 
 		var subs []UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
 			Order("end_time asc, id asc").
 			Find(&subs).Error; err != nil {
@@ -1223,12 +1224,41 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 				return err
 			}
 			usedBefore := sub.AmountUsed
-			if sub.AmountTotal > 0 {
-				remain := sub.AmountTotal - usedBefore
-				if remain < amount {
-					continue
-				}
+			if sub.AmountTotal > 0 && sub.AmountTotal-usedBefore < amount {
+				// 快速跳过：余额明显不足时不必尝试原子更新
+				continue
 			}
+
+			// 原子扣减额度：把「余额是否够」的判断下推到 WHERE 里，由数据库保证。
+			//
+			// 这里不能用「读 sub.AmountUsed → 判断 → sub.AmountUsed+=amount → Save」，
+			// 那是读-改-写竞态：两个并发请求都读到同一个 amount_used、都通过判断、
+			// 都写回同一个绝对值，其中一次消耗会凭空消失（订阅额度被白嫖）。
+			// 原本靠 tx.Clauses(clause.Locking{Strength: "UPDATE"}) 加行锁来防，
+			// 但那是 GORM v1 的 API，本项目用 GORM v2，该 key 无人读取、
+			// 静默失效（用生产 PostgreSQL 方言 DryRun 实测：SQL 中无 FOR UPDATE）。
+			//
+			// 改为条件更新后不再依赖行锁：并发下只有一个能改到行，另一个
+			// RowsAffected=0 从而换下一个候选订阅。同时用 gorm.Expr 做相对增量，
+			// 避免 Save 写全字段覆盖并发的额度重置结果（amount_used/last_reset_time）。
+			updateRes := tx.Model(&UserSubscription{}).
+				Where("id = ?", sub.Id).
+				Where("amount_total = 0 OR amount_used + ? <= amount_total", amount).
+				Updates(map[string]interface{}{
+					"amount_used": gorm.Expr("amount_used + ?", amount),
+					"updated_at":  common.GetTimestamp(),
+				})
+			if updateRes.Error != nil {
+				return updateRes.Error
+			}
+			if updateRes.RowsAffected == 0 {
+				// 并发竞争失败或余额已被其他请求耗尽 —— 换下一个候选订阅
+				continue
+			}
+
+			// 额度已确实扣减，再建幂等记录。
+			// 顺序不能颠倒：若先建记录后扣额度，一旦扣减失败，记录已存在，
+			// 后续同 requestId 的重试会走幂等分支、误认为已扣费成功。
 			record := &SubscriptionPreConsumeRecord{
 				RequestId:          requestId,
 				UserId:             userId,
@@ -1239,27 +1269,41 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			if err := tx.Create(record).Error; err != nil {
 				var dup SubscriptionPreConsumeRecord
 				if err2 := tx.Where("request_id = ?", requestId).First(&dup).Error; err2 == nil {
+					// 同 requestId 已有记录：本次的额度扣减属于重复执行，必须回滚，
+					// 否则一个请求会扣两次额度。
+					if err3 := tx.Model(&UserSubscription{}).
+						Where("id = ?", sub.Id).
+						Updates(map[string]interface{}{
+							"amount_used": gorm.Expr("amount_used - ?", amount),
+							"updated_at":  common.GetTimestamp(),
+						}).Error; err3 != nil {
+						return err3
+					}
 					if dup.Status == "refunded" {
 						return errors.New("subscription pre-consume already refunded")
 					}
 					returnValue.UserSubscriptionId = sub.Id
 					returnValue.PreConsumed = dup.PreConsumed
 					returnValue.AmountTotal = sub.AmountTotal
-					returnValue.AmountUsedBefore = sub.AmountUsed
-					returnValue.AmountUsedAfter = sub.AmountUsed
+					returnValue.AmountUsedBefore = usedBefore
+					returnValue.AmountUsedAfter = usedBefore
 					return nil
 				}
 				return err
 			}
-			sub.AmountUsed += amount
-			if err := tx.Save(&sub).Error; err != nil {
+
+			// 回读真实值：并发下 amount_used 可能已被其他请求推进，
+			// usedBefore+amount 不一定等于库中现值，而调用方要用它算剩余额度。
+			var fresh UserSubscription
+			if err := tx.Select("amount_used", "amount_total").
+				Where("id = ?", sub.Id).First(&fresh).Error; err != nil {
 				return err
 			}
 			returnValue.UserSubscriptionId = sub.Id
 			returnValue.PreConsumed = amount
-			returnValue.AmountTotal = sub.AmountTotal
+			returnValue.AmountTotal = fresh.AmountTotal
 			returnValue.AmountUsedBefore = usedBefore
-			returnValue.AmountUsedAfter = sub.AmountUsed
+			returnValue.AmountUsedAfter = fresh.AmountUsed
 			return nil
 		}
 		return fmt.Errorf("subscription quota insufficient, need=%d", amount)
@@ -1277,7 +1321,7 @@ func RefundSubscriptionPreConsume(requestId string) error {
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var record SubscriptionPreConsumeRecord
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("request_id = ?", requestId).First(&record).Error; err != nil {
 			return err
 		}
@@ -1290,7 +1334,7 @@ func RefundSubscriptionPreConsume(requestId string) error {
 		}
 		// Use inline delta update within existing transaction to avoid nested transactions
 		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("id = ?", record.UserSubscriptionId).
 			First(&sub).Error; err != nil {
 			return err
@@ -1333,7 +1377,7 @@ func ResetDueSubscriptions(limit int) (int, error) {
 		}
 		err = DB.Transaction(func(tx *gorm.DB) error {
 			var locked UserSubscription
-			if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 				Where("id = ? AND next_reset_time > 0 AND next_reset_time <= ?", subCopy.Id, now).
 				First(&locked).Error; err != nil {
 				return nil
@@ -1400,7 +1444,7 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("id = ?", userSubscriptionId).
 			First(&sub).Error; err != nil {
 			return err

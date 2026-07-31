@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -149,7 +150,7 @@ func ReleaseAffRebateById(id int, operatorId int) (bool, error) {
 	var released bool
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var r AffRebate
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", id).First(&r).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", id).First(&r).Error; err != nil {
 			return err
 		}
 		if r.Status != AffRebateStatusPending {
@@ -213,7 +214,7 @@ func ReleaseDueAffRebates(batch int) (int, error) {
 func RevokeAffRebateById(id int, operatorId int, reason string) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var r AffRebate
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", id).First(&r).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", id).First(&r).Error; err != nil {
 			return err
 		}
 		if r.Status == AffRebateStatusRevoked {
