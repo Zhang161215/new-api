@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -262,6 +264,61 @@ func (s *BillingSession) syncRelayInfo() {
 // NewBillingSession 工厂 — 根据计费偏好创建会话并处理回退
 // ---------------------------------------------------------------------------
 
+// demoteSpecialRatioForWalletFallback 在「订阅额度耗尽、回落钱包」时把计价倍率
+// 从分组特殊倍率（GroupGroupRatio）降回常规分组倍率（GroupRatio），
+// 并按比例缩放预扣费额度，返回新的预扣费额度。
+//
+// 背景：订阅套餐把用户升到 Codex_GPT_PRO 这类分组，同时用 GroupGroupRatio
+// 给「该分组用该分组令牌」配了 1 倍，使订阅额度按 1:1 消耗、便于按套餐总额定价。
+// 但订阅额度耗尽后请求会回落钱包，而倍率早在 relay/helper/price.go 的
+// HandleGroupRatio 里就锁定成 1 了 —— 用户改用钱包付费时被按 1 倍扣，
+// 比常规 0.2 倍贵 5 倍。
+//
+// 为什么在这里改而不在 HandleGroupRatio 里预判：
+// PreConsumeUserSubscription 会先执行 maybeResetUserSubscriptionWithPlanTx
+// （按周期重置额度）再判断余额，属于惰性重置。若在算倍率时提前查库判断
+// 「订阅还有没有额度」，会读到「该重置但尚未重置」的旧值，把有额度误判成耗尽，
+// 导致月卡用户恰好在重置时点被扣钱包。等到这里资金源已经确定，判断是准确的。
+//
+// 同时缩放 preConsumedQuota 的原因：quota 与 groupRatio 成正比，若仍按 1 倍
+// 预扣费，tryWallet 里 `userQuota-preConsumedQuota < 0` 的检查会把
+// 「钱包够付 0.2 倍、不够付 1 倍」的用户误拒。结算阶段虽有差额返还，
+// 但那时请求已经被拒了。
+func demoteSpecialRatioForWalletFallback(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int) int {
+	gri := &relayInfo.PriceData.GroupRatioInfo
+	// 只处理「确实套用了特殊倍率」的情况；未套用时无需调整
+	if !gri.HasSpecialRatio || gri.GroupRatio <= 0 {
+		return preConsumedQuota
+	}
+	normalRatio := ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
+	specialRatio := gri.GroupRatio
+	if normalRatio == specialRatio {
+		return preConsumedQuota
+	}
+
+	newPreConsumed := preConsumedQuota
+	if preConsumedQuota > 0 {
+		scaled := float64(preConsumedQuota) * normalRatio / specialRatio
+		newPreConsumed = int(math.Round(scaled))
+		// 预扣费按 1 计费的最小单位兜底：原本要预扣费就不应缩放成 0，
+		// 否则 shouldTrust/差额结算的语义会与「按次计费」混淆。
+		if newPreConsumed < 1 {
+			newPreConsumed = 1
+		}
+	}
+
+	gri.GroupRatio = normalRatio
+	gri.GroupSpecialRatio = -1
+	gri.HasSpecialRatio = false
+
+	logger.LogInfo(c, fmt.Sprintf(
+		"用户 %d 订阅额度已耗尽，回落钱包并恢复常规分组倍率 (usingGroup=%s, %.4g → %.4g, 预扣费 %d → %d)",
+		relayInfo.UserId, relayInfo.UsingGroup, specialRatio, normalRatio,
+		preConsumedQuota, newPreConsumed))
+
+	return newPreConsumed
+}
+
 // NewBillingSession 根据用户计费偏好创建 BillingSession，处理 subscription_first / wallet_first 的回退。
 func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int) (*BillingSession, *types.NewAPIError) {
 	if relayInfo == nil {
@@ -363,6 +420,11 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		session, apiErr := trySubscription()
 		if apiErr != nil {
 			if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
+				// 订阅额度耗尽 → 回落钱包。此时必须把订阅专用的分组特殊倍率
+				// 降回常规分组倍率，否则用户会以订阅倍率（如 1）扣钱包，
+				// 而不是常规优惠倍率（如 0.2）。tryWallet 闭包捕获的是
+				// preConsumedQuota 变量本身，重新赋值即可让其使用缩放后的值。
+				preConsumedQuota = demoteSpecialRatioForWalletFallback(c, relayInfo, preConsumedQuota)
 				return tryWallet()
 			}
 			return nil, apiErr
