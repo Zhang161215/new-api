@@ -90,11 +90,18 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 // ---- Admin APIs ----
 
 func AdminListSubscriptionPlans(c *gin.Context) {
+	// 默认不返回已删除的套餐 —— 管理员删掉就是为了让它从列表里消失。
+	// 仅当显式 ?include_deleted=true 时才带出，用于历史订单把 plan_id
+	// 还原成套餐名（否则历史记录只能显示 #123）。
+	includeDeleted := c.Query("include_deleted") == "true"
+
+	query := model.DB.Order("sort_order desc, id desc")
+	if includeDeleted {
+		query = model.DB.Unscoped().Order("sort_order desc, id desc")
+	}
+
 	var plans []model.SubscriptionPlan
-	// Unscoped() 带出已软删除的套餐：管理员需要看到它们，
-	// 且用户订阅弹窗靠这份全量列表把 plan_id 映射成套餐名，
-	// 不带出的话历史订单的套餐名会变空。
-	if err := model.DB.Unscoped().Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
+	if err := query.Find(&plans).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}

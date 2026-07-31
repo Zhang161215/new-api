@@ -236,9 +236,9 @@ const renderOperations = (
   const isEnabled = record?.plan?.enabled;
   const isDeleted = !!record?.deleted;
 
-  // 已软删除的套餐：用户端已不可见、也无法下单，编辑/启停对它没有意义
-  // （后端那两处 update 会被 deleted_at IS NULL 静默过滤），
-  // 因此只展示状态、不给操作入口，避免管理员点了没反应。
+  // 防御性分支：本列表默认已不返回已删除的套餐（后端需显式
+  // ?include_deleted=true 才带出）。万一拿到了，也不给编辑/启停入口，
+  // 因为那两处 update 会被 deleted_at IS NULL 静默过滤，点了没反应。
   if (isDeleted) {
     return (
       <Tag color='white' shape='circle' type='light'>
@@ -251,7 +251,7 @@ const renderOperations = (
     Modal.confirm({
       title: t('确认删除'),
       content: t(
-        '删除后该套餐在用户端不再可见、也无法再被购买；历史订单与套餐名保留，管理员仍可查看。若仍有生效中的订阅将无法删除。是否继续？',
+        '删除后该套餐将从本列表移除，用户端也不再可见、无法再被购买。已购买的历史订单不受影响，仍会正常显示该套餐名。若仍有生效中的订阅将无法删除。是否继续？',
       ),
       centered: true,
       okType: 'danger',

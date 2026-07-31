@@ -144,19 +144,28 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
   }, [subs, currentPage]);
 
   const planOptions = useMemo(() => {
-    return (plans || []).map((p) => ({
-      label: `${p?.plan?.title || ''} (${convertUSDToCurrency(
-        Number(p?.plan?.price_amount || 0),
-        2,
-      )})`,
-      value: p?.plan?.id,
-    }));
+    // 已删除的套餐不能再被开通（后端也会以 record not found 拒绝），
+    // 故仅从下拉选项中剔除；planTitleMap 仍保留它们用于历史展示。
+    return (plans || [])
+      .filter((p) => !p?.deleted)
+      .map((p) => ({
+        label: `${p?.plan?.title || ''} (${convertUSDToCurrency(
+          Number(p?.plan?.price_amount || 0),
+          2,
+        )})`,
+        value: p?.plan?.id,
+      }));
   }, [plans]);
 
   const loadPlans = async () => {
     setPlansLoading(true);
     try {
-      const res = await API.get('/api/subscription/admin/plans');
+      // 带上已删除的套餐：历史订阅要靠 planTitleMap 把 plan_id 还原成
+      // 套餐名，否则删过的套餐在历史记录里只会显示 #123。
+      // 「新增订阅」的下拉另行过滤（planOptions），不会选到已删套餐。
+      const res = await API.get(
+        '/api/subscription/admin/plans?include_deleted=true',
+      );
       if (res.data?.success) {
         setPlans(res.data.data || []);
       } else {
