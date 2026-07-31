@@ -864,13 +864,19 @@ env_key = "CRS_OAI_KEY"`,
             <div className='nx-plans-grid'>
               {planCards.map(({ plan, type }) => {
                 const totalAmount = Number(plan?.total_amount || 0);
+                // 额度标签必须跟随套餐真实的重置周期。
+                // 后端取值：daily / weekly / monthly / custom / never，
+                // 原实现只判断了 daily 与 never，其余（含月卡常用的 weekly）
+                // 都掉进兜底分支被写死成「每日额度」，导致每周重置的月卡
+                // 在首页显示成每日额度。
+                const quotaLabelMap = {
+                  daily: t('每日额度'),
+                  weekly: t('每周额度'),
+                  monthly: t('每月额度'),
+                  custom: t('周期额度'),
+                };
                 const quotaLabel =
-                  plan?.quota_reset_period === 'daily'
-                    ? t('每日额度')
-                    : plan?.quota_reset_period === 'never' ||
-                        !plan?.quota_reset_period
-                      ? t('总额度')
-                      : t('每日额度');
+                  quotaLabelMap[plan?.quota_reset_period] || t('总额度');
                 return (
                   <article
                     className={`nx-plan-card ${type === 'week' ? 'highlight' : ''}`}
