@@ -99,6 +99,82 @@ func TestSubscriptionAvailable_KeepsSpecialRatio(t *testing.T) {
 	assert.Equal(t, 1000, session.GetPreConsumedQuota())
 }
 
+// 反方向：wallet_first 下钱包余额不足回落订阅时，倍率必须从常规分组倍率
+// 切到订阅专用的特殊倍率，否则订阅额度只按 1/5 速度消耗（300 刀套餐当 1500 刀用）。
+// 回归背景：首版只处理了 subscription_first → wallet 一个方向，
+// 线上有 47 个用户把计费偏好设为 wallet_first，全都在少扣订阅额度。
+func TestWalletExhausted_FallbackSubscription_RestoresSpecialRatio(t *testing.T) {
+	ensureSubscriptionPlanMigrated(t)
+	truncateCross(t)
+	setRatios(t, "gpt_month", 0.2, 1)
+
+	const userID, tokenID, planID, subID = 2104, 2104, 194, 94
+	// 钱包余额为 0 → 必然回落订阅
+	seedUser(t, userID, 0)
+	seedToken(t, tokenID, userID, "sk-ratio-4", 5_000_000)
+	seedPlan(t, planID, "gpt_month")
+	seedSubWithGroup(t, subID, userID, planID, "gpt_month", 5_000_000, 0, "active", 86400)
+
+	c := newTestGinContext()
+	ri := makeRelayInfo(userID, tokenID, "sk-ratio-4", "gpt_month", "gpt_month", "wallet_first")
+	// 模拟 HandleGroupRatio 已套用特殊倍率（用户组=令牌组，命中 GroupGroupRatio）
+	ri.PriceData.GroupRatioInfo = types.GroupRatioInfo{
+		GroupRatio:        1,
+		GroupSpecialRatio: 1,
+		HasSpecialRatio:   true,
+	}
+	// 但假设倍率被算成了常规档（构造反方向待修正的状态）
+	ri.PriceData.GroupRatioInfo.GroupRatio = 0.2
+	ri.PriceData.GroupRatioInfo.GroupSpecialRatio = -1
+	ri.PriceData.GroupRatioInfo.HasSpecialRatio = false
+
+	session, apiErr := NewBillingSession(c, ri, 200)
+	require.Nil(t, apiErr)
+	require.NotNil(t, session)
+
+	assert.Equal(t, BillingSourceSubscription, session.funding.Source(),
+		"钱包为 0 应回落订阅")
+
+	// 关键断言：倍率已切到订阅专用的特殊倍率
+	assert.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio,
+		"回落订阅后必须使用特殊倍率，否则订阅额度消耗速度只有应有的 1/5")
+	assert.True(t, ri.PriceData.GroupRatioInfo.HasSpecialRatio)
+
+	// 预扣费按 1/0.2 放大：200 → 1000
+	assert.Equal(t, 1000, session.GetPreConsumedQuota(),
+		"预扣费需同比放大，与订阅倍率保持一致")
+}
+
+// 未配置 GroupGroupRatio 的分组，两个方向都不应改动倍率与预扣费。
+func TestFundingFallback_NoGroupGroupRatio_Untouched(t *testing.T) {
+	ensureSubscriptionPlanMigrated(t)
+	truncateCross(t)
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"gpt_month":0.2}`))
+	require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(`{}`))
+
+	const userID, tokenID, planID, subID = 2105, 2105, 195, 95
+	seedUser(t, userID, 0) // 钱包为 0，走 wallet_first 回落
+	seedToken(t, tokenID, userID, "sk-ratio-5", 5_000_000)
+	seedPlan(t, planID, "gpt_month")
+	seedSubWithGroup(t, subID, userID, planID, "gpt_month", 5_000_000, 0, "active", 86400)
+
+	c := newTestGinContext()
+	ri := makeRelayInfo(userID, tokenID, "sk-ratio-5", "gpt_month", "gpt_month", "wallet_first")
+	ri.PriceData.GroupRatioInfo = types.GroupRatioInfo{
+		GroupRatio:        0.2,
+		GroupSpecialRatio: -1,
+		HasSpecialRatio:   false,
+	}
+
+	session, apiErr := NewBillingSession(c, ri, 200)
+	require.Nil(t, apiErr)
+	assert.Equal(t, BillingSourceSubscription, session.funding.Source())
+	assert.Equal(t, 0.2, ri.PriceData.GroupRatioInfo.GroupRatio,
+		"无特殊倍率配置时不得改动倍率")
+	assert.Equal(t, 200, session.GetPreConsumedQuota(),
+		"无特殊倍率配置时不得缩放预扣费")
+}
+
 // 未套用特殊倍率的用户（普通分组）回落钱包时不应被改动。
 func TestSubscriptionExhausted_NoSpecialRatio_Untouched(t *testing.T) {
 	ensureSubscriptionPlanMigrated(t)
