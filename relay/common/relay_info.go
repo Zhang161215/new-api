@@ -84,16 +84,19 @@ type TokenCountMeta struct {
 }
 
 type RelayInfo struct {
-	TokenId           int
-	TokenKey          string
-	TokenGroup        string
-	UserId            int
-	UsingGroup        string // 使用的分组，当auto跨分组重试时，会变动
-	UserGroup         string // 用户所在分组
-	TokenUnlimited    bool
-	StartTime         time.Time
-	FirstResponseTime time.Time
-	isFirstResponse   bool
+	TokenId    int
+	TokenKey   string
+	TokenGroup string
+	UserId     int
+	UsingGroup string // 使用的分组，当auto跨分组重试时，会变动
+	UserGroup  string // 用户所在分组
+	// ActiveSubscriptionGroups 缓存本次请求 GetActiveSubscriptionUpgradeGroups 的结果。
+	// nil 表示尚未查询；空 map 表示已查询且没有生效的升级分组。
+	ActiveSubscriptionGroups map[string]bool
+	TokenUnlimited           bool
+	StartTime                time.Time
+	FirstResponseTime        time.Time
+	isFirstResponse          bool
 	//SendLastReasoningResponse bool
 	IsStream               bool
 	IsGeminiBatchEmbedding bool

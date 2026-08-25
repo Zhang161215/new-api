@@ -32,6 +32,35 @@ func modelPriceNotConfiguredError(modelName string, userId int) error {
 // https://docs.claude.com/en/docs/build-with-claude/prompt-caching#1-hour-cache-duration
 const claudeCacheCreation1hMultiplier = 6 / 3.75
 
+// EnsureActiveSubscriptionGroups 把用户生效订阅的 upgrade_group 集合缓存在 RelayInfo 上。
+// 同一请求内 HandleGroupRatio / NewBillingSession / 资金源回落共用，避免重复查库。
+func EnsureActiveSubscriptionGroups(relayInfo *relaycommon.RelayInfo) map[string]bool {
+	if relayInfo == nil || relayInfo.UserId <= 0 {
+		return nil
+	}
+	if relayInfo.ActiveSubscriptionGroups != nil {
+		return relayInfo.ActiveSubscriptionGroups
+	}
+	groups, err := model.GetActiveSubscriptionUpgradeGroups(relayInfo.UserId)
+	if err != nil {
+		return nil
+	}
+	if groups == nil {
+		groups = map[string]bool{}
+	}
+	relayInfo.ActiveSubscriptionGroups = groups
+	return groups
+}
+
+// usingGroupCoveredByActiveSub 当前令牌分组是否被用户某张生效订阅覆盖。
+func usingGroupCoveredByActiveSub(relayInfo *relaycommon.RelayInfo) bool {
+	if relayInfo == nil || relayInfo.UsingGroup == "" {
+		return false
+	}
+	groups := EnsureActiveSubscriptionGroups(relayInfo)
+	return groups != nil && groups[relayInfo.UsingGroup]
+}
+
 // HandleGroupRatio checks for "auto_group" in the context and updates the group ratio and relayInfo.UsingGroup if present
 func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.GroupRatioInfo {
 	groupRatioInfo := types.GroupRatioInfo{
@@ -46,15 +75,19 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.
 		relayInfo.UsingGroup = autoGroup.(string)
 	}
 
-	// check user group special ratio
-	userGroupRatio, ok := ratio_setting.GetGroupGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup)
-	if ok {
-		// user group special ratio
-		groupRatioInfo.GroupSpecialRatio = userGroupRatio
-		groupRatioInfo.GroupRatio = userGroupRatio
+	covered := false
+	// 仅在「(userGroup, usingGroup) 对不上，但 usingGroup 自己有专属倍率」时才查订阅。
+	// 同组用户（最常见）走第一优先、不增加 DB；无专属倍率的分组也不查。
+	if _, ok := ratio_setting.GetGroupGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup); !ok {
+		if _, hasSelf := ratio_setting.GetGroupGroupRatio(relayInfo.UsingGroup, relayInfo.UsingGroup); hasSelf {
+			covered = usingGroupCoveredByActiveSub(relayInfo)
+		}
+	}
+	if special, ok := ratio_setting.ResolveSpecialGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup, covered); ok {
+		groupRatioInfo.GroupSpecialRatio = special
+		groupRatioInfo.GroupRatio = special
 		groupRatioInfo.HasSpecialRatio = true
 	} else {
-		// normal group ratio
 		groupRatioInfo.GroupRatio = ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
 	}
 

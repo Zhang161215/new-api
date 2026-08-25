@@ -403,11 +403,11 @@ func getUserGroupByIdTx(tx *gorm.DB, userId int) (string, error) {
 	if tx == nil {
 		tx = DB
 	}
-	var group string
-	if err := tx.Model(&User{}).Where("id = ?", userId).Select(commonGroupCol).Find(&group).Error; err != nil {
+	var user User
+	if err := tx.Where("id = ?", userId).First(&user).Error; err != nil {
 		return "", err
 	}
-	return group, nil
+	return user.Group, nil
 }
 
 // defaultUserGroup 是订阅全部失效后用户应回落到的兜底分组。
@@ -428,6 +428,10 @@ const defaultUserGroup = "default"
 // 安全边界：若没有任何订阅记录把用户升到某个分组，说明那是管理员手动设置的，
 // 直接停下不动，避免误伤白名单用户。maxHops 防御环形数据。
 func resolveDowngradeTargetTx(tx *gorm.DB, userId int, fromGroup string, now int64) (string, error) {
+	return resolveDowngradeTargetExcludingTx(tx, userId, fromGroup, now, 0)
+}
+
+func resolveDowngradeTargetExcludingTx(tx *gorm.DB, userId int, fromGroup string, now int64, excludeSubId int) (string, error) {
 	const maxHops = 8
 	group := strings.TrimSpace(fromGroup)
 	if group == "" {
@@ -435,16 +439,40 @@ func resolveDowngradeTargetTx(tx *gorm.DB, userId int, fromGroup string, now int
 	}
 	for i := 0; i < maxHops; i++ {
 		// 该分组仍有生效订阅撑着 —— 停在这一层
-		var active UserSubscription
 		q := tx.Where("user_id = ? AND status = ? AND end_time > ? AND upgrade_group = ?",
-			userId, "active", now, group).
-			Limit(1).
-			Find(&active)
-		if q.Error != nil {
-			return "", q.Error
+			userId, "active", now, group)
+		if excludeSubId > 0 {
+			q = q.Where("id <> ?", excludeSubId)
 		}
-		if q.RowsAffected > 0 {
+		var active UserSubscription
+		res := q.Limit(1).Find(&active)
+		if res.Error != nil {
+			return "", res.Error
+		}
+		if res.RowsAffected > 0 {
 			return group, nil
+		}
+
+		// 本张正在被摘掉的订阅如果就是升到这一层的，用它的 prev 继续走。
+		// AdminDelete 调用时记录还是 active，不能只靠「已失效订阅」来解释当前层。
+		if excludeSubId > 0 {
+			var removing UserSubscription
+			rm := tx.Where("id = ? AND user_id = ? AND upgrade_group = ?", excludeSubId, userId, group).
+				Limit(1).Find(&removing)
+			if rm.Error != nil {
+				return "", rm.Error
+			}
+			if rm.RowsAffected > 0 {
+				prev := strings.TrimSpace(removing.PrevUserGroup)
+				if prev == "" {
+					prev = defaultUserGroup
+				}
+				if prev == group {
+					return group, nil
+				}
+				group = prev
+				continue
+			}
 		}
 
 		// 找把用户升到该分组、且已失效的订阅
@@ -486,19 +514,14 @@ func downgradeUserGroupForSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now
 	if err != nil {
 		return "", err
 	}
-	if currentGroup != upgradeGroup {
+	if strings.TrimSpace(currentGroup) == "" {
 		return "", nil
 	}
-	var activeSub UserSubscription
-	activeQuery := tx.Where("user_id = ? AND status = ? AND end_time > ? AND id <> ? AND upgrade_group <> ''",
-		sub.UserId, "active", now, sub.Id).
-		Order("end_time desc, id desc").
-		Limit(1).
-		Find(&activeSub)
-	if activeQuery.Error == nil && activeQuery.RowsAffected > 0 {
-		return "", nil
-	}
-	prevGroup, err := resolveDowngradeTargetTx(tx, sub.UserId, currentGroup, now)
+	// 不再因为「还有别的生效订阅」或「当前分组 != 本张套餐的升级组」就跳过。
+	// 叠了不同分组的订阅时，后买的会覆盖 users.group；前一张到期必须把账号
+	// 退回仍有效的那一层（线上 1688：日卡到期后月卡还在，却卡在 Claude_Aws）。
+	// excludeSubId 让管理员删除尚未改 status 的记录时，也不把本张当成还有效。
+	prevGroup, err := resolveDowngradeTargetExcludingTx(tx, sub.UserId, currentGroup, now, sub.Id)
 	if err != nil {
 		return "", err
 	}
@@ -1017,6 +1040,8 @@ type SubscriptionPreConsumeResult struct {
 }
 
 // ExpireDueSubscriptions marks expired subscriptions and handles group downgrade.
+// 叠了不同分组的订阅时，仍走 resolveDowngradeTargetTx：日卡到期会退回还有效的月卡组，
+// 而不是因为「还有别的生效订阅」就原样保留被覆盖后的 users.group。
 func ExpireDueSubscriptions(limit int) (int, error) {
 	if limit <= 0 {
 		limit = 200
@@ -1053,20 +1078,6 @@ func ExpireDueSubscriptions(limit int) (int, error) {
 			}
 			expiredCount += int(res.RowsAffected)
 
-			// If there's an active upgraded subscription, keep current group.
-			var activeSub UserSubscription
-			activeQuery := tx.Where("user_id = ? AND status = ? AND end_time > ? AND upgrade_group <> ''",
-				userId, "active", now).
-				Order("end_time desc, id desc").
-				Limit(1).
-				Find(&activeSub)
-			if activeQuery.Error == nil && activeQuery.RowsAffected > 0 {
-				return nil
-			}
-
-			// No active upgraded subscription, downgrade to previous group if needed.
-			// 顺着 prev 链一路回落：既处理 prev_user_group 为空的历史数据，
-			// 也处理多层订阅叠加时只退一层就停住的情况，详见 resolveDowngradeTargetTx。
 			currentGroup, err := getUserGroupByIdTx(tx, userId)
 			if err != nil {
 				return err

@@ -115,3 +115,100 @@ func TestResolveDowngradeTarget_TerminatesOnCyclicData(t *testing.T) {
 		t.Fatal("环形数据导致死循环，maxHops 未生效")
 	}
 }
+
+func currentUserGroup(t *testing.T, userId int) string {
+	t.Helper()
+	g, err := getUserGroupByIdTx(DB, userId)
+	require.NoError(t, err)
+	return g
+}
+
+// 叠了不同分组的订阅：日卡到期时月卡还在，账号必须从日卡组退回月卡组。
+// 回归：原实现发现「还有别的生效订阅」就直接 return，用户卡在 Claude_Aws，
+// GPT 月卡因此丢掉 1x 专属倍率（线上用户 1688）。
+func TestDowngrade_StackedDayCardExpire_ReturnsToMonthly(t *testing.T) {
+	setupDowngradeTest(t)
+	now := time.Now().Unix()
+
+	mkUser(t, 10, "Claude_Aws")
+	monthly := &UserSubscription{
+		UserId:        10,
+		Status:        "active",
+		UpgradeGroup:  "Codex_GPT_PRO",
+		PrevUserGroup: "default",
+		EndTime:       now + 86400,
+	}
+	require.NoError(t, DB.Create(monthly).Error)
+	day := &UserSubscription{
+		UserId:        10,
+		Status:        "active",
+		UpgradeGroup:  "Claude_Aws",
+		PrevUserGroup: "Codex_GPT_PRO",
+		EndTime:       now + 3600,
+	}
+	require.NoError(t, DB.Create(day).Error)
+
+	got, err := downgradeUserGroupForSubscriptionTx(DB, day, now)
+	require.NoError(t, err)
+	require.Equal(t, "Codex_GPT_PRO", got)
+	require.Equal(t, "Codex_GPT_PRO", currentUserGroup(t, 10))
+}
+
+// 月卡先到期、日卡还在：账号本来就在日卡组，不应被改走。
+func TestDowngrade_StackedMonthlyExpire_WhileDayActive_StaysOnDay(t *testing.T) {
+	setupDowngradeTest(t)
+	now := time.Now().Unix()
+
+	mkUser(t, 11, "Claude_Aws")
+	monthly := &UserSubscription{
+		UserId:        11,
+		Status:        "active",
+		UpgradeGroup:  "Codex_GPT_PRO",
+		PrevUserGroup: "default",
+		EndTime:       now + 86400,
+	}
+	require.NoError(t, DB.Create(monthly).Error)
+	require.NoError(t, DB.Create(&UserSubscription{
+		UserId:        11,
+		Status:        "active",
+		UpgradeGroup:  "Claude_Aws",
+		PrevUserGroup: "Codex_GPT_PRO",
+		EndTime:       now + 3600,
+	}).Error)
+
+	got, err := downgradeUserGroupForSubscriptionTx(DB, monthly, now)
+	require.NoError(t, err)
+	require.Equal(t, "", got, "日卡仍有效，分组不该动")
+	require.Equal(t, "Claude_Aws", currentUserGroup(t, 11))
+}
+
+// 定时过期任务：日卡 end_time 已到、月卡仍有效 → 必须改分组，不能因为还有月卡就跳过。
+func TestExpireDueSubscriptions_StackedDayCard_ReturnsToMonthly(t *testing.T) {
+	setupDowngradeTest(t)
+	now := GetDBTimestamp()
+
+	mkUser(t, 12, "Claude_Aws")
+	require.NoError(t, DB.Create(&UserSubscription{
+		UserId:        12,
+		Status:        "active",
+		UpgradeGroup:  "Codex_GPT_PRO",
+		PrevUserGroup: "default",
+		EndTime:       now + 86400,
+	}).Error)
+	require.NoError(t, DB.Create(&UserSubscription{
+		UserId:        12,
+		Status:        "active",
+		UpgradeGroup:  "Claude_Aws",
+		PrevUserGroup: "Codex_GPT_PRO",
+		EndTime:       now - 10,
+	}).Error)
+
+	n, err := ExpireDueSubscriptions(50)
+	require.NoError(t, err)
+	require.Equal(t, 1, n)
+	require.Equal(t, "Codex_GPT_PRO", currentUserGroup(t, 12))
+
+	var day UserSubscription
+	require.NoError(t, DB.Where("user_id = ? AND upgrade_group = ?", 12, "Claude_Aws").First(&day).Error)
+	require.Equal(t, "expired", day.Status)
+}

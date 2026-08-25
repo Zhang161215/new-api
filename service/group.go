@@ -53,12 +53,15 @@ func GetUserAutoGroup(userGroup string) []string {
 	return autoGroups
 }
 
-// GetUserGroupRatio 获取用户使用某个分组的倍率
-// userGroup 用户分组
-// group 需要获取倍率的分组
+// GetUserGroupRatio 获取用户使用某个分组的倍率（只看账号当前分组，不查订阅）。
 func GetUserGroupRatio(userGroup, group string) float64 {
-	ratio, ok := ratio_setting.GetGroupGroupRatio(userGroup, group)
-	if ok {
+	return GetUserGroupRatioWithCoverage(userGroup, group, false)
+}
+
+// GetUserGroupRatioWithCoverage 在叠卡场景下，令牌分组只要被生效订阅覆盖，
+// 就套该分组自己的专属倍率，不要求 users.group 与令牌分组相同。
+func GetUserGroupRatioWithCoverage(userGroup, group string, coveredByActiveSub bool) float64 {
+	if ratio, ok := ratio_setting.ResolveSpecialGroupRatio(userGroup, group, coveredByActiveSub); ok {
 		return ratio
 	}
 	return ratio_setting.GetGroupRatio(group)

@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -116,9 +117,12 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	}
 
 	actualGroupRatio := groupRatio
-	userGroupRatio, ok := ratio_setting.GetGroupGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup)
-	if ok {
-		actualGroupRatio = userGroupRatio
+	covered := false
+	if groups := helper.EnsureActiveSubscriptionGroups(relayInfo); groups != nil {
+		covered = groups[relayInfo.UsingGroup]
+	}
+	if special, ok := ratio_setting.ResolveSpecialGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup, covered); ok {
+		actualGroupRatio = special
 	}
 
 	quotaInfo := QuotaInfo{

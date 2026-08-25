@@ -102,6 +102,28 @@ func GetGroupGroupRatio(userGroup, usingGroup string) (float64, bool) {
 	return ratio, true
 }
 
+// ResolveSpecialGroupRatio 决定这次请求该不该套 GroupGroupRatio 里的专属倍率。
+//
+// 第一优先：配置里有 [userGroup][usingGroup]（用户当前就坐在该分组里）。
+// 第二优先：usingGroup 自己配了 [usingGroup][usingGroup]，且调用方确认用户
+// 持有覆盖该令牌分组的生效订阅。这是为了叠卡：后买的套餐会覆盖 users.group，
+// 但先买的那张订阅仍应按自己的专属倍率扣（线上 1688 Ethan：账号被日卡改成
+// Claude_Aws 后，GPT 月卡从 1x 错成 0.3x）。
+//
+// coveredByActiveSub 必须由调用方按「usingGroup 是否在 active 订阅的
+// upgrade_group 集合里」传入，本函数不查库。
+func ResolveSpecialGroupRatio(userGroup, usingGroup string, coveredByActiveSub bool) (float64, bool) {
+	if ratio, ok := GetGroupGroupRatio(userGroup, usingGroup); ok {
+		return ratio, true
+	}
+	if coveredByActiveSub && usingGroup != "" {
+		if ratio, ok := GetGroupGroupRatio(usingGroup, usingGroup); ok {
+			return ratio, true
+		}
+	}
+	return -1, false
+}
+
 func GroupGroupRatio2JSONString() string {
 	return groupGroupRatioMap.MarshalJSONString()
 }

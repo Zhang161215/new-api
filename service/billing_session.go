@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -291,9 +292,13 @@ func (s *BillingSession) syncRelayInfo() {
 func switchRatioForFundingFallback(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int, toWallet bool) int {
 	gri := &relayInfo.PriceData.GroupRatioInfo
 	normalRatio := ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
-	specialRatio, hasSpecial := ratio_setting.GetGroupGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup)
+	covered := false
+	if groups := helper.EnsureActiveSubscriptionGroups(relayInfo); groups != nil {
+		covered = groups[relayInfo.UsingGroup]
+	}
+	specialRatio, hasSpecial := ratio_setting.ResolveSpecialGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup, covered)
 	if !hasSpecial {
-		// 没有为该 (用户组, 令牌组) 配特殊倍率，两个资金源用的是同一个倍率，无需切换
+		// 没有为该令牌组配特殊倍率，两个资金源用的是同一个倍率，无需切换
 		return preConsumedQuota
 	}
 
@@ -352,8 +357,8 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	// 统一规则，覆盖所有 BillingPreference（含 subscription_only），对 vip 等组也不做例外，
 	// 避免订阅额度被非包月分组消耗。无订阅用户 activeGroups 为空，直接跳过保持原 pref。
 	if relayInfo.UsingGroup != "" {
-		activeGroups, ggErr := model.GetActiveSubscriptionUpgradeGroups(relayInfo.UserId)
-		if ggErr == nil && len(activeGroups) > 0 && !activeGroups[relayInfo.UsingGroup] {
+		activeGroups := helper.EnsureActiveSubscriptionGroups(relayInfo)
+		if len(activeGroups) > 0 && !activeGroups[relayInfo.UsingGroup] {
 			pref = "wallet_only"
 			logger.LogInfo(c, fmt.Sprintf(
 				"用户 %d 跨组访问 (userGroup=%s, usingGroup=%s, activeSubGroups=%v), 强制使用钱包计费",
