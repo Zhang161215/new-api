@@ -18,6 +18,36 @@ type SubscriptionPlanDTO struct {
 	// Deleted 表示该套餐已被软删除（仅管理员列表会出现 true）。
 	// 用户端接口永远拿不到已删套餐，故该字段对用户端恒为 false。
 	Deleted bool `json:"deleted"`
+	// SubscriptionRatio 是订阅额度生效期间的计费倍率。
+	// FallbackRatio 是订阅额度用尽、回落钱包后的计费倍率。
+	// 两者一起下发给购买弹窗，让用户在付款前看到真实数字。
+	// 之所以不让前端读 /api/pricing：那里会按 usable_group 过滤，
+	// 未订阅的用户根本拿不到升级分组（如 Codex_GPT_PRO）的倍率。
+	// -1 表示不适用（套餐不升级分组，或该分组没配倍率）。
+	SubscriptionRatio float64 `json:"subscription_ratio"`
+	FallbackRatio     float64 `json:"fallback_ratio"`
+}
+
+// planRatios 推导某套餐的两档计费倍率，定义与 service.switchRatioForFundingFallback
+// 保持一致：订阅期间走 GroupGroupRatio[组][组]，回落钱包后走 GroupRatio[组]。
+// 未配特殊倍率时两者相同（回落时倍率不发生切换）。
+//
+// 这里刻意不调 ratio_setting.GetGroupRatio —— 它查不到分组会写一条 SysLog，
+// 而本函数在套餐列表里逐条调用，配置缺失时会把日志刷满。
+func planRatios(upgradeGroup string) (subscriptionRatio, fallbackRatio float64) {
+	group := strings.TrimSpace(upgradeGroup)
+	if group == "" {
+		return -1, -1
+	}
+	fallbackRatio = -1
+	if ratio_setting.ContainsGroupRatio(group) {
+		fallbackRatio = ratio_setting.GetGroupRatioCopy()[group]
+	}
+	subscriptionRatio = fallbackRatio
+	if special, ok := ratio_setting.GetGroupGroupRatio(group, group); ok {
+		subscriptionRatio = special
+	}
+	return subscriptionRatio, fallbackRatio
 }
 
 type BillingPreferenceRequest struct {
@@ -34,8 +64,11 @@ func GetSubscriptionPlans(c *gin.Context) {
 	}
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
+		subRatio, fallbackRatio := planRatios(p.UpgradeGroup)
 		result = append(result, SubscriptionPlanDTO{
-			Plan: p,
+			Plan:              p,
+			SubscriptionRatio: subRatio,
+			FallbackRatio:     fallbackRatio,
 		})
 	}
 	common.ApiSuccess(c, result)
@@ -107,9 +140,12 @@ func AdminListSubscriptionPlans(c *gin.Context) {
 	}
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
+		subRatio, fallbackRatio := planRatios(p.UpgradeGroup)
 		result = append(result, SubscriptionPlanDTO{
-			Plan:    p,
-			Deleted: p.DeletedAt.Valid,
+			Plan:              p,
+			Deleted:           p.DeletedAt.Valid,
+			SubscriptionRatio: subRatio,
+			FallbackRatio:     fallbackRatio,
 		})
 	}
 	common.ApiSuccess(c, result)

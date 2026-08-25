@@ -33,6 +33,7 @@ import ResetPasskeyModal from './modals/ResetPasskeyModal';
 import ResetTwoFAModal from './modals/ResetTwoFAModal';
 import UserSubscriptionsModal from './modals/UserSubscriptionsModal';
 import UserInvitesModal from './modals/UserInvitesModal';
+import UserReceiptsModal from './modals/UserReceiptsModal';
 
 const UsersTable = (usersData) => {
   const {
@@ -66,6 +67,7 @@ const UsersTable = (usersData) => {
   const [showUserSubscriptionsModal, setShowUserSubscriptionsModal] =
     useState(false);
   const [showUserInvitesModal, setShowUserInvitesModal] = useState(false);
+  const [showUserReceiptsModal, setShowUserReceiptsModal] = useState(false);
 
   // Modal handlers
   const showPromoteUserModal = (user) => {
@@ -109,6 +111,11 @@ const UsersTable = (usersData) => {
     setShowUserInvitesModal(true);
   };
 
+  const showUserReceiptsUserModal = (user) => {
+    setModalUser(user);
+    setShowUserReceiptsModal(true);
+  };
+
   // Modal confirm handlers
   const handlePromoteConfirm = () => {
     manageUser(modalUser.id, 'promote', modalUser);
@@ -149,6 +156,7 @@ const UsersTable = (usersData) => {
       showResetTwoFAModal: showResetTwoFAUserModal,
       showUserSubscriptionsModal: showUserSubscriptionsUserModal,
       showUserInvitesModal: showUserInvitesUserModal,
+      showUserReceiptsModal: showUserReceiptsUserModal,
     });
   }, [
     t,
@@ -162,6 +170,7 @@ const UsersTable = (usersData) => {
     showResetTwoFAUserModal,
     showUserSubscriptionsUserModal,
     showUserInvitesUserModal,
+    showUserReceiptsUserModal,
   ]);
 
   // Handle compact mode by removing fixed positioning
@@ -273,6 +282,13 @@ const UsersTable = (usersData) => {
       <UserInvitesModal
         visible={showUserInvitesModal}
         onCancel={() => setShowUserInvitesModal(false)}
+        user={modalUser}
+        t={t}
+      />
+
+      <UserReceiptsModal
+        visible={showUserReceiptsModal}
+        onCancel={() => setShowUserReceiptsModal(false)}
         user={modalUser}
         t={t}
       />

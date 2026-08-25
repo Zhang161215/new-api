@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"regexp"
 	"strings"
@@ -18,7 +19,33 @@ import (
 // 中间件见到该头即跳过审核，避免 base_url 指回本站时无限自我循环。
 const PromptAuditGuardHeader = "X-Newapi-Prompt-Audit"
 
-var promptAuditHTTPClient = &http.Client{}
+// 审核出站必须有连接超时：Client.Timeout 不设，交由每条请求的 context 控制总时长，
+// 避免和 WithTimeout 叠成含糊的 "context canceled"。
+var promptAuditHTTPClient = &http.Client{
+	Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   3 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout: 5 * time.Second,
+		IdleConnTimeout:     90 * time.Second,
+		MaxIdleConns:        32,
+		MaxIdleConnsPerHost: 8,
+	},
+}
+
+// detachPromptAuditContext 把审核出站从「用户请求是否还活着」里拆开。
+//
+// 线上 Codex 会取消重试：Request.Context 一取消，主节点 mimo 和备用 deepseek
+// 会同时报 context canceled，随后 fail-open 把没审过的请求送给 OpenAI。
+// WithoutCancel 保留 gin 里的 request-id 等 value，只丢掉取消信号。
+func detachPromptAuditContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return context.WithoutCancel(ctx)
+}
 
 var promptAuditFenceRe = regexp.MustCompile("(?s)```(?:json)?\\s*(\\{.*?\\})\\s*```")
 var promptAuditObjRe = regexp.MustCompile(`(?s)\{.*\}`)
@@ -107,6 +134,7 @@ func RunPromptAudit(ctx context.Context, cfg *operation_setting.PromptAuditSetti
 	if cfg.BaseURL == "" || cfg.Model == "" {
 		return 0, "", fmt.Errorf("审核节点未配置 base_url 或 model")
 	}
+	ctx = detachPromptAuditContext(ctx)
 
 	// 缓存指纹基于主节点配置；命中即返回，不关心当初由哪个节点判定
 	cacheTTL := cfg.CacheTTL()

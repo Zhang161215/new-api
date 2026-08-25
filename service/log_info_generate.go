@@ -44,6 +44,9 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	other["frt"] = float64(relayInfo.FirstResponseTime.UnixMilli() - relayInfo.StartTime.UnixMilli())
 	if relayInfo.ReasoningEffort != "" {
 		other["reasoning_effort"] = relayInfo.ReasoningEffort
+		if relayInfo.ReasoningEffortSource != "" {
+			other["reasoning_effort_source"] = relayInfo.ReasoningEffortSource
+		}
 	}
 	if relayInfo.IsModelMapped {
 		other["is_model_mapped"] = true

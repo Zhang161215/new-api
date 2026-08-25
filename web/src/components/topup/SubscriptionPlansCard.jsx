@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   Badge,
   Button,
@@ -90,13 +90,32 @@ const SubscriptionPlansCard = ({
   const [paying, setPaying] = useState(false);
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  // 订阅协议正文（管理员可在后台改）。首次打开购买弹窗才拉，之后复用。
+  // 拉失败或返回空都不阻断购买 —— 弹窗会退回内置默认文案。
+  const [agreementText, setAgreementText] = useState('');
+  const agreementLoaded = useRef(false);
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods, enableXunhuTopUp), [payMethods, enableXunhuTopUp]);
+
+  const loadAgreement = async () => {
+    if (agreementLoaded.current) return;
+    agreementLoaded.current = true;
+    try {
+      const res = await API.get('/api/subscription-agreement');
+      if (res?.data?.success && res.data.data) {
+        setAgreementText(res.data.data);
+      }
+    } catch (e) {
+      // 静默失败：弹窗用内置默认协议兜底，不该因为拉文案失败就挡住购买
+      agreementLoaded.current = false;
+    }
+  };
 
   const openBuy = (p) => {
     setSelectedPlan(p);
     setSelectedEpayMethod(epayMethods?.[0]?.type || '');
     setOpen(true);
+    loadAgreement();
   };
 
   const closeBuy = () => {
@@ -719,6 +738,7 @@ const SubscriptionPlansCard = ({
               }
             : null
         }
+        agreementText={agreementText}
         onPayStripe={payStripe}
         onPayCreem={payCreem}
         onPayEpay={payEpay}

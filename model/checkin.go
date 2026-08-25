@@ -67,18 +67,27 @@ func UserCheckin(userId int) (*Checkin, error) {
 		return nil, errors.New("今日已签到")
 	}
 
+	// 全程复用同一个 now：星期（决定倍数）、签到日期、创建时间必须取自同一时刻，
+	// 否则跨零点的那一瞬会出现「按周日算了双倍、日期却记成周一」这种对不上的账。
+	now := time.Now()
+
 	// 计算随机额度奖励
 	quotaAwarded := setting.MinQuota
 	if setting.MaxQuota > setting.MinQuota {
 		quotaAwarded = setting.MinQuota + rand.Intn(setting.MaxQuota-setting.MinQuota+1)
 	}
 
-	today := time.Now().Format("2006-01-02")
+	// 翻倍日按配置倍数放大。存入 checkins.quota_awarded 的是放大后的最终值，
+	// 因此日历、统计、历史记录展示的都是用户真实到账的额度，无需额外记录倍数。
+	if multiplier := operation_setting.CheckinMultiplierFor(now); multiplier > 1 {
+		quotaAwarded = int(float64(quotaAwarded) * multiplier)
+	}
+
 	checkin := &Checkin{
 		UserId:       userId,
-		CheckinDate:  today,
+		CheckinDate:  now.Format("2006-01-02"),
 		QuotaAwarded: quotaAwarded,
-		CreatedAt:    time.Now().Unix(),
+		CreatedAt:    now.Unix(),
 	}
 
 	// 根据数据库类型选择不同的策略

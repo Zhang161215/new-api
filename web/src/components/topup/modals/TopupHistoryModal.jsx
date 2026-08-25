@@ -27,16 +27,19 @@ import {
   Button,
   Input,
   Tag,
+  Tooltip,
 } from '@douyinfe/semi-ui';
 import {
   IllustrationNoResult,
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
-import { Coins } from 'lucide-react';
+import { Coins, Receipt } from 'lucide-react';
 import { IconSearch } from '@douyinfe/semi-icons';
 import { API, timestamp2string } from '../../../helpers';
 import { isAdmin } from '../../../helpers/utils';
+import { PAYMENT_METHOD_MAP } from '../../../constants';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
+import ReceiptModal from './ReceiptModal';
 const { Text } = Typography;
 
 // 状态映射配置
@@ -47,15 +50,6 @@ const STATUS_CONFIG = {
   expired: { type: 'danger', key: '已过期' },
 };
 
-// 支付方式映射
-const PAYMENT_METHOD_MAP = {
-  stripe: 'Stripe',
-  creem: 'Creem',
-  waffo: 'Waffo',
-  alipay: '支付宝',
-  wxpay: '微信',
-};
-
 const TopupHistoryModal = ({ visible, onCancel, t }) => {
   const [loading, setLoading] = useState(false);
   const [topups, setTopups] = useState([]);
@@ -63,6 +57,15 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [keyword, setKeyword] = useState('');
+  // 收据弹窗。只存单号不存整条 record —— 收据数据一律由后端重新查，
+  // 免得表格里的陈旧行渲染出与库里不一致的凭证。
+  const [receipt, setReceipt] = useState({
+    visible: false,
+    tradeNo: '',
+    tradeNos: null,
+  });
+  // 勾选的订单（存 record，因为要按币种/归属做合并前校验）
+  const [selected, setSelected] = useState([]);
   const isMobile = useIsMobile();
 
   const loadTopups = async (currentPage, currentPageSize) => {
@@ -93,6 +96,38 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
       loadTopups(page, pageSize);
     }
   }, [visible, page, pageSize, keyword]);
+
+  // 翻页/搜索/关窗都清空勾选：跨页保留勾选会让「合并 3 笔」的按钮
+  // 把用户看不见的行也算进去。
+  useEffect(() => {
+    setSelected([]);
+  }, [visible, page, pageSize, keyword]);
+
+  // 合并前的本地校验。后端仍会再校验一遍（它才是权威），
+  // 这里做是为了点之前就把不可合并的原因说清楚，而不是点了才报错。
+  const mergeBlockReason = useMemo(() => {
+    if (selected.length < 2) return null;
+    const currencies = new Set(
+      selected.map((r) => r.currency_code || '').filter(Boolean),
+    );
+    if (currencies.size > 1) {
+      return t('所选订单币种不一致，无法合并开具');
+    }
+    // 管理员的账单列表是全站的，可能勾到不同客户
+    const owners = new Set(selected.map((r) => r.user_id));
+    if (owners.size > 1) {
+      return t('所选订单不属于同一用户，无法合并开具');
+    }
+    return null;
+  }, [selected, t]);
+
+  const openMergedReceipt = () => {
+    setReceipt({
+      visible: true,
+      tradeNo: '',
+      tradeNos: selected.map((r) => r.trade_no),
+    });
+  };
 
   const handlePageChange = (currentPage) => {
     setPage(currentPage);
@@ -197,7 +232,15 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
         title: t('支付金额'),
         dataIndex: 'money',
         key: 'money',
-        render: (money) => <Text type='danger'>¥{money.toFixed(2)}</Text>,
+        // 币种由后端按支付渠道下发。原先这里硬编码 ¥，Stripe / Creem 的
+        // 美元订单会被显示成 ¥ 金额（现网只用支付宝/微信所以没暴露）。
+        render: (money, record) => (
+          <Text type='danger'>
+            {record.currency_symbol ||
+              (record.currency_code ? `${record.currency_code} ` : '')}
+            {Number(money || 0).toFixed(2)}
+          </Text>
+        ),
       },
       {
         title: t('状态'),
@@ -207,30 +250,50 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
       },
     ];
 
-    // 管理员才显示操作列
-    if (userIsAdmin) {
-      baseColumns.push({
-        title: t('操作'),
-        key: 'action',
-        render: (_, record) => {
-          const actions = [];
-          if (record.status === 'pending') {
-            actions.push(
-              <Button
-                key="complete"
-                size='small'
-                type='primary'
-                theme='outline'
-                onClick={() => confirmAdminComplete(record.trade_no)}
-              >
-                {t('补单')}
-              </Button>
-            );
-          }
-          return actions.length > 0 ? <>{actions}</> : null;
-        },
-      });
-    }
+    // 操作列所有人可见：普通用户在这里下载收据，管理员额外有补单。
+    baseColumns.push({
+      title: t('操作'),
+      key: 'action',
+      render: (_, record) => {
+        const actions = [];
+        // 收据只对已支付成功的订单开具（后端也会再校验一次状态与归属）
+        if (record.status === 'success') {
+          actions.push(
+            <Button
+              key='receipt'
+              size='small'
+              theme='borderless'
+              icon={<Receipt size={14} />}
+              onClick={() =>
+                setReceipt({
+                  visible: true,
+                  tradeNo: record.trade_no,
+                  tradeNos: null,
+                })
+              }
+            >
+              {t('收据')}
+            </Button>,
+          );
+        }
+        if (userIsAdmin && record.status === 'pending') {
+          actions.push(
+            <Button
+              key='complete'
+              size='small'
+              type='primary'
+              theme='outline'
+              onClick={() => confirmAdminComplete(record.trade_no)}
+            >
+              {t('补单')}
+            </Button>,
+          );
+        }
+        return actions.length > 0 ? (
+          <div className='flex items-center gap-1'>{actions}</div>
+        ) : null;
+      },
+    });
 
     baseColumns.push({
       title: t('创建时间'),
@@ -259,11 +322,52 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
           showClear
         />
       </div>
+
+      {/* 勾选后出现的合并开具条。只在选了才显示，平时不占地方 */}
+      {selected.length > 0 && (
+        <div className='mb-3 flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-semi-color-fill-0'>
+          <Text type='tertiary' className='text-xs'>
+            {t('已选')} {selected.length} {t('笔')}
+            {mergeBlockReason ? ` · ${mergeBlockReason}` : ''}
+          </Text>
+          <div className='flex items-center gap-2'>
+            <Button size='small' theme='borderless' onClick={() => setSelected([])}>
+              {t('取消选择')}
+            </Button>
+            <Tooltip
+              content={mergeBlockReason || ''}
+              position='top'
+              trigger={mergeBlockReason ? 'mouseEnter' : 'custom'}
+            >
+              <Button
+                size='small'
+                type='primary'
+                theme='solid'
+                icon={<Receipt size={14} />}
+                disabled={selected.length < 2 || !!mergeBlockReason}
+                onClick={openMergedReceipt}
+              >
+                {t('合并开具收据')}
+              </Button>
+            </Tooltip>
+          </div>
+        </div>
+      )}
+
       <Table
         columns={columns}
         dataSource={topups}
         loading={loading}
         rowKey='id'
+        rowSelection={{
+          selectedRowKeys: selected.map((r) => r.id),
+          onChange: (_keys, rows) => setSelected(rows || []),
+          // 只有已支付成功的订单能开收据，未支付的行直接禁掉勾选框，
+          // 免得用户勾了一堆才被后端告知不行
+          getCheckboxProps: (record) => ({
+            disabled: record?.status !== 'success',
+          }),
+        }}
         pagination={{
           currentPage: page,
           pageSize: pageSize,
@@ -284,6 +388,14 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
             style={{ padding: 30 }}
           />
         }
+      />
+
+      <ReceiptModal
+        t={t}
+        visible={receipt.visible}
+        tradeNo={receipt.tradeNo}
+        tradeNos={receipt.tradeNos}
+        onCancel={() => setReceipt((r) => ({ ...r, visible: false }))}
       />
     </Modal>
   );

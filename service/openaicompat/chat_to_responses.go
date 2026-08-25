@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/samber/lo"
 )
 
@@ -391,9 +392,9 @@ func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*d
 		out.MaxOutputTokens = lo.ToPtr(maxOutputTokens)
 	}
 
-	if req.ReasoningEffort != "" {
+	if effort := helper.EffortFromChatRequest(req); effort != "" {
 		out.Reasoning = &dto.Reasoning{
-			Effort:  req.ReasoningEffort,
+			Effort:  effort,
 			Summary: "detailed",
 		}
 	}

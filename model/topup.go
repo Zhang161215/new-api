@@ -50,6 +50,12 @@ type TopUp struct {
 	CreateTime    int64   `json:"create_time"`
 	CompleteTime  int64   `json:"complete_time"`
 	Status        string  `json:"status"`
+
+	// 以下两个字段不入库（gorm:"-"），由 controller 按 payment_method 现算后下发。
+	// Money 的币种取决于支付渠道，前端不下发就只能猜 —— 原先账单列表把所有金额
+	// 都硬编码成 ¥，Stripe 订单会把 $73 显示成 ¥73。收据合并时也要靠它拦混币种。
+	CurrencyCode   string `json:"currency_code" gorm:"-"`
+	CurrencySymbol string `json:"currency_symbol" gorm:"-"`
 }
 
 var ErrPaymentMethodMismatch = errors.New("payment method mismatch")

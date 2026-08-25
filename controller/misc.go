@@ -197,6 +197,17 @@ func GetUserAgreement(c *gin.Context) {
 	return
 }
 
+// GetSubscriptionAgreement 返回购买订阅前需勾选的服务协议。
+// 返回空串是正常情况：管理员没配，前端会用内置默认文案兜底。
+func GetSubscriptionAgreement(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    system_setting.GetLegalSettings().SubscriptionAgreement,
+	})
+	return
+}
+
 func GetPrivacyPolicy(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

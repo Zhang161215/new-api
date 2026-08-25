@@ -42,16 +42,29 @@ func GetCheckinStatus(c *gin.Context) {
 		}
 	}
 
+	// 双倍日信息下发给前端渲染日历角标与「今日双倍」提示。
+	// today_is_double 由后端算而非前端自己比对星期，保证提示与实际发放同源
+	// （两边各判一次迟早会走偏）。
+	doubleWeekdays := setting.DoubleWeekdays
+	if doubleWeekdays == nil || setting.DoubleMultiplier <= 1 {
+		// nil 会序列化成 null 让前端多一层判空；倍数无效时对外统一呈现为
+		// 「未开启翻倍」，前端不必再判一遍
+		doubleWeekdays = []int{}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"enabled":          setting.Enabled,
-			"min_quota":        setting.MinQuota,
-			"max_quota":        setting.MaxQuota,
-			"min_topup_amount": setting.MinTopUpAmount,
-			"topup_eligible":   topupEligible,
-			"user_topup_total": userTopUpAmount,
-			"stats":            stats,
+			"enabled":           setting.Enabled,
+			"min_quota":         setting.MinQuota,
+			"max_quota":         setting.MaxQuota,
+			"min_topup_amount":  setting.MinTopUpAmount,
+			"topup_eligible":    topupEligible,
+			"user_topup_total":  userTopUpAmount,
+			"stats":             stats,
+			"double_weekdays":   doubleWeekdays,
+			"double_multiplier": setting.DoubleMultiplier,
+			"today_is_double":   operation_setting.CheckinMultiplierFor(time.Now()) > 1,
 		},
 	})
 }

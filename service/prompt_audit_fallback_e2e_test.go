@@ -206,6 +206,45 @@ func TestFallback_TransportFailureRecoveredByFallback(t *testing.T) {
 	ResetPromptAuditFallbackStats()
 }
 
+func TestAudit_IgnoresCanceledParentContext(t *testing.T) {
+	// 复现线上：Codex 取消连接后主备都 context canceled，再 fail-open。
+	// 父 ctx 已取消时，审核仍应打到节点并拿到裁决。
+	var hits int32
+	srv := fakeAuditNode("verdict_clean", &hits)
+	defer srv.Close()
+
+	parent, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	conf, _, err := RunPromptAudit(parent, e2eCfg(srv.URL), "正常开发内容")
+	assert.NoError(t, err)
+	assert.Equal(t, 0.0, conf)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&hits), "父 ctx 取消后仍应完成审核")
+}
+
+func TestFallback_WorksWhenParentCanceled(t *testing.T) {
+	ResetPromptAuditFallbackStats()
+	primary := fakeAuditNode("rate_limited", nil)
+	defer primary.Close()
+	var fbHits int32
+	fb := fakeAuditNode("verdict_clean", &fbHits)
+	defer fb.Close()
+
+	cfg := e2eCfg(primary.URL)
+	cfg.FallbackEnabled = true
+	cfg.FallbackBaseURL = fb.URL + "/v1"
+	cfg.FallbackModel = "fallback-model"
+
+	parent, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	conf, _, err := RunPromptAudit(parent, cfg, "正常内容")
+	assert.NoError(t, err)
+	assert.Equal(t, 0.0, conf)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&fbHits), "父 ctx 取消后备用节点仍应能救回")
+	ResetPromptAuditFallbackStats()
+}
+
 func TestFallback_DisabledKeepsSingleNodeBehavior(t *testing.T) {
 	ResetPromptAuditFallbackStats()
 	var fbHits int32

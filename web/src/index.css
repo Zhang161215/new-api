@@ -46,6 +46,50 @@ code {
     monospace;
 }
 
+/* System logos are often uploaded as large bitmaps (e.g. 768px). These rules
+   sit outside @layer so they beat Tailwind preflight `img { height: auto }`
+   and flex `min-width: auto` (intrinsic size). */
+.app-logo,
+.app-logo-sm,
+.app-logo-md,
+img[alt='Logo'],
+header img[alt='logo'] {
+  display: block;
+  object-fit: cover;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.app-logo,
+img[alt='Logo'] {
+  width: 2.5rem;
+  height: 2.5rem;
+  max-width: 2.5rem;
+  max-height: 2.5rem;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+}
+
+.app-logo-sm,
+header img[alt='logo'] {
+  width: 2rem;
+  height: 2rem;
+  max-width: 2rem;
+  max-height: 2rem;
+  min-width: 2rem;
+  min-height: 2rem;
+}
+
+.app-logo-md {
+  width: 4rem;
+  height: 4rem;
+  max-width: 4rem;
+  max-height: 4rem;
+  min-width: 4rem;
+  min-height: 4rem;
+}
+
 /* ==================== 布局相关样式 ==================== */
 .semi-layout::-webkit-scrollbar,
 .semi-layout-content::-webkit-scrollbar,
@@ -955,6 +999,64 @@ html.dark .with-pastel-balls::before {
   gap: 0.25rem;
 }
 
+.reasoning-effort-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  vertical-align: middle;
+  cursor: default;
+  user-select: none;
+  padding: 0;
+}
+
+.reasoning-effort-tag i {
+  display: block;
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 9px;
+  height: 9px;
+}
+
+.reasoning-effort-tag-grey {
+  background-color: rgba(var(--semi-grey-4), 0.45);
+  color: rgba(var(--semi-grey-9), 1);
+}
+
+.reasoning-effort-tag-cyan {
+  background-color: rgba(var(--semi-cyan-4), 0.45);
+  color: rgba(var(--semi-cyan-9), 1);
+}
+
+.reasoning-effort-tag-blue {
+  background-color: rgba(var(--semi-blue-4), 0.45);
+  color: rgba(var(--semi-blue-9), 1);
+}
+
+.reasoning-effort-tag-orange {
+  background-color: rgba(var(--semi-orange-4), 0.45);
+  color: rgba(var(--semi-orange-9), 1);
+}
+
+.reasoning-effort-tag-purple {
+  background-color: rgba(var(--semi-purple-4), 0.45);
+  color: rgba(var(--semi-purple-9), 1);
+}
+
+.reasoning-effort-tag-violet {
+  background-color: rgba(var(--semi-violet-4), 0.45);
+  color: rgba(var(--semi-violet-9), 1);
+}
+
+.reasoning-effort-tag-violet {
+  background-color: rgba(var(--semi-violet-5), 0.28);
+  color: rgba(var(--semi-violet-8), 1);
+}
+
 /* ==================== 自定义圆角样式 ==================== */
 .semi-radio,
 .semi-tagInput,
@@ -1164,6 +1266,10 @@ html.dark .with-pastel-balls::before {
 .synai-hero-logo {
   width: 64px;
   height: 64px;
+  max-width: 64px;
+  max-height: 64px;
+  min-width: 64px;
+  min-height: 64px;
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
@@ -2032,6 +2138,10 @@ html.dark .with-pastel-balls::before {
   .synai-hero-logo {
     width: 48px;
     height: 48px;
+    max-width: 48px;
+    max-height: 48px;
+    min-width: 48px;
+    min-height: 48px;
   }
 
   .synai-section-head {

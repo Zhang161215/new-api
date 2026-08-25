@@ -64,6 +64,7 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeChannelModelMappedError, types.ErrOptionWithSkipRetry())
 	}
+	helper.CaptureResponsesReasoningEffort(info, request)
 
 	adaptor := GetAdaptor(info.ApiType)
 	if adaptor == nil {

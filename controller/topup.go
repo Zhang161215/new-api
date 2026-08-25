@@ -443,24 +443,33 @@ func GetUserTopUps(c *gin.Context) {
 		return
 	}
 
+	FillTopUpCurrency(topups)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(topups)
 	common.ApiSuccess(c, pageInfo)
 }
 
-// GetAllTopUps 管理员获取全平台充值记录
+// GetAllTopUps 管理员获取全平台充值记录。
+// 带 user_id 时只返回该用户的记录 —— 用户管理页「开具收据」要按人筛单，
+// 直接复用按用户查询的那两个函数，不必给 GetAllTopUps 另加一套过滤。
 func GetAllTopUps(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	keyword := c.Query("keyword")
+	filterUserId, _ := strconv.Atoi(c.Query("user_id"))
 
 	var (
 		topups []*model.TopUp
 		total  int64
 		err    error
 	)
-	if keyword != "" {
+	switch {
+	case filterUserId > 0 && keyword != "":
+		topups, total, err = model.SearchUserTopUps(filterUserId, keyword, pageInfo)
+	case filterUserId > 0:
+		topups, total, err = model.GetUserTopUps(filterUserId, pageInfo)
+	case keyword != "":
 		topups, total, err = model.SearchAllTopUps(keyword, pageInfo)
-	} else {
+	default:
 		topups, total, err = model.GetAllTopUps(pageInfo)
 	}
 	if err != nil {
@@ -468,6 +477,7 @@ func GetAllTopUps(c *gin.Context) {
 		return
 	}
 
+	FillTopUpCurrency(topups)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(topups)
 	common.ApiSuccess(c, pageInfo)

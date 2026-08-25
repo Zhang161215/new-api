@@ -41,6 +41,7 @@ import {
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import ParamOverrideEntry from '../../components/table/usage-logs/components/ParamOverrideEntry';
+import { renderReasoningEffortTag } from '../../components/table/usage-logs/ReasoningEffortTag';
 
 export const useLogsData = () => {
   const { t } = useTranslation();
@@ -87,6 +88,9 @@ export const useLogsData = () => {
   // Statistics state
   const [stat, setStat] = useState({
     quota: 0,
+    // 按计费来源拆分的消耗，由 /api/log/stat 与 /api/log/self/stat 下发
+    subscription_quota: 0,
+    wallet_quota: 0,
     token: 0,
   });
 
@@ -576,8 +580,8 @@ export const useLogsData = () => {
         }
         if (other?.reasoning_effort) {
           expandDataLocal.push({
-            key: t('Reasoning Effort'),
-            value: other.reasoning_effort,
+            key: t('推理级别'),
+            value: renderReasoningEffortTag(other) || other.reasoning_effort,
           });
         }
       }

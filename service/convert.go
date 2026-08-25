@@ -19,6 +19,16 @@ func ClaudeToOpenAIRequest(claudeRequest dto.ClaudeRequest, info *relaycommon.Re
 		Model:       claudeRequest.Model,
 		Temperature: claudeRequest.Temperature,
 	}
+	if effort := claudeRequest.GetEfforts(); effort != "" {
+		openAIRequest.ReasoningEffort = effort
+	} else if claudeRequest.Thinking != nil {
+		switch strings.ToLower(strings.TrimSpace(claudeRequest.Thinking.Type)) {
+		case "enabled", "adaptive":
+			openAIRequest.ReasoningEffort = "medium"
+		case "disabled":
+			openAIRequest.ReasoningEffort = "none"
+		}
+	}
 	if claudeRequest.MaxTokens != nil {
 		openAIRequest.MaxTokens = lo.ToPtr(lo.FromPtr(claudeRequest.MaxTokens))
 	}

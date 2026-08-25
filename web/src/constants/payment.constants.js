@@ -17,13 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-export * from './channel.constants';
-export * from './user.constants';
-export * from './toast.constants';
-export * from './common.constant';
-export * from './dashboard.constants';
-export * from './playground.constants';
-export * from './redemption.constants';
-export * from './channel-affinity-template.constants';
-export * from './subscription.constants';
-export * from './payment.constants';
+// 支付方式代码 → 展示名。
+// 抽到 constants 是因为充值账单和电子收据都要用；两处各写一份的话，
+// 加新渠道时很容易只改一边，收据上就会露出 raw code。
+export const PAYMENT_METHOD_MAP = {
+  stripe: 'Stripe',
+  creem: 'Creem',
+  waffo: 'Waffo',
+  alipay: '支付宝',
+  wxpay: '微信',
+};
