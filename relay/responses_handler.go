@@ -77,7 +77,13 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
 		}
-		requestBody = common.ReaderOnly(storage)
+		raw, err := storage.Bytes()
+		if err != nil {
+			return types.NewError(err, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
+		}
+		// Polluted client history may carry tool_search_call.arguments as a JSON
+		// string; Codex requires an object. Repair on the pass-through path too.
+		requestBody = bytes.NewBuffer(dto.CoerceToolSearchCallArguments(raw))
 	} else {
 		convertedRequest, err := adaptor.ConvertOpenAIResponsesRequest(c, info, *request)
 		if err != nil {
@@ -103,6 +109,7 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 			}
 		}
 
+		jsonData = dto.CoerceToolSearchCallArguments(jsonData)
 		if common.DebugEnabled {
 			println("requestBody: ", string(jsonData))
 		}

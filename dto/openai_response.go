@@ -431,10 +431,12 @@ func GetOpenAIError(errorField any) *types.OpenAIError {
 	}
 }
 
-// NormalizeResponsesFunctionArguments converts function-call `arguments`
+// NormalizeResponsesFunctionArguments converts function_call `arguments`
 // objects/arrays into JSON strings. Official OpenAI Responses API and Codex
 // (serde String) both require a string; some upstreams emit a parsed object.
-// Nested keys inside an arguments payload are left untouched.
+// tool_search_call (and any other type) must keep object arguments — Codex
+// rejects a string with invalid_type. Nested keys inside an arguments
+// payload are left untouched.
 func NormalizeResponsesFunctionArguments(data string) string {
 	trimmed := bytes.TrimSpace([]byte(data))
 	if len(trimmed) == 0 || (trimmed[0] != '{' && trimmed[0] != '[') {
@@ -458,12 +460,15 @@ func normalizeArgumentsValue(v any) bool {
 	changed := false
 	switch x := v.(type) {
 	case map[string]any:
-		if args, ok := x["arguments"]; ok {
-			switch a := args.(type) {
-			case map[string]any, []any:
-				if b, err := json.Marshal(a); err == nil {
-					x["arguments"] = string(b)
-					changed = true
+		typeName, _ := x["type"].(string)
+		if typeName == "function_call" {
+			if args, ok := x["arguments"]; ok {
+				switch a := args.(type) {
+				case map[string]any, []any:
+					if b, err := json.Marshal(a); err == nil {
+						x["arguments"] = string(b)
+						changed = true
+					}
 				}
 			}
 		}
@@ -478,6 +483,66 @@ func normalizeArgumentsValue(v any) bool {
 	case []any:
 		for _, child := range x {
 			if normalizeArgumentsValue(child) {
+				changed = true
+			}
+		}
+	}
+	return changed
+}
+
+// CoerceToolSearchCallArguments restores tool_search_call.arguments from a
+// JSON string to an object/array. Polluted client history (stringified by an
+// older NewAPI build) must be repaired before the request is sent upstream,
+// otherwise Codex returns 400 invalid_type. Unparseable strings are left as-is.
+func CoerceToolSearchCallArguments(data []byte) []byte {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || (trimmed[0] != '{' && trimmed[0] != '[') {
+		return data
+	}
+	var root any
+	if err := json.Unmarshal(trimmed, &root); err != nil {
+		return data
+	}
+	if !coerceToolSearchCallArgumentsValue(root) {
+		return data
+	}
+	out, err := json.Marshal(root)
+	if err != nil {
+		return data
+	}
+	return out
+}
+
+func coerceToolSearchCallArgumentsValue(v any) bool {
+	changed := false
+	switch x := v.(type) {
+	case map[string]any:
+		typeName, _ := x["type"].(string)
+		if typeName == "tool_search_call" {
+			if args, ok := x["arguments"]; ok {
+				if s, ok := args.(string); ok {
+					var parsed any
+					if err := json.Unmarshal([]byte(s), &parsed); err == nil {
+						switch parsed.(type) {
+						case map[string]any, []any:
+							x["arguments"] = parsed
+							changed = true
+						}
+					}
+				}
+			}
+		}
+		for k, child := range x {
+			if k == "arguments" {
+				continue
+			}
+			if coerceToolSearchCallArgumentsValue(child) {
+				changed = true
+			}
+		}
+	case []any:
+		for _, child := range x {
+			if coerceToolSearchCallArgumentsValue(child) {
 				changed = true
 			}
 		}
