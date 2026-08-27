@@ -26,6 +26,7 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
+	responseBody = []byte(dto.NormalizeResponsesFunctionArguments(string(responseBody)))
 	err = common.Unmarshal(responseBody, &responsesResponse)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
@@ -82,10 +83,17 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
 		// 检查当前数据是否包含 completed 状态和 usage 信息
+		data = dto.NormalizeResponsesFunctionArguments(data)
 		var streamResponse dto.ResponsesStreamResponse
 		if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
 			logger.LogError(c, "failed to unmarshal stream response: "+err.Error())
 			sr.Error(err)
+			var peek struct {
+				Type string `json:"type"`
+			}
+			_ = common.UnmarshalJsonStr(data, &peek)
+			streamResponse.Type = peek.Type
+			sendResponsesStreamData(c, streamResponse, data)
 			return
 		}
 		sendResponsesStreamData(c, streamResponse, data)

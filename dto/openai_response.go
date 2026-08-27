@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 
@@ -345,7 +346,7 @@ type ResponsesOutput struct {
 	Size      string                   `json:"size"`
 	CallId    string                   `json:"call_id,omitempty"`
 	Name      string                   `json:"name,omitempty"`
-	Arguments string                   `json:"arguments,omitempty"`
+	Arguments FlexibleJSONString       `json:"arguments,omitempty"`
 }
 
 type ResponsesOutputContent struct {
@@ -428,4 +429,58 @@ func GetOpenAIError(errorField any) *types.OpenAIError {
 			Message: fmt.Sprintf("%v", err),
 		}
 	}
+}
+
+// NormalizeResponsesFunctionArguments converts function-call `arguments`
+// objects/arrays into JSON strings. Official OpenAI Responses API and Codex
+// (serde String) both require a string; some upstreams emit a parsed object.
+// Nested keys inside an arguments payload are left untouched.
+func NormalizeResponsesFunctionArguments(data string) string {
+	trimmed := bytes.TrimSpace([]byte(data))
+	if len(trimmed) == 0 || (trimmed[0] != '{' && trimmed[0] != '[') {
+		return data
+	}
+	var root any
+	if err := json.Unmarshal(trimmed, &root); err != nil {
+		return data
+	}
+	if !normalizeArgumentsValue(root) {
+		return data
+	}
+	out, err := json.Marshal(root)
+	if err != nil {
+		return data
+	}
+	return string(out)
+}
+
+func normalizeArgumentsValue(v any) bool {
+	changed := false
+	switch x := v.(type) {
+	case map[string]any:
+		if args, ok := x["arguments"]; ok {
+			switch a := args.(type) {
+			case map[string]any, []any:
+				if b, err := json.Marshal(a); err == nil {
+					x["arguments"] = string(b)
+					changed = true
+				}
+			}
+		}
+		for k, child := range x {
+			if k == "arguments" {
+				continue
+			}
+			if normalizeArgumentsValue(child) {
+				changed = true
+			}
+		}
+	case []any:
+		for _, child := range x {
+			if normalizeArgumentsValue(child) {
+				changed = true
+			}
+		}
+	}
+	return changed
 }
