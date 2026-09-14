@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f5f8fc" />
+    <title>发起抽奖 · Synai996</title>
+    <script>
+      (function () {
+        try {
+          var m = localStorage.getItem('theme-mode') || 'auto';
+          var dark =
+            m === 'dark' ||
+            (m !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.classList.toggle('dark', dark);
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="stylesheet" href="./lottery.css" />
+  </head>
+  <body data-page="host">
+    <div class="lz-wash" aria-hidden="true">
+      <span class="lz-aurora lz-aurora-a"></span>
+      <span class="lz-aurora lz-aurora-b"></span>
+      <span class="lz-aurora lz-aurora-c"></span>
+    </div>
+
+    <header class="lz-top lz-top-join">
+      <a class="lz-brand" href="/" aria-label="返回 Synai996 首页">
+        <span class="lz-brand-mark" aria-hidden="true"></span>
+        Synai996
+      </a>
+      <span class="lz-badge"><span class="lz-live-dot" aria-hidden="true"></span> lottery live</span>
+      <span class="lz-top-label">发起抽奖</span>
+    </header>
+
+    <main class="lz-host-page">
+      <div class="lz-sheet lz-sheet-page">
+        <header class="lz-sheet-head">
+          <div>
+            <p class="lz-host">发起人</p>
+            <h2 id="config-title">发起一场抽奖</h2>
+          </div>
+        </header>
+        <p class="lz-fine lz-sheet-lead">
+          填好后发布。用户打开「参与页」只需确认参与，到点自动开奖。
+        </p>
+
+        <section class="lz-sheet-block" aria-labelledby="cfg-timed-title">
+          <h3 id="cfg-timed-title">活动信息</h3>
+          <label class="lz-field">
+            <span>活动名称</span>
+            <input id="cfg-event-name" type="text" maxlength="20" />
+          </label>
+          <label class="lz-field">
+            <span>开奖时间</span>
+            <input id="cfg-draw-at" type="datetime-local" />
+          </label>
+          <div class="lz-quick">
+            <button type="button" data-in="30">预览：30 秒后开奖</button>
+            <button type="button" data-in="60">1 分钟后</button>
+            <button type="button" data-in="300">5 分钟后</button>
+          </div>
+          <label class="lz-field">
+            <span>已参与人数（预览用，不含当前用户）</span>
+            <input id="cfg-base-count" type="number" min="0" max="500" step="1" />
+          </label>
+        <p class="lz-subhead">奖品</p>
+          <div id="timed-prize-editor"></div>
+          <button class="lz-ghost" id="add-prize" type="button">添加奖品</button>
+          <p class="lz-fine">奖项名称、奖品内容和名额都可以改。参与用户机会均等。</p>
+          <button class="lz-ghost" id="reset-round" type="button">重新发起（清空参与和结果）</button>
+        </section>
+
+        <a class="lz-cta lz-cta-link" id="config-close" href="./index.html">发布并打开参与页</a>
+      </div>
+    </main>
+
+    <p class="lz-foot">
+      <a href="./index.html">查看参与页</a>
+      ·
+      <a href="./wheel.html">转盘抽奖（另一套）</a>
+    </p>
+
+    <script src="./lottery.js" defer></script>
+  </body>
+</html>

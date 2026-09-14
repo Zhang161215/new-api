@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -128,7 +129,7 @@ func Redeem(key string, userId int) (quota int, err error) {
 	}
 	common.RandomSleep()
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(keyCol+" = ?", key).First(redemption).Error
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(keyCol+" = ?", strings.TrimSpace(key)).First(redemption).Error
 		if err != nil {
 			return errors.New("无效的兑换码")
 		}
@@ -138,8 +139,14 @@ func Redeem(key string, userId int) (quota int, err error) {
 		if redemption.ExpiredTime != 0 && redemption.ExpiredTime < common.GetTimestamp() {
 			return errors.New("该兑换码已过期")
 		}
-		// 检查该用户是否已经使用过同批次（同 name）的兑换码
-		if redemption.Name != "" {
+		if isLotteryRedemptionName(redemption.Name) {
+			if redemption.UsedUserId == 0 {
+				return ErrLotteryCodeNotRedeemable
+			}
+			if redemption.UsedUserId != userId {
+				return ErrLotteryCodeNotYours
+			}
+		} else if redemption.Name != "" {
 			var existCount int64
 			tx.Model(&Redemption{}).Where("name = ? AND used_user_id = ? AND status = ?",
 				redemption.Name, userId, common.RedemptionCodeStatusUsed).Count(&existCount)
@@ -158,11 +165,25 @@ func Redeem(key string, userId int) (quota int, err error) {
 		return err
 	})
 	if err != nil {
+		if isRedeemUserError(err) {
+			return 0, err
+		}
 		common.SysError("redemption failed: " + err.Error())
 		return 0, ErrRedeemFailed
 	}
 	RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id))
 	return redemption.Quota, nil
+}
+
+func isRedeemUserError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrLotteryCodeNotRedeemable) || errors.Is(err, ErrLotteryCodeNotYours) {
+		return true
+	}
+	s := err.Error()
+	return strings.Contains(s, "兑换码") || strings.Contains(s, "限用一次")
 }
 
 func (redemption *Redemption) Insert() error {

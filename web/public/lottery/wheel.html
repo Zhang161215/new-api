@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#eef4ff" />
+    <title>额度抽奖</title>
+    <script>
+      (function () {
+        try {
+          if (/[?&]play=1(?:&|$)/.test(location.search)) return;
+          var user = JSON.parse(localStorage.getItem('user') || 'null');
+          if (user && Number(user.role) >= 10) location.replace('./admin.html');
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="preload" as="style" href="./wheel.css?v=w55" />
+    <link rel="preload" as="script" href="./lottery.js?v=w73" />
+    <link rel="preload" as="audio" href="./assets/bgm.mp3?v=b1" />
+    <link rel="preload" as="image" href="./assets/ui/wheel-outer.png" fetchpriority="high" />
+    <link rel="preload" as="image" href="./assets/ui/title.png?v=t6" fetchpriority="high" />
+    <link rel="preload" as="image" href="./assets/ui/draw-button.png" fetchpriority="high" />
+    <link rel="preload" as="image" href="./assets/ui/prize-amount.png" />
+    <link rel="preload" as="image" href="./assets/ui/prize-thanks.png" />
+    <link rel="preload" as="image" href="./assets/ui/prize-again.png" />
+    <link rel="preload" as="image" href="./assets/ui/prize-grand.png" />
+    <link rel="preload" as="image" href="./assets/ui/prize-extra.png" />
+    <link rel="preload" as="image" href="./assets/ui/prize-ticket.png" />
+    <link rel="stylesheet" href="./lottery.css" />
+    <link rel="stylesheet" href="./wheel.css?v=w55" />
+    <script defer src="./lottery.js?v=w73"></script>
+  </head>
+  <body class="lz-w-app" data-page="wheel">
+    <a class="lz-skip" href="#draw-btn">跳到抽奖</a>
+
+    <header class="lz-w-nav">
+      <a class="lz-w-logo" href="/" aria-label="返回控制台">
+        <img class="lz-w-logo-img" src="/logo.png" width="32" height="32" alt="" />
+        <span class="lz-w-logo-name">额度抽奖</span>
+      </a>
+      <div class="lz-w-nav-end">
+        <button type="button" class="lz-w-bgm" id="bgm-btn" aria-pressed="true" aria-label="关闭背景音乐" title="背景音乐">
+          <svg class="lz-w-bgm-on" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M4 9v6h3.2L12 19.8V4.2L7.2 9H4zm11.5 3a3.5 3.5 0 0 0-2-3.15v6.3A3.5 3.5 0 0 0 15.5 12zm-2-8.05v2.06A6.5 6.5 0 0 1 19.5 12a6.5 6.5 0 0 1-6 6.99v2.06A8.5 8.5 0 0 0 21.5 12a8.5 8.5 0 0 0-8-8.05z"/></svg>
+          <svg class="lz-w-bgm-off" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M4 9v6h3.2L12 19.8V4.2L7.2 9H4zm12.7 1.1 1.4 1.4-2.1 2.1 2.1 2.1-1.4 1.4-2.1-2.1-2.1 2.1-1.4-1.4 2.1-2.1-2.1-2.1 1.4-1.4 2.1 2.1 2.1-2.1z"/></svg>
+        </button>
+        <a class="lz-w-admin-link" id="admin-link" href="./admin.html" hidden>抽奖管理</a>
+        <div class="lz-w-user is-out" id="user-chip">
+          <span class="lz-w-user-dot" aria-hidden="true"></span>
+          <span id="auth-hint">未登录</span>
+        </div>
+        <form class="lz-w-login" id="lottery-login" hidden>
+          <input id="login-username" type="text" name="username" placeholder="用户名" autocomplete="username" />
+          <input id="login-password" type="password" name="password" placeholder="密码" autocomplete="current-password" />
+          <button type="submit">登录</button>
+          <p class="lz-w-auth" id="login-msg" hidden></p>
+        </form>
+      </div>
+    </header>
+
+    <main class="lz-w-board">
+      <aside class="lz-w-panel lz-w-panel-side" aria-labelledby="feed-title">
+        <div class="lz-w-panel-head">
+          <h2 id="feed-title">中奖记录</h2>
+          <p>全站最近入账</p>
+        </div>
+        <div class="lz-w-feed-viewport">
+          <ol class="lz-w-feed" id="win-feed">
+            <li class="lz-empty">
+              <div class="lz-w-empty">
+                <strong>暂无中奖记录</strong>
+                <span class="lz-w-empty-hint">全站入账后会滚动显示</span>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </aside>
+
+      <section class="lz-w-arena">
+        <div class="lz-w-hero">
+          <img class="lz-w-title" src="./assets/ui/title.png?v=t6" alt="幸运大抽奖" draggable="false" fetchpriority="high" decoding="async" />
+        </div>
+
+        <div class="lz-w-ornament lz-w-wheel-stack" aria-label="抽奖转盘">
+          <img class="lz-w-wheel-outer" src="./assets/ui/wheel-outer.png" alt="" draggable="false" fetchpriority="high" decoding="async" />
+          <div class="lz-w-wheel-core">
+            <div class="lz-w-disc" aria-hidden="false">
+              <div id="lucky-wheel" role="img" aria-label="额度抽奖转盘"></div>
+            </div>
+            <div class="lz-w-hub">
+              <img class="lz-w-spin-art" src="./assets/ui/draw-button.png" alt="" draggable="false" fetchpriority="high" decoding="async" />
+              <button class="lz-w-spin" id="draw-btn" type="button">
+                <span id="draw-label">立即抽奖</span>
+              </button>
+            </div>
+          </div>
+          <div class="lz-w-jackpot-fx" id="jackpot-fx" hidden aria-hidden="true"></div>
+          <div class="lz-w-stamp" id="stock-stamp" hidden>
+            <div class="lz-w-stamp-card">
+              <span class="lz-w-stamp-tape" id="stamp-tape">暂时打烊</span>
+              <div class="lz-w-stamp-face" aria-hidden="true">
+                <span class="lz-w-stamp-eye">×</span>
+                <span class="lz-w-stamp-eye">×</span>
+                <span class="lz-w-stamp-mouth"></span>
+                <span class="lz-w-stamp-drop"></span>
+              </div>
+              <strong class="lz-w-stamp-title" id="stamp-title">奖被抽空了</strong>
+              <p class="lz-w-stamp-sub" id="stamp-sub">站长去进货了<br>转盘先歇一会儿</p>
+            </div>
+          </div>
+        </div>
+
+        <p class="lz-w-draw-status" id="draw-status" hidden></p>
+        <p class="lz-w-toast" id="draw-toast" hidden role="status"></p>
+        <div class="lz-w-note">
+          <span class="lz-w-note-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="#2f6dff" d="M12 2 4 5.5v6.2c0 5 3.4 9.4 8 10.8 4.6-1.4 8-5.8 8-10.8V5.5L12 2zm-1.2 13.3-3.1-3.1 1.4-1.4 1.7 1.7 4.2-4.2 1.4 1.4-5.6 5.6z"/></svg>
+          </span>
+          <div>
+            <p class="lz-w-note-title">活动说明</p>
+            <p class="lz-w-note-text" id="dock-note-text">成功支付 1 笔，获得 1 次抽奖；每次抽取消耗 1 次。奖项内容由后台配置。</p>
+          </div>
+        </div>
+      </section>
+
+      <aside class="lz-w-panel lz-w-panel-side" aria-labelledby="me-title">
+        <div class="lz-w-panel-head">
+          <h2 id="me-title">我的抽取</h2>
+          <a class="lz-w-topup" href="/console/topup">去充值</a>
+        </div>
+        <div class="lz-w-stats" id="me-stats"></div>
+        <section class="lz-w-mine-block">
+          <h3 class="lz-w-sub">最近抽取</h3>
+          <ol class="lz-w-mine" id="history-list">
+            <li class="lz-empty">
+              <div class="lz-w-empty">
+                <strong>还没有抽取记录</strong>
+                <span class="lz-w-empty-hint">抽奖结果会显示在这里</span>
+              </div>
+            </li>
+          </ol>
+          <a class="lz-w-more" href="./history.html">查看全部记录</a>
+        </section>
+      </aside>
+    </main>
+
+    <span id="tickets-count" hidden></span>
+    <span id="stat-today" hidden></span>
+    <span id="stat-sum" hidden></span>
+    <span id="mode-label" class="lz-visually-hidden">MOCK</span>
+
+    <div class="lz-modal" id="result-modal" hidden>
+      <div class="lz-dialog lz-w-dialog" role="dialog" aria-modal="true" aria-labelledby="result-title" aria-describedby="result-desc">
+        <div class="lz-w-result-art">
+          <img id="result-icon" alt="" />
+        </div>
+        <p class="lz-dialog-kicker" id="result-kicker">抽奖结果</p>
+        <h2 id="result-title">—</h2>
+        <p class="lz-w-result-chip" id="result-chip" hidden>大奖</p>
+        <div class="lz-w-result-code" id="result-code-wrap" hidden>
+          <span class="lz-w-result-code-k">兑换码</span>
+          <button type="button" class="lz-w-copy" id="result-code-btn" data-copy="">
+            <code id="result-code-text"></code>
+            <span class="lz-w-copy-tip">复制</span>
+          </button>
+        </div>
+        <p id="result-desc"></p>
+        <button class="lz-w-spin lz-w-spin-plain" id="result-close" type="button">继续抽取</button>
+      </div>
+    </div>
+
+  </body>
+</html>

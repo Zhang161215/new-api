@@ -282,6 +282,11 @@ func migrateDB() error {
 		&UserOAuthBinding{},
 		&AffRebate{},
 		&PromptAuditLog{},
+		&LotteryConfig{},
+		&LotteryPrize{},
+		&LotteryWallet{},
+		&LotteryTicketLog{},
+		&LotteryDraw{},
 		&OpsCostRecord{},
 	)
 	if err != nil {
@@ -295,6 +300,9 @@ func migrateDB() error {
 		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
 			return err
 		}
+	}
+	if err := EnsureLotteryDefaults(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -333,6 +341,11 @@ func migrateDBFast() error {
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
 		{&AffRebate{}, "AffRebate"},
 		{&PromptAuditLog{}, "PromptAuditLog"},
+		{&LotteryConfig{}, "LotteryConfig"},
+		{&LotteryPrize{}, "LotteryPrize"},
+		{&LotteryWallet{}, "LotteryWallet"},
+		{&LotteryTicketLog{}, "LotteryTicketLog"},
+		{&LotteryDraw{}, "LotteryDraw"},
 		{&OpsCostRecord{}, "OpsCostRecord"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
@@ -366,6 +379,9 @@ func migrateDBFast() error {
 		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
 			return err
 		}
+	}
+	if err := EnsureLotteryDefaults(); err != nil {
+		return err
 	}
 	common.SysLog("database migrated")
 	return nil

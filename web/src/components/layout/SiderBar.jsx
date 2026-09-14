@@ -35,6 +35,7 @@ const routerMap = {
   channel: '/console/channel',
   token: '/console/token',
   redemption: '/console/redemption',
+  lottery: '/console/lottery-admin',
   topup: '/console/topup',
   user: '/console/user',
   analytics: '/console/analytics',

@@ -33,6 +33,40 @@ func validUserInfo(username string, role int) bool {
 	return true
 }
 
+func sessionInt(v any) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case int8:
+		return int(n)
+	case int16:
+		return int(n)
+	case int32:
+		return int(n)
+	case int64:
+		return int(n)
+	case uint:
+		return int(n)
+	case uint8:
+		return int(n)
+	case uint16:
+		return int(n)
+	case uint32:
+		return int(n)
+	case uint64:
+		return int(n)
+	case float32:
+		return int(n)
+	case float64:
+		return int(n)
+	case string:
+		i, _ := strconv.Atoi(strings.TrimSpace(n))
+		return i
+	default:
+		return 0
+	}
+}
+
 func authHelper(c *gin.Context, minRole int) {
 	session := sessions.Default(c)
 	username := session.Get("username")
@@ -112,7 +146,8 @@ func authHelper(c *gin.Context, minRole int) {
 		return
 
 	}
-	if id != apiUserId {
+	userId := sessionInt(id)
+	if userId != apiUserId {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
 			"message": common.TranslateMessage(c, i18n.MsgAuthUserIdMismatch),
@@ -120,7 +155,8 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
-	if status.(int) == common.UserStatusDisabled {
+	roleInt := sessionInt(role)
+	if sessionInt(status) == common.UserStatusDisabled {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": common.TranslateMessage(c, i18n.MsgAuthUserBanned),
@@ -128,7 +164,7 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
-	if role.(int) < minRole {
+	if roleInt < minRole {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": common.TranslateMessage(c, i18n.MsgAuthInsufficientPrivilege),
@@ -136,7 +172,8 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
-	if !validUserInfo(username.(string), role.(int)) {
+	name, _ := username.(string)
+	if !validUserInfo(name, roleInt) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": common.TranslateMessage(c, i18n.MsgAuthUserInfoInvalid),
@@ -146,9 +183,9 @@ func authHelper(c *gin.Context, minRole int) {
 	}
 	// 防止不同newapi版本冲突，导致数据不通用
 	c.Header("Auth-Version", "864b7076dbcd0a3c01b5520316720ebf")
-	c.Set("username", username)
-	c.Set("role", role)
-	c.Set("id", id)
+	c.Set("username", name)
+	c.Set("role", roleInt)
+	c.Set("id", userId)
 	c.Set("group", session.Get("group"))
 	c.Set("user_group", session.Get("group"))
 	c.Set("use_access_token", useAccessToken)
@@ -159,9 +196,35 @@ func authHelper(c *gin.Context, minRole int) {
 func TryUserAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
-		id := session.Get("id")
-		if id != nil {
+		if id := sessionInt(session.Get("id")); id > 0 {
 			c.Set("id", id)
+			if username := session.Get("username"); username != nil {
+				c.Set("username", username)
+			}
+			c.Set("role", sessionInt(session.Get("role")))
+			if group := session.Get("group"); group != nil {
+				c.Set("group", group)
+				c.Set("user_group", group)
+			}
+			c.Next()
+			return
+		}
+		accessToken := c.Request.Header.Get("Authorization")
+		if accessToken != "" {
+			user, err := model.ValidateAccessToken(accessToken)
+			if err == nil && user != nil && user.Id > 0 {
+				apiUserId, _ := strconv.Atoi(strings.TrimSpace(c.Request.Header.Get("New-Api-User")))
+				if apiUserId == 0 {
+					apiUserId, _ = strconv.Atoi(strings.TrimSpace(c.Request.Header.Get("New-API-User")))
+				}
+				if apiUserId == 0 || apiUserId == user.Id {
+					c.Set("id", user.Id)
+					c.Set("username", user.Username)
+					c.Set("role", user.Role)
+					c.Set("group", user.Group)
+					c.Set("user_group", user.Group)
+				}
+			}
 		}
 		c.Next()
 	}
@@ -185,6 +248,100 @@ func RootAuth() func(c *gin.Context) {
 	}
 }
 
+// SessionAuth 只校验浏览器 session，不要求 New-Api-User 头。
+// 抽奖静态页与主站前端分离，登录态靠 cookie。
+func SessionAuth(minRole int) func(c *gin.Context) {
+	return func(c *gin.Context) {
+		session := sessions.Default(c)
+		username := session.Get("username")
+		role := session.Get("role")
+		id := session.Get("id")
+		status := session.Get("status")
+		if username == nil || id == nil || role == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgAuthNotLoggedIn),
+			})
+			c.Abort()
+			return
+		}
+		statusInt := sessionInt(status)
+		if statusInt == common.UserStatusDisabled {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgAuthUserBanned),
+			})
+			c.Abort()
+			return
+		}
+		roleInt := sessionInt(role)
+		if roleInt < minRole {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgAuthInsufficientPrivilege),
+			})
+			c.Abort()
+			return
+		}
+		name, _ := username.(string)
+		if !validUserInfo(name, roleInt) {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgAuthUserInfoInvalid),
+			})
+			c.Abort()
+			return
+		}
+		c.Set("username", name)
+		c.Set("role", roleInt)
+		c.Set("id", sessionInt(id))
+		c.Set("group", session.Get("group"))
+		c.Set("user_group", session.Get("group"))
+		c.Next()
+	}
+}
+
+// LotteryAuth：优先用浏览器 session；没有 cookie 时再走 NewAPI 的 UserAuth（控制台 axios）。
+func LotteryAuth(minRole int) func(c *gin.Context) {
+	return func(c *gin.Context) {
+		session := sessions.Default(c)
+		if sessionInt(session.Get("id")) > 0 && session.Get("username") != nil {
+			SessionAuth(minRole)(c)
+			return
+		}
+		authHelper(c, minRole)
+	}
+}
+
+// LotteryAdminGuard 管理接口再读一次库里的角色，避免只信 session / 本地改 role。
+func LotteryAdminGuard() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := 0
+		if v, ok := c.Get("id"); ok {
+			id = sessionInt(v)
+		}
+		if id <= 0 {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgAuthNotLoggedIn),
+			})
+			c.Abort()
+			return
+		}
+		user, err := model.GetUserById(id, false)
+		if err != nil || user == nil || user.Role < common.RoleAdminUser || user.Status == common.UserStatusDisabled {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgAuthInsufficientPrivilege),
+			})
+			c.Abort()
+			return
+		}
+		c.Set("role", user.Role)
+		c.Next()
+	}
+}
+
 func WssAuth(c *gin.Context) {
 
 }
@@ -195,8 +352,8 @@ func TokenOrUserAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		// Try session auth first (dashboard users)
 		session := sessions.Default(c)
-		if id := session.Get("id"); id != nil {
-			if status, ok := session.Get("status").(int); ok && status == common.UserStatusEnabled {
+		if id := sessionInt(session.Get("id")); id > 0 {
+			if sessionInt(session.Get("status")) == common.UserStatusEnabled {
 				c.Set("id", id)
 				c.Next()
 				return

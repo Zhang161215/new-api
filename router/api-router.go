@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
 
@@ -53,6 +54,32 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/waffo/webhook", controller.WaffoWebhook)
 
 		apiRouter.GET("/subscription/public_plans", controller.GetSubscriptionPlans)
+
+		lotteryRoute := apiRouter.Group("/lottery")
+		{
+			lotteryRoute.GET("", middleware.TryUserAuth(), controller.GetLottery)
+			lotteryRoute.POST("/draw", middleware.LotteryAuth(common.RoleCommonUser), controller.DrawLottery)
+			lotteryRoute.GET("/history", middleware.LotteryAuth(common.RoleCommonUser), controller.GetLotteryHistory)
+			lotteryRoute.GET("/tickets", middleware.LotteryAuth(common.RoleCommonUser), controller.GetLotteryTicketLog)
+
+			lotteryAdmin := lotteryRoute.Group("/admin")
+			lotteryAdmin.Use(middleware.LotteryAuth(common.RoleAdminUser), middleware.LotteryAdminGuard())
+			{
+				lotteryAdmin.GET("/overview", controller.GetLotteryAdminOverview)
+				lotteryAdmin.PUT("/config", controller.UpdateLotteryAdminConfig)
+				lotteryAdmin.POST("/prizes", controller.CreateLotteryAdminPrize)
+				lotteryAdmin.PUT("/prizes/:id", controller.UpdateLotteryAdminPrize)
+				lotteryAdmin.DELETE("/prizes/:id", controller.DeleteLotteryAdminPrize)
+				lotteryAdmin.POST("/prizes/:id/stock", controller.GenerateLotteryAdminStock)
+				lotteryAdmin.GET("/codes", controller.ListLotteryAdminCodes)
+				lotteryAdmin.DELETE("/codes/:id", controller.DeleteLotteryAdminCode)
+				lotteryAdmin.GET("/users", controller.GetLotteryAdminUsers)
+				lotteryAdmin.GET("/wallets", controller.GetLotteryAdminWallets)
+				lotteryAdmin.GET("/draws", controller.GetLotteryAdminDraws)
+				lotteryAdmin.GET("/tickets", controller.GetLotteryAdminTicketLogs)
+				lotteryAdmin.POST("/grant-tickets", controller.AdminGrantLotteryTickets)
+			}
+		}
 
 		// Universal secure verification routes
 		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.UniversalVerify)

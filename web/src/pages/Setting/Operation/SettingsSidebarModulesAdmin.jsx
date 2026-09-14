@@ -29,6 +29,7 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import { API, showSuccess, showError } from '../../../helpers';
+import { mergeAdminConfig } from '../../../hooks/common/useSidebar';
 import { StatusContext } from '../../../context/Status';
 
 const { Text } = Typography;
@@ -64,6 +65,7 @@ export default function SettingsSidebarModulesAdmin(props) {
       models: true,
       deployment: true,
       redemption: true,
+      lottery: true,
       user: true,
       subscription: true,
       affiliateRebates: true,
@@ -127,6 +129,7 @@ export default function SettingsSidebarModulesAdmin(props) {
         models: true,
         deployment: true,
         redemption: true,
+        lottery: true,
         user: true,
         subscription: true,
         affiliateRebates: true,
@@ -178,7 +181,7 @@ export default function SettingsSidebarModulesAdmin(props) {
     if (props.options && props.options.SidebarModulesAdmin) {
       try {
         const modules = JSON.parse(props.options.SidebarModulesAdmin);
-        setSidebarModulesAdmin(modules);
+        setSidebarModulesAdmin(mergeAdminConfig(modules));
       } catch (error) {
         // 使用默认配置
         const defaultModules = {
@@ -198,6 +201,7 @@ export default function SettingsSidebarModulesAdmin(props) {
             models: true,
             deployment: true,
             redemption: true,
+            lottery: true,
             user: true,
             subscription: true,
             promptAudit: true,

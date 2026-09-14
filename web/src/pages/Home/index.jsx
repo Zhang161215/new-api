@@ -40,6 +40,7 @@ import {
   Copy,
 } from 'lucide-react';
 import NoticeModal from '../../components/layout/NoticeModal';
+import { QQ_GROUP_JOIN_URL } from '../../constants/community.constants';
 import './home.css';
 
 const FEATURE_ITEMS = [
@@ -528,7 +529,7 @@ env_key = "CRS_OAI_KEY"`,
                   system online
                 </span>
                 <a
-                  href='https://qm.qq.com/cgi-bin/qm/qr?k=&group_code=1054145226'
+                  href={QQ_GROUP_JOIN_URL}
                   target='_blank'
                   rel='noopener noreferrer'
                   className='nx-qq'

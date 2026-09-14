@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import HeaderBar from './headerbar';
+import LotteryGrantWatcher from './LotteryGrantWatcher';
+import './lottery-ui.css';
 import { Layout } from '@douyinfe/semi-ui';
 import SiderBar from './SiderBar';
 import App from '../../App';
@@ -62,15 +64,24 @@ const PageLayout = () => {
     '/pricing',
   ];
 
-  const shouldHideFooter = cardProPages.includes(location.pathname);
+  const isLotteryConsole =
+    location.pathname === '/console/lottery' ||
+    location.pathname === '/console/lottery-admin';
+
+  const shouldHideFooter =
+    cardProPages.includes(location.pathname) || isLotteryConsole;
 
   const shouldInnerPadding =
     location.pathname.includes('/console') &&
     !location.pathname.startsWith('/console/chat') &&
-    location.pathname !== '/console/playground';
+    location.pathname !== '/console/playground' &&
+    !isLotteryConsole;
 
   const isConsoleRoute = location.pathname.startsWith('/console');
   const showSider = isConsoleRoute && (!isMobile || drawerOpen);
+
+  window.__newapiLotteryRequest = (config) =>
+    API.request({ skipErrorHandler: true, ...config });
 
   useEffect(() => {
     if (isMobile && drawerOpen && collapsed) {
@@ -234,6 +245,7 @@ const PageLayout = () => {
         </Layout>
       </Layout>
       <ToastContainer />
+      <LotteryGrantWatcher />
     </Layout>
   );
 };

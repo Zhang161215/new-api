@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f5f8fc" />
+    <title>参与抽奖 · Synai996</title>
+    <script>
+      (function () {
+        try {
+          var m = localStorage.getItem('theme-mode') || 'auto';
+          var dark =
+            m === 'dark' ||
+            (m !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.classList.toggle('dark', dark);
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="stylesheet" href="./lottery.css" />
+  </head>
+  <body data-page="join">
+    <a class="lz-skip" href="#join-btn">跳到确认参与</a>
+    <div class="lz-wash" aria-hidden="true">
+      <span class="lz-aurora lz-aurora-a"></span>
+      <span class="lz-aurora lz-aurora-b"></span>
+      <span class="lz-aurora lz-aurora-c"></span>
+    </div>
+
+    <header class="lz-top lz-top-join">
+      <a class="lz-brand" href="/" aria-label="返回 Synai996 首页">
+        <span class="lz-brand-mark" aria-hidden="true"></span>
+        Synai996
+      </a>
+      <span class="lz-badge"><span class="lz-live-dot" aria-hidden="true"></span> lottery live</span>
+      <span class="lz-top-label">抽奖活动</span>
+    </header>
+
+    <main class="lz-join">
+      <ol class="lz-steps" id="join-steps">
+        <li data-step="join">确认参与</li>
+        <li data-step="wait">等待开奖</li>
+        <li data-step="done">公布结果</li>
+      </ol>
+
+      <article class="lz-ticket" aria-labelledby="event-name">
+        <p class="lz-host"><span id="event-code">Synai996</span> 发起</p>
+        <h1 id="event-name">周末额度抽奖</h1>
+        <p class="lz-when" id="draw-at-line">开奖时间 —</p>
+
+        <p class="lz-wait-badge" id="wait-badge" hidden>你已确认参与</p>
+        <p class="lz-wait-caption" id="wait-caption" hidden>距离开奖</p>
+        <div class="lz-clock-blocks" id="wait-clock" hidden>
+          <div class="lz-block">
+            <strong id="wait-h">00</strong>
+            <span>时</span>
+          </div>
+          <div class="lz-block">
+            <strong id="wait-m">00</strong>
+            <span>分</span>
+          </div>
+          <div class="lz-block">
+            <strong id="wait-s">00</strong>
+            <span>秒</span>
+          </div>
+        </div>
+
+        <p class="lz-remain-inline" id="countdown-kicker">
+          还剩 <span id="cd-h">00</span> 时 <span id="cd-m">00</span> 分
+          <span id="cd-s">00</span> 秒
+        </p>
+
+        <ul class="lz-gift-cards" id="timed-prize-list"></ul>
+
+        <p class="lz-crowd">
+          <strong id="stat-joined">0</strong> 人已确认参与，本场抽出
+          <strong id="stat-seats">0</strong> 名
+        </p>
+        <div class="lz-faces" id="timed-faces" hidden></div>
+
+        <div class="lz-banner" id="result-me" hidden></div>
+
+        <div class="lz-action" id="join-action">
+          <p class="lz-join-state" id="join-state">只有确认参与的人会进入开奖名单。</p>
+          <button class="lz-cta" id="join-btn" type="button">
+            <span id="join-label">确认参与本场</span>
+          </button>
+          <button class="lz-quiet" id="leave-btn" type="button" hidden>取消参与</button>
+        </div>
+      </article>
+
+      <section class="lz-board-card" id="result-board" hidden aria-labelledby="board-title">
+        <h2 id="board-title">中奖名单</h2>
+        <ol class="lz-winners" id="timed-board"></ol>
+      </section>
+    </main>
+
+    <p class="lz-foot">
+      预览页 · 用户只需确认参与，到点自动开奖
+      <a href="./host.html">发起人入口</a>
+      <span id="mode-label" class="lz-visually-hidden">MOCK</span>
+      <span id="pool-count" hidden>0</span>
+    </p>
+
+    <script src="./lottery.js" defer></script>
+  </body>
+</html>

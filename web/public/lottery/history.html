@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#eef4ff" />
+    <title>抽奖记录 · Synai996</title>
+    <link rel="stylesheet" href="./lottery.css" />
+    <link rel="stylesheet" href="./wheel.css?v=w54" />
+  </head>
+  <body class="lz-w-app" data-page="history">
+    <header class="lz-w-nav">
+      <a class="lz-w-back" href="./wheel.html">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+          <path fill="currentColor" d="M15.7 5.3 9 12l6.7 6.7-1.4 1.4L6.2 12l8.1-8.1z"/>
+        </svg>
+        返回抽奖
+      </a>
+      <a class="lz-w-logo" href="./wheel.html" aria-label="返回抽奖">
+        <img class="lz-w-logo-img" src="/logo.png" width="32" height="32" alt="" />
+        <span class="lz-w-logo-name">额度抽奖</span>
+      </a>
+      <div class="lz-w-nav-end">
+        <div class="lz-w-user is-out" id="user-chip">
+          <span class="lz-w-user-dot" aria-hidden="true"></span>
+          <span id="auth-hint">未登录</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="lz-w-page">
+      <header class="lz-w-page-hero">
+        <p class="lz-w-kicker">Account</p>
+        <h1>我的抽奖记录</h1>
+        <p>中奖会发兑换码，到充值页兑换后才入账。</p>
+      </header>
+
+      <section class="lz-w-card">
+        <div class="lz-w-panel-head">
+          <h2>历史中奖</h2>
+        </div>
+        <div class="lz-w-filterbar">
+          <label>结果
+            <select id="hist-draw-filter">
+              <option value="all">全部抽取</option>
+              <option value="win">仅中奖</option>
+              <option value="miss">仅未中</option>
+            </select>
+          </label>
+          <label>奖项
+            <select id="hist-prize-filter">
+              <option value="">全部奖项</option>
+            </select>
+          </label>
+          <label>开始日期
+            <input id="hist-draw-from" type="date" />
+          </label>
+          <label>结束日期
+            <input id="hist-draw-to" type="date" />
+          </label>
+          <button type="button" class="lz-w-ghost" id="hist-draw-reset">重置</button>
+        </div>
+        <div class="lz-w-table-wrap">
+          <table class="lz-w-table" id="draw-table">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>结果</th>
+                <th>额度</th>
+                <th>兑换码</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="lz-w-empty-td" colspan="4">
+                  <div class="lz-w-empty">
+                    <strong>还没有记录</strong>
+                    <span class="lz-w-empty-hint">抽中额度后会显示在这里</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="lz-pager" id="hist-draw-pager"></div>
+      </section>
+
+      <section class="lz-w-card">
+        <div class="lz-w-panel-head">
+          <h2>次数流水</h2>
+          <p>支付入账 +1，抽奖消耗 −1</p>
+        </div>
+        <div class="lz-w-filterbar">
+          <label>类型
+            <select id="hist-ledger-filter">
+              <option value="all">全部类型</option>
+              <option value="payment_grant">支付入账</option>
+              <option value="draw_consume">抽奖消耗</option>
+              <option value="prize_return">奖项返还</option>
+              <option value="admin_adjust">手动补发</option>
+            </select>
+          </label>
+          <label>开始日期
+            <input id="hist-ledger-from" type="date" />
+          </label>
+          <label>结束日期
+            <input id="hist-ledger-to" type="date" />
+          </label>
+          <button type="button" class="lz-w-ghost" id="hist-ledger-reset">重置</button>
+        </div>
+        <div class="lz-w-table-wrap">
+          <table class="lz-w-table" id="ledger-table">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>类型</th>
+                <th>变动</th>
+                <th>余额</th>
+                <th>凭证</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="lz-w-empty-td" colspan="5">
+                  <div class="lz-w-empty">
+                    <strong>还没有流水</strong>
+                    <span class="lz-w-empty-hint">支付入账和抽奖消耗会出现在这里</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="lz-pager" id="hist-ledger-pager"></div>
+      </section>
+    </main>
+
+    <script src="./lottery.js?v=w68"></script>
+  </body>
+</html>

@@ -51,6 +51,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     models: true,
     deployment: true,
     redemption: true,
+    lottery: true,
     user: true,
     analytics: true,
     affiliateRebates: true,

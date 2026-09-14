@@ -35,6 +35,7 @@ RUN apt-get update \
     && update-ca-certificates
 
 COPY --from=builder /build/new-api /
+COPY --from=builder /build/web/public/lottery /web/public/lottery
 EXPOSE 3000
 WORKDIR /data
 ENTRYPOINT ["/new-api"]

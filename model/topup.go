@@ -23,14 +23,26 @@ func SetAffiliateRebateHook(h func(*TopUp) error) {
 
 // fireAffiliateRebate 安全触发钩子（仅成功状态）。
 func fireAffiliateRebate(topUp *TopUp) {
-	if affiliateRebateHook == nil || topUp == nil {
+	if topUp == nil {
 		return
 	}
 	if topUp.Status != common.TopUpStatusSuccess {
 		return
 	}
-	if err := affiliateRebateHook(topUp); err != nil {
-		common.SysLog(fmt.Sprintf("affiliate rebate hook error (topup #%d): %v", topUp.Id, err))
+	if affiliateRebateHook != nil {
+		if err := affiliateRebateHook(topUp); err != nil {
+			common.SysLog(fmt.Sprintf("affiliate rebate hook error (topup #%d): %v", topUp.Id, err))
+		}
+	}
+	fireLotteryTickets(topUp)
+}
+
+func fireLotteryTickets(topUp *TopUp) {
+	if topUp == nil || topUp.TradeNo == "" || topUp.UserId <= 0 {
+		return
+	}
+	if err := GrantLotteryTicketsForSuccessfulTopUp(nil, topUp.UserId, topUp.TradeNo); err != nil {
+		common.SysLog(fmt.Sprintf("lottery ticket grant error (topup #%d trade %s): %v", topUp.Id, topUp.TradeNo, err))
 	}
 }
 
