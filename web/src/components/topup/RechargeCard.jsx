@@ -95,6 +95,8 @@ const RechargeCard = ({
   subscriptionPlans = [],
   billingPreference,
   onChangeBillingPreference,
+  preferredSubscriptionId = 0,
+  onChangePreferredSubscription,
   activeSubscriptions = [],
   allSubscriptions = [],
   reloadSubscriptionSelf,
@@ -665,6 +667,8 @@ const RechargeCard = ({
                 enableXunhuTopUp={enableXunhuTopUp}
                 billingPreference={billingPreference}
                 onChangeBillingPreference={onChangeBillingPreference}
+                preferredSubscriptionId={preferredSubscriptionId}
+                onChangePreferredSubscription={onChangePreferredSubscription}
                 activeSubscriptions={activeSubscriptions}
                 allSubscriptions={allSubscriptions}
                 reloadSubscriptionSelf={reloadSubscriptionSelf}

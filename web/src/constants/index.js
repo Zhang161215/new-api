@@ -27,4 +27,5 @@ export * from './redemption.constants';
 export * from './channel-affinity-template.constants';
 export * from './subscription.constants';
 export * from './payment.constants';
+export * from './topup.constants';
 export * from './lottery.constants';

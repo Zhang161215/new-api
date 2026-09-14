@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -668,6 +669,10 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 	if logUserId > 0 {
 		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, logMoney, logPaymentMethod)
 		RecordLog(logUserId, LogTypeTopup, msg)
+		// 与钱包充值同一套幂等入账：同一 trade_no 只发一次次数，不改 users.quota。
+		if err := GrantLotteryTicketsForSuccessfulTopUp(nil, logUserId, tradeNo); err != nil {
+			common.SysLog(fmt.Sprintf("lottery ticket grant error (subscription trade %s): %v", tradeNo, err))
+		}
 	}
 	return nil
 }
@@ -1166,6 +1171,76 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 	return tx.Save(sub).Error
 }
 
+const neverResetSortKey int64 = 1 << 62
+
+// orderSubscriptionsForConsume 决定多张生效订阅的扣费顺序。
+//
+//  1. 请求所属分组（usingGroup）对得上的订阅优先，避免 Claude 请求先啃 GPT 月卡。
+//  2. 用户指定的 preferredID 再往前排（只在同一分组档内生效）。
+//  3. 同档按 next_reset_time 升序：快重置的先扣，避免「B 今天重置、A 五天后重置」时先把 A 用光。
+//     next_reset_time==0（不重置）排最后。
+//  4. 再按到期时间、id 稳定排序。
+func orderSubscriptionsForConsume(subs []UserSubscription, usingGroup string, preferredID int) []UserSubscription {
+	if len(subs) <= 1 {
+		return subs
+	}
+	out := append([]UserSubscription(nil), subs...)
+	group := strings.TrimSpace(usingGroup)
+	groupRank := func(s UserSubscription) int {
+		if group == "" {
+			return 0
+		}
+		if strings.TrimSpace(s.UpgradeGroup) == group {
+			return 0
+		}
+		return 1
+	}
+	preferRank := func(s UserSubscription) int {
+		if preferredID > 0 && s.Id == preferredID {
+			return 0
+		}
+		return 1
+	}
+	resetKey := func(s UserSubscription) int64 {
+		if s.NextResetTime <= 0 {
+			return neverResetSortKey
+		}
+		return s.NextResetTime
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if gi, gj := groupRank(a), groupRank(b); gi != gj {
+			return gi < gj
+		}
+		if pi, pj := preferRank(a), preferRank(b); pi != pj {
+			return pi < pj
+		}
+		if ri, rj := resetKey(a), resetKey(b); ri != rj {
+			return ri < rj
+		}
+		if a.EndTime != b.EndTime {
+			return a.EndTime < b.EndTime
+		}
+		return a.Id < b.Id
+	})
+	return out
+}
+
+// UserOwnsActiveSubscription reports whether subId is an active subscription of userId.
+func UserOwnsActiveSubscription(userId, subId int) bool {
+	if userId <= 0 || subId <= 0 {
+		return false
+	}
+	now := common.GetTimestamp()
+	var count int64
+	if err := DB.Model(&UserSubscription{}).
+		Where("id = ? AND user_id = ? AND status = ? AND end_time > ?", subId, userId, "active", now).
+		Count(&count).Error; err != nil {
+		return false
+	}
+	return count > 0
+}
+
 // PreConsumeUserSubscription pre-consumes from any active subscription total quota.
 func PreConsumeUserSubscription(requestId string, userId int, modelName string, usingGroup string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
@@ -1180,6 +1255,10 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 	now := GetDBTimestamp()
 
 	returnValue := &SubscriptionPreConsumeResult{}
+	preferredID := 0
+	if setting, settingErr := GetUserSetting(userId, false); settingErr == nil {
+		preferredID = setting.PreferredSubscriptionId
+	}
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var existing SubscriptionPreConsumeRecord
@@ -1206,27 +1285,15 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		var subs []UserSubscription
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
-			Order("end_time asc, id asc").
 			Find(&subs).Error; err != nil {
 			return errors.New("no active subscription")
 		}
 		if len(subs) == 0 {
 			return errors.New("no active subscription")
 		}
-		// When usingGroup is specified, reorder subscriptions to prioritize
-		// those whose upgrade_group matches usingGroup.
-		if strings.TrimSpace(usingGroup) != "" {
-			matched := make([]UserSubscription, 0, len(subs))
-			unmatched := make([]UserSubscription, 0, len(subs))
-			for _, s := range subs {
-				if strings.TrimSpace(s.UpgradeGroup) == strings.TrimSpace(usingGroup) {
-					matched = append(matched, s)
-				} else {
-					unmatched = append(unmatched, s)
-				}
-			}
-			subs = append(matched, unmatched...)
-		}
+		// 必须在 maybeReset 之前排序：重置后 next_reset_time 会跳到下一周期，
+		// 若先重置再排序，今天该重置的那张反而会被排到后面。
+		subs = orderSubscriptionsForConsume(subs, usingGroup, preferredID)
 		for _, candidate := range subs {
 			sub := candidate
 			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)

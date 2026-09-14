@@ -51,7 +51,8 @@ func planRatios(upgradeGroup string) (subscriptionRatio, fallbackRatio float64) 
 }
 
 type BillingPreferenceRequest struct {
-	BillingPreference string `json:"billing_preference"`
+	BillingPreference       string `json:"billing_preference"`
+	PreferredSubscriptionId *int   `json:"preferred_subscription_id"`
 }
 
 // ---- User APIs ----
@@ -87,9 +88,24 @@ func GetSubscriptionSelf(c *gin.Context) {
 		activeSubscriptions = []model.SubscriptionSummary{}
 	}
 
+	preferredID := settingMap.PreferredSubscriptionId
+	if preferredID > 0 {
+		found := false
+		for _, item := range activeSubscriptions {
+			if item.Subscription != nil && item.Subscription.Id == preferredID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			preferredID = 0
+		}
+	}
+
 	common.ApiSuccess(c, gin.H{
-		"billing_preference": pref,
-		"subscriptions":      activeSubscriptions, // 生效中的订阅
+		"billing_preference":        pref,
+		"preferred_subscription_id": preferredID,
+		"subscriptions":             activeSubscriptions, // 生效中的订阅
 		// all_subscriptions 保留字段名以兼容旧前端，但只含生效订阅，
 		// 不再回传已过期记录（原先前端据此显示「N 个已过期」）。
 		"all_subscriptions": activeSubscriptions,
@@ -111,13 +127,30 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 		return
 	}
 	current := user.GetSetting()
-	current.BillingPreference = pref
+	if req.BillingPreference != "" {
+		current.BillingPreference = pref
+	}
+	if req.PreferredSubscriptionId != nil {
+		id := *req.PreferredSubscriptionId
+		if id < 0 {
+			common.ApiErrorMsg(c, "参数错误")
+			return
+		}
+		if id > 0 && !model.UserOwnsActiveSubscription(userId, id) {
+			common.ApiErrorMsg(c, "只能优先使用自己的生效订阅")
+			return
+		}
+		current.PreferredSubscriptionId = id
+	}
 	user.SetSetting(current)
 	if err := user.Update(false); err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"billing_preference": pref})
+	common.ApiSuccess(c, gin.H{
+		"billing_preference":        current.BillingPreference,
+		"preferred_subscription_id": current.PreferredSubscriptionId,
+	})
 }
 
 // ---- Admin APIs ----

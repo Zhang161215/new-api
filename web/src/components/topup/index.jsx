@@ -39,6 +39,11 @@ import InvitationCard from './InvitationCard';
 import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
+import TopupAgreementModal from './modals/TopupAgreementModal';
+import {
+  isTopupAgreementSkipped,
+  setTopupAgreementSkipped,
+} from '../../constants/topup.constants';
 
 const TopUp = () => {
   const { t } = useTranslation();
@@ -86,6 +91,8 @@ const TopUp = () => {
   const [payMethods, setPayMethods] = useState([]);
 
   const affFetchedRef = useRef(false);
+  const pendingAfterAgreement = useRef(null);
+  const [agreementOpen, setAgreementOpen] = useState(false);
 
   // 邀请相关状态
   const [affLink, setAffLink] = useState('');
@@ -100,6 +107,7 @@ const TopUp = () => {
   const [subscriptionLoading, setSubscriptionLoading] = useState(true);
   const [billingPreference, setBillingPreference] =
     useState('subscription_first');
+  const [preferredSubscriptionId, setPreferredSubscriptionId] = useState(0);
   const [activeSubscriptions, setActiveSubscriptions] = useState([]);
   const [allSubscriptions, setAllSubscriptions] = useState([]);
 
@@ -154,7 +162,33 @@ const TopUp = () => {
       showError(t('超级管理员未设置充值链接！'));
       return;
     }
-    window.open(topUpLink, '_blank');
+    runAfterAgreement(() => window.open(topUpLink, '_blank'));
+  };
+
+  const runAfterAgreement = (fn) => {
+    if (isTopupAgreementSkipped()) {
+      fn();
+      return;
+    }
+    pendingAfterAgreement.current = fn;
+    setAgreementOpen(true);
+  };
+
+  const handleAgreementContinue = (skipLater) => {
+    if (skipLater) {
+      setTopupAgreementSkipped(true);
+    }
+    setAgreementOpen(false);
+    const next = pendingAfterAgreement.current;
+    pendingAfterAgreement.current = null;
+    if (next) {
+      next();
+    }
+  };
+
+  const handleAgreementCancel = () => {
+    setAgreementOpen(false);
+    pendingAfterAgreement.current = null;
   };
 
   const preTopUp = async (payment) => {
@@ -183,7 +217,7 @@ const TopUp = () => {
         showError(t('充值数量不能小于') + minTopUp);
         return;
       }
-      setOpen(true);
+      runAfterAgreement(() => setOpen(true));
     } catch (error) {
       showError(t('获取金额失败'));
     } finally {
@@ -291,7 +325,7 @@ const TopUp = () => {
       return;
     }
     setSelectedCreemProduct(product);
-    setCreemOpen(true);
+    runAfterAgreement(() => setCreemOpen(true));
   };
 
   const onlineCreemTopUp = async () => {
@@ -330,35 +364,39 @@ const TopUp = () => {
     }
   };
 
-  const waffoTopUp = async (payMethodIndex) => {
+  const waffoPayNow = async (payMethodIndex) => {
     try {
-        if (topUpCount < waffoMinTopUp) {
-            showError(t('充值数量不能小于') + waffoMinTopUp);
-            return;
-        }
-        setPaymentLoading(true);
-        const requestBody = {
-            amount: parseInt(topUpCount),
-        };
-        if (payMethodIndex != null) {
-            requestBody.pay_method_index = payMethodIndex;
-        }
-        const res = await API.post('/api/user/waffo/pay', requestBody);
-        if (res !== undefined) {
-            const { message, data } = res.data;
-            if (message === 'success' && data?.payment_url) {
-                window.open(data.payment_url, '_blank');
-            } else {
-                showError(data || t('支付请求失败'));
-            }
+      setPaymentLoading(true);
+      const requestBody = {
+        amount: parseInt(topUpCount),
+      };
+      if (payMethodIndex != null) {
+        requestBody.pay_method_index = payMethodIndex;
+      }
+      const res = await API.post('/api/user/waffo/pay', requestBody);
+      if (res !== undefined) {
+        const { message, data } = res.data;
+        if (message === 'success' && data?.payment_url) {
+          window.open(data.payment_url, '_blank');
         } else {
-            showError(res);
+          showError(data || t('支付请求失败'));
         }
+      } else {
+        showError(res);
+      }
     } catch (e) {
-        showError(t('支付请求失败'));
+      showError(t('支付请求失败'));
     } finally {
-        setPaymentLoading(false);
+      setPaymentLoading(false);
     }
+  };
+
+  const waffoTopUp = async (payMethodIndex) => {
+    if (topUpCount < waffoMinTopUp) {
+      showError(t('充值数量不能小于') + waffoMinTopUp);
+      return;
+    }
+    runAfterAgreement(() => waffoPayNow(payMethodIndex));
   };
 
   const processCreemCallback = (data) => {
@@ -397,6 +435,9 @@ const TopUp = () => {
         setBillingPreference(
           res.data.data?.billing_preference || 'subscription_first',
         );
+        setPreferredSubscriptionId(
+          Number(res.data.data?.preferred_subscription_id || 0),
+        );
         // Active subscriptions
         const activeSubs = res.data.data?.subscriptions || [];
         setActiveSubscriptions(activeSubs);
@@ -415,6 +456,7 @@ const TopUp = () => {
     try {
       const res = await API.put('/api/subscription/self/preference', {
         billing_preference: pref,
+        preferred_subscription_id: preferredSubscriptionId,
       });
       if (res.data?.success) {
         showSuccess(t('更新成功'));
@@ -428,6 +470,32 @@ const TopUp = () => {
     } catch (e) {
       showError(t('请求失败'));
       setBillingPreference(previousPref);
+    }
+  };
+
+  const updatePreferredSubscription = async (subId) => {
+    const nextId = Number(subId) === Number(preferredSubscriptionId) ? 0 : Number(subId) || 0;
+    const previousId = preferredSubscriptionId;
+    setPreferredSubscriptionId(nextId);
+    try {
+      const res = await API.put('/api/subscription/self/preference', {
+        billing_preference: billingPreference,
+        preferred_subscription_id: nextId,
+      });
+      if (res.data?.success) {
+        showSuccess(
+          nextId > 0 ? t('已设为首选') : t('已恢复自动安排'),
+        );
+        setPreferredSubscriptionId(
+          Number(res.data?.data?.preferred_subscription_id || 0),
+        );
+      } else {
+        showError(res.data?.message || t('更新失败'));
+        setPreferredSubscriptionId(previousId);
+      }
+    } catch (e) {
+      showError(t('请求失败'));
+      setPreferredSubscriptionId(previousId);
     }
   };
 
@@ -757,6 +825,14 @@ const TopUp = () => {
         setTransferAmount={setTransferAmount}
       />
 
+      <TopupAgreementModal
+        t={t}
+        visible={agreementOpen}
+        onCancel={handleAgreementCancel}
+        onContinue={handleAgreementContinue}
+        hasUserAgreement={!!statusState?.status?.user_agreement_enabled}
+      />
+
       {/* 充值确认模态框 */}
       <PaymentConfirmModal
         t={t}
@@ -854,6 +930,8 @@ const TopUp = () => {
           subscriptionPlans={subscriptionPlans}
           billingPreference={billingPreference}
           onChangeBillingPreference={updateBillingPreference}
+          preferredSubscriptionId={preferredSubscriptionId}
+          onChangePreferredSubscription={updatePreferredSubscription}
           activeSubscriptions={activeSubscriptions}
           allSubscriptions={allSubscriptions}
           reloadSubscriptionSelf={getSubscriptionSelf}

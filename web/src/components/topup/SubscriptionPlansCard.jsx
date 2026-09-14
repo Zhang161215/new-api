@@ -32,7 +32,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { API, showError, showSuccess, renderQuota } from '../../helpers';
 import { getCurrencyConfig } from '../../helpers/render';
-import { RefreshCw, Sparkles } from 'lucide-react';
+import { Pin, RefreshCw, Sparkles } from 'lucide-react';
 import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
 import {
   formatSubscriptionDuration,
@@ -80,6 +80,8 @@ const SubscriptionPlansCard = ({
   enableXunhuTopUp = false,
   billingPreference,
   onChangeBillingPreference,
+  preferredSubscriptionId = 0,
+  onChangePreferredSubscription,
   activeSubscriptions = [],
   allSubscriptions = [],
   reloadSubscriptionSelf,
@@ -307,6 +309,38 @@ const SubscriptionPlansCard = ({
     return Math.round((used / total) * 100);
   };
 
+  const activeSubCount = (activeSubscriptions || []).filter((item) => {
+    const sub = item?.subscription;
+    if (!sub) return false;
+    const now = Date.now() / 1000;
+    return sub.status === 'active' && (sub.end_time || 0) > now;
+  }).length;
+
+  const autoFirstSubscriptionId = useMemo(() => {
+    let bestId = 0;
+    let bestReset = Number.MAX_SAFE_INTEGER;
+    let bestEnd = Number.MAX_SAFE_INTEGER;
+    (activeSubscriptions || []).forEach((item) => {
+      const sub = item?.subscription;
+      if (!sub?.id) return;
+      const now = Date.now() / 1000;
+      if (sub.status !== 'active' || (sub.end_time || 0) <= now) return;
+      const reset = Number(sub.next_reset_time || 0);
+      const resetKey = reset > 0 ? reset : Number.MAX_SAFE_INTEGER;
+      const end = Number(sub.end_time || 0);
+      if (
+        resetKey < bestReset ||
+        (resetKey === bestReset && end < bestEnd) ||
+        (resetKey === bestReset && end === bestEnd && sub.id < bestId)
+      ) {
+        bestId = sub.id;
+        bestReset = resetKey;
+        bestEnd = end;
+      }
+    });
+    return bestId;
+  }, [activeSubscriptions]);
+
   const cardContent = (
     <>
       {/* 卡片头部 */}
@@ -429,6 +463,13 @@ const SubscriptionPlansCard = ({
                 {t('，当前无生效订阅，将自动使用钱包')}
               </Text>
             )}
+            {activeSubCount >= 2 && (
+              <Text type='tertiary' size='small'>
+                {preferredSubscriptionId > 0
+                  ? t('已设首选。额度用完后自动改用其他订阅。')
+                  : t('多份订阅时，会先用更早重置的那份。也可指定首选。')}
+              </Text>
+            )}
 
             {hasAnySubscription ? (
               <>
@@ -452,6 +493,15 @@ const SubscriptionPlansCard = ({
                     const isCancelled = subscription?.status === 'cancelled';
                     const isActive =
                       subscription?.status === 'active' && !isExpired;
+                    const isPinned =
+                      isActive &&
+                      Number(preferredSubscriptionId) ===
+                        Number(subscription?.id);
+                    const isAutoFirst =
+                      isActive &&
+                      !preferredSubscriptionId &&
+                      Number(autoFirstSubscriptionId) ===
+                        Number(subscription?.id);
 
                     return (
                       <div key={subscription?.id || subIndex}>
@@ -481,11 +531,53 @@ const SubscriptionPlansCard = ({
                                 {t('已过期')}
                               </Tag>
                             )}
+                            {isPinned && (
+                              <Tag color='blue' size='small' shape='circle'>
+                                {t('首选')}
+                              </Tag>
+                            )}
+                            {isAutoFirst && (
+                              <Tooltip
+                                content={t('这份更早重置，会先使用')}
+                              >
+                                <Tag color='white' size='small' shape='circle'>
+                                  {t('自动优先')}
+                                </Tag>
+                              </Tooltip>
+                            )}
                           </div>
                           {isActive && (
-                            <span className='text-gray-500'>
-                              {t('剩余')} {remainDays} {t('天')}
-                            </span>
+                            <div className='flex items-center gap-2'>
+                              <span className='text-gray-500'>
+                                {t('剩余')} {remainDays} {t('天')}
+                              </span>
+                              {activeSubCount >= 2 &&
+                                typeof onChangePreferredSubscription ===
+                                  'function' && (
+                                  <Button
+                                    size='small'
+                                    theme='borderless'
+                                    type={isPinned ? 'primary' : 'tertiary'}
+                                    icon={
+                                      <Pin
+                                        size={12}
+                                        className={
+                                          isPinned ? 'fill-current' : ''
+                                        }
+                                      />
+                                    }
+                                    onClick={() =>
+                                      onChangePreferredSubscription(
+                                        subscription?.id,
+                                      )
+                                    }
+                                  >
+                                    {isPinned
+                                      ? t('取消首选')
+                                      : t('设为首选')}
+                                  </Button>
+                                )}
+                            </div>
                           )}
                         </div>
                         <div className='text-xs text-gray-500 mb-2'>

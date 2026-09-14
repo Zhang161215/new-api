@@ -15,6 +15,7 @@ type UserSetting struct {
 	RecordIpLog                      bool    `json:"record_ip_log,omitempty"`                        // 是否记录请求和错误日志IP
 	SidebarModules                   string  `json:"sidebar_modules,omitempty"`                      // SidebarModules 左侧边栏模块配置
 	BillingPreference                string  `json:"billing_preference,omitempty"`                   // BillingPreference 扣费策略（订阅/钱包）
+	PreferredSubscriptionId          int     `json:"preferred_subscription_id,omitempty"`            // 多份订阅时的首选；0 表示按重置时间自动选
 	Language                         string  `json:"language,omitempty"`                             // Language 用户语言偏好 (zh, en)
 }
 
