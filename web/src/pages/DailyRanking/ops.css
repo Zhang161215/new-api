@@ -1,0 +1,969 @@
+.ops-console {
+  --blue: #286aff;
+  --blue-strong: #1757ed;
+  --green: #0cb58a;
+  --cyan: #12bde6;
+  --purple: #9166ee;
+  --orange: #ff9648;
+  --ink: #102145;
+  --muted: #92a0b8;
+  --line: #e9eef6;
+  --radius: 12px;
+  --shadow: 0 3px 18px rgba(34, 70, 131, 0.025);
+  color: var(--ink);
+}
+
+.ops-console .num {
+  font-variant-numeric: tabular-nums;
+}
+
+.ops-console .page-body {
+  position: relative;
+  min-height: 280px;
+}
+
+.ops-console .page-body-placeholder {
+  min-height: 280px;
+}
+
+.ops-loader-portal {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.ops-loader-portal .ops-loader-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.ops-loader-portal .ops-loader-text {
+  color: #286aff;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.ops-loader-portal .ops-loader-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+}
+
+.ops-loader-portal .ops-loader-bars span {
+  width: 5px;
+  border-radius: 99px;
+  background: #c7d9ff;
+  animation: ops-bar 1s ease-in-out infinite;
+}
+
+.ops-loader-portal .ops-loader-bars span:nth-child(1) { animation-delay: 0s; }
+.ops-loader-portal .ops-loader-bars span:nth-child(2) { animation-delay: 0.1s; }
+.ops-loader-portal .ops-loader-bars span:nth-child(3) { animation-delay: 0.2s; }
+.ops-loader-portal .ops-loader-bars span:nth-child(4) { animation-delay: 0.3s; }
+.ops-loader-portal .ops-loader-bars span:nth-child(5) { animation-delay: 0.4s; }
+
+@keyframes ops-bar {
+  0%,
+  100% {
+    height: 8px;
+    background: #d7e4ff;
+  }
+  50% {
+    height: 28px;
+    background: #286aff;
+  }
+}
+
+.ops-console .page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: nowrap;
+}
+
+.ops-console .date-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+.ops-console .ops-datepicker {
+  width: auto;
+  flex-shrink: 0;
+}
+
+.ops-console .range-tabs {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 3px;
+  border: 1px solid #e4ebf6;
+  border-radius: 7px;
+  background: #fff;
+  gap: 2px;
+}
+
+.ops-console .range-tabs button {
+  border: 0;
+  background: transparent;
+  border-radius: 5px;
+  height: 26px;
+  min-width: 44px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: #8190aa;
+  line-height: 26px;
+  cursor: pointer;
+}
+
+.ops-console .range-tabs button.active {
+  background: var(--blue);
+  color: #fff;
+  font-weight: 650;
+}
+
+.ops-console .ops-date-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #e4ebf6;
+  border-radius: 7px;
+  background: #fff;
+  color: #7e93b4;
+  cursor: pointer;
+}
+
+.ops-console .ops-date-icon:hover,
+.ops-console .ops-date-icon.active {
+  border-color: #c9d8f0;
+  color: #286aff;
+  background: #eef4ff;
+}
+
+.ops-datepicker-panel {
+  border: 1px solid #e4ebf6 !important;
+  border-radius: 10px !important;
+  box-shadow: 0 10px 28px rgba(28, 55, 99, 0.12) !important;
+  overflow: hidden;
+}
+
+.ops-datepicker-panel .semi-datepicker-presets {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px 4px !important;
+}
+
+.ops-datepicker-panel .semi-datepicker-presets .semi-button {
+  height: 26px !important;
+  min-width: 0 !important;
+  padding: 0 8px !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+  color: #566a8e;
+}
+
+.ops-datepicker-panel .semi-datepicker-day-today .semi-datepicker-day-main {
+  color: #286aff;
+  font-weight: 700;
+}
+
+.ops-datepicker-panel .semi-datepicker-day-selected .semi-datepicker-day-main,
+.ops-datepicker-panel .semi-datepicker-day-selected-start .semi-datepicker-day-main,
+.ops-datepicker-panel .semi-datepicker-day-selected-end .semi-datepicker-day-main {
+  background: #286aff !important;
+}
+
+.ops-console .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: #5d7192;
+  background: #fff;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ops-console .page-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ops-console .page-title h1 {
+  font-size: 24px;
+  letter-spacing: -0.8px;
+  line-height: 1.4;
+  margin: 0;
+  font-weight: 730;
+}
+
+.ops-console .subtitle {
+  font-size: 12px;
+  color: #8a9ab3;
+  margin: 5px 0 0;
+}
+
+.ops-console .segments {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 4px;
+}
+
+.ops-console .segments button {
+  border: 0;
+  background: transparent;
+  border-radius: 7px;
+  height: 32px;
+  min-width: 0;
+  padding: 0 12px;
+  font-size: 12px;
+  color: #8190aa;
+  line-height: 32px;
+  cursor: pointer;
+}
+
+.ops-console .segments button.active {
+  background: #eef4ff;
+  color: var(--blue);
+  box-shadow: none;
+  font-weight: 700;
+}
+
+.ops-console .btn.primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+.ops-console .metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 15px;
+}
+
+.ops-console .card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+
+.ops-console .metric {
+  padding: 17px 15px 14px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: 112px;
+}
+
+.ops-console .metric-icon {
+  width: 39px;
+  height: 39px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  font-size: 18px;
+}
+
+.ops-console .metric-icon.blue {
+  color: var(--blue);
+  background: #edf3ff;
+}
+.ops-console .metric-icon.green {
+  color: var(--green);
+  background: #e8f9f3;
+}
+.ops-console .metric-icon.orange {
+  color: #fa9735;
+  background: #fff4e7;
+}
+.ops-console .metric-icon.purple {
+  color: var(--purple);
+  background: #f3edff;
+}
+.ops-console .metric-icon.rose {
+  color: #e25c7a;
+  background: #fff0f3;
+}
+
+.ops-console .metric-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.ops-console .metric-label {
+  font-size: 11px;
+  line-height: 16px;
+  height: 16px;
+  color: #7183a0;
+  margin: 0 0 5px;
+}
+
+.ops-console .metric-value {
+  font-size: 25px;
+  line-height: 33px;
+  height: 33px;
+  font-weight: 730;
+  letter-spacing: -0.65px;
+  white-space: nowrap;
+  display: flex;
+  align-items: baseline;
+}
+
+.ops-console .metric-value.is-ratio {
+  font-size: 18px;
+  letter-spacing: -0.5px;
+}
+
+.ops-console .metric-ratio-sep {
+  color: #b7c2d3;
+  font-weight: 500;
+  margin: 0 1px;
+}
+
+.ops-console .metric-ratio-pct {
+  margin-left: 4px;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0;
+  color: #fa9735;
+}
+
+.ops-console .metric-compare {
+  font-size: 10px;
+  margin-top: 7px;
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  white-space: nowrap;
+  color: #97a4b9;
+}
+
+.ops-console .delta {
+  color: var(--green);
+  font-weight: 570;
+}
+
+.ops-console .delta.down {
+  color: #f15f78;
+}
+
+.ops-console .delta.muted {
+  color: #94a5bc;
+  font-weight: 400;
+}
+
+.ops-console .charts-grid {
+  display: grid;
+  grid-template-columns: 1.18fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.ops-console .panel,
+.ops-console .ratio-card,
+.ops-console .bottom-card {
+  padding: 17px 18px 13px;
+}
+
+.ops-console .panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 26px;
+}
+
+.ops-console .panel-title {
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+  font-weight: 680;
+}
+
+.ops-console .panel-sub {
+  font-size: 10px;
+  line-height: 1.5;
+  color: #99a7bb;
+  margin: 3px 0 0;
+}
+
+.ops-console .legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 10px;
+  color: #7486a5;
+}
+
+.ops-console .line-dot {
+  width: 10px;
+  height: 5px;
+  border-radius: 4px;
+  display: inline-block;
+  background: var(--blue);
+  margin-right: 6px;
+}
+
+.ops-console .tiny-label {
+  background: #f8faff;
+  border: 1px solid #e8eef8;
+  padding: 3px 7px;
+  border-radius: 5px;
+  color: #8397ba;
+  font-size: 10px;
+}
+
+.ops-console .chart-shell {
+  height: 220px;
+  width: 100%;
+  margin-top: 14px;
+  position: relative;
+}
+
+.ops-console .chart-shell > div {
+  width: 100% !important;
+  height: 220px !important;
+}
+
+.ops-console .ratio-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.ops-console .ratio-pill {
+  font-size: 9px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: #f5f8fd;
+  color: #8a9ab2;
+  white-space: nowrap;
+}
+
+.ops-console .ratio-content {
+  display: grid;
+  grid-template-columns: 43% 57%;
+  align-items: center;
+  min-height: 170px;
+}
+
+.ops-console .donut {
+  width: 158px;
+  height: 158px;
+  max-width: 100%;
+  margin: 0 auto;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ops-console .donut svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.ops-console .donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  pointer-events: none;
+  padding: 0 20px;
+}
+
+.ops-console .donut-center strong {
+  font-size: 15px;
+  letter-spacing: -0.4px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.ops-console .donut-center span {
+  font-size: 10px;
+  color: #8b9db7;
+  margin-top: 3px;
+}
+
+.ops-console .ratio-legend {
+  padding-left: 12px;
+  min-width: 0;
+}
+
+.ops-console .ratio-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 7px;
+  padding: 6px 0;
+}
+
+.ops-console .dot {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-top: 5px;
+}
+
+.ops-console .ratio-label {
+  font-size: 11px;
+  color: #657797;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ops-console .ratio-value {
+  font-size: 11px;
+  color: #49618c;
+  font-weight: 550;
+  text-align: right;
+}
+
+.ops-console .ratio-amount {
+  grid-column: 2 / 4;
+  font-size: 10px;
+  color: #a2aec0;
+  line-height: 1.25;
+}
+
+.ops-console .ratio-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid #eff3f9;
+  padding-top: 9px;
+  font-size: 10px;
+  color: #9aa8bd;
+  gap: 8px;
+}
+
+.ops-console .ratio-footer strong {
+  font-size: 10px;
+  color: #6b80a4;
+  font-weight: 500;
+}
+
+.ops-console .bottom-grid {
+  display: grid;
+  grid-template-columns: 1.14fr 0.76fr 1.4fr;
+  gap: 14px;
+}
+
+.ops-console .bottom-card {
+  min-height: 239px;
+}
+
+.ops-console table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.ops-console th {
+  font-size: 10px;
+  color: #96a4b9;
+  font-weight: 500;
+  padding: 7px 6px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.ops-console td {
+  font-size: 12px;
+  color: #53698e;
+  padding: 8px 6px;
+  border-bottom: 1px solid #f0f3f8;
+  line-height: 1.3;
+}
+
+.ops-console tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.ops-console .model-table {
+  margin-top: 5px;
+}
+
+.ops-console .model-table th:last-child,
+.ops-console .model-table td:last-child,
+.ops-console .amount-cell {
+  text-align: right;
+}
+
+.ops-console .rank {
+  display: inline-grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  background: #f2f5fa;
+  border-radius: 4px;
+  color: #8293b0;
+  font-size: 10px;
+}
+
+.ops-console .rank-1 {
+  background: #fff0e2;
+  color: #f39644;
+}
+.ops-console .rank-2 {
+  background: #eaf2ff;
+  color: var(--blue);
+}
+.ops-console .rank-3 {
+  background: #f0edff;
+  color: #9270e9;
+}
+
+.ops-console .model-name {
+  font-weight: 520;
+  color: #3b5177;
+}
+
+.ops-console .share-value {
+  font-size: 10px;
+  color: #7f91ae;
+}
+
+.ops-console .mini-bar {
+  height: 3px;
+  background: #edf3fc;
+  border-radius: 4px;
+  margin-top: 5px;
+  overflow: hidden;
+}
+
+.ops-console .mini-bar i {
+  height: 100%;
+  display: block;
+  background: linear-gradient(90deg, #2e6cff, #3395ff);
+  border-radius: 4px;
+}
+
+.ops-console .table-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #a1acc0;
+  font-size: 9px;
+  margin-top: 10px;
+}
+
+.ops-console .recharge-item {
+  padding: 12px 0;
+  border-bottom: 1px solid #edf2f8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ops-console .recharge-item:last-child {
+  border-bottom: 0;
+}
+
+.ops-console .recharge-item span {
+  font-size: 11px;
+  color: #8092b0;
+}
+
+.ops-console .recharge-item em {
+  font-style: normal;
+  font-size: 9px;
+  color: #a0aec2;
+  margin-left: auto;
+  padding-left: 4px;
+}
+
+.ops-console .recharge-item strong {
+  font-size: 12px;
+  font-weight: 630;
+  color: #3b527a;
+}
+
+.ops-console .order-table {
+  margin-top: 9px;
+}
+
+.ops-console .order-table th {
+  background: #f6f9fd;
+  border: 0;
+}
+
+.ops-console .order-table th:first-child {
+  border-radius: 5px 0 0 5px;
+}
+
+.ops-console .order-table th:last-child {
+  border-radius: 0 5px 5px 0;
+  text-align: right;
+}
+
+.ops-console .order-table td:nth-child(3),
+.ops-console .order-table td:nth-child(4) {
+  text-align: center;
+}
+
+.ops-console .order-table td:last-child {
+  text-align: right;
+  color: #899ab3;
+}
+
+.ops-console .status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 17px;
+  border-radius: 4px;
+  padding: 0 5px;
+  white-space: nowrap;
+}
+
+.ops-console .status.paid {
+  color: #0baa80;
+  background: #e4f8f1;
+}
+.ops-console .status.pending {
+  color: #e79725;
+  background: #fff3df;
+}
+.ops-console .status.failed {
+  color: #ec657d;
+  background: #fff0f3;
+}
+
+.ops-console .empty-state {
+  padding: 36px 0;
+  text-align: center;
+  color: #91a3c0;
+  font-size: 12px;
+}
+
+.ops-console .main-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-top: 17px;
+  color: #a0adc1;
+  font-size: 9px;
+}
+
+.ops-console .rank-card {
+  padding: 16px 18px;
+}
+
+.ops-console .rank-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 1600px) {
+  .ops-console .metrics-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1280px) {
+  .ops-console .metrics-grid,
+  .ops-console .charts-grid,
+  .ops-console .ratio-grid,
+  .ops-console .bottom-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .ops-console .orders-card {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 860px) {
+  .ops-console .page-header,
+  .ops-console .metrics-grid,
+  .ops-console .charts-grid,
+  .ops-console .ratio-grid,
+  .ops-console .bottom-grid,
+  .ops-console .ratio-content {
+    display: block;
+  }
+
+  .ops-console .metric,
+  .ops-console .card,
+  .ops-console .date-tools {
+    margin-bottom: 12px;
+  }
+}
+
+.ops-text-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  background: #eef4ff;
+  color: #286aff;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ops-text-button.ghost {
+  background: transparent;
+  color: #6b80a4;
+  padding: 0;
+  height: auto;
+}
+
+.ops-text-button.ghost:hover {
+  color: #286aff;
+}
+
+.ops-cost-form {
+  display: grid;
+  grid-template-columns: 128px 140px 150px minmax(0, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.ops-cost-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 4px 0 8px;
+  font-size: 12px;
+  color: #7d8eaa;
+}
+
+.ops-cost-list {
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid #e9eef6;
+  border-radius: 8px;
+}
+
+.ops-cost-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) 92px 88px auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid #f0f3f8;
+}
+
+.ops-cost-row.is-outside {
+  opacity: 0.7;
+}
+
+.ops-cost-row .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: block;
+}
+
+.ops-cost-main {
+  min-width: 0;
+}
+
+.ops-cost-main strong {
+  display: block;
+  font-size: 12px;
+  color: #3b5177;
+  font-weight: 650;
+}
+
+.ops-cost-main em {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  color: #94a4bb;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ops-cost-date {
+  font-size: 11px;
+  color: #8a9ab3;
+}
+
+.ops-cost-amount {
+  text-align: right;
+  font-size: 12px;
+  color: #102145;
+}
+
+.ops-cost-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.ops-cost-actions button {
+  border: 0;
+  background: transparent;
+  color: #7f91ae;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.ops-cost-actions button:hover {
+  color: #286aff;
+}
+
+.ops-cost-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .ops-cost-form {
+    grid-template-columns: 1fr 1fr;
+  }
+}

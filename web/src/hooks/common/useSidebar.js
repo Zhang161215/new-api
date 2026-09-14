@@ -83,7 +83,7 @@ export const mergeAdminConfig = (savedConfig) => {
 export const useSidebar = () => {
   const [statusState] = useContext(StatusContext);
   const [userConfig, setUserConfig] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const instanceIdRef = useRef(null);
   const hasLoadedOnceRef = useRef(false);
 
@@ -110,7 +110,7 @@ export const useSidebar = () => {
     const shouldShowLoader =
       typeof withLoading === 'boolean'
         ? withLoading
-        : !hasLoadedOnceRef.current;
+        : false;
 
     try {
       if (shouldShowLoader) {
@@ -224,15 +224,10 @@ export const useSidebar = () => {
       return result;
     }
 
-    // 如果userConfig未加载，等待加载完成
-    if (!userConfig) {
-      return result;
-    }
-
-    // 遍历所有区域
+    // 遍历所有区域。用户配置尚未返回时，按管理员配置先展示，避免整栏骨架屏。
     Object.keys(adminConfig).forEach((sectionKey) => {
       const adminSection = adminConfig[sectionKey];
-      const userSection = userConfig[sectionKey];
+      const userSection = userConfig?.[sectionKey];
 
       // 如果管理员禁用了整个区域，则该区域不显示
       if (!adminSection?.enabled) {

@@ -354,6 +354,11 @@ func SetApiRouter(router *gin.Engine) {
 			analyticsRoute.GET("/user/:id/ips", controller.GetUserIPs)
 			analyticsRoute.GET("/sharing-risk", controller.GetSharingRisk)
 			analyticsRoute.GET("/invite-risk", controller.GetInviteRisk)
+			analyticsRoute.GET("/station-overview", controller.GetStationOverview)
+			analyticsRoute.GET("/ops-costs", controller.GetOpsCosts)
+			analyticsRoute.POST("/ops-costs", controller.CreateOpsCost)
+			analyticsRoute.PUT("/ops-costs", controller.UpdateOpsCost)
+			analyticsRoute.DELETE("/ops-costs/:id", controller.DeleteOpsCost)
 		}
 
 		// Daily ranking (user auth)
