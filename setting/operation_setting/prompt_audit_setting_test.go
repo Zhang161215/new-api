@@ -194,6 +194,7 @@ func TestPromptAuditNewKeysExported(t *testing.T) {
 		"prompt_audit_setting.retention_days",
 		"prompt_audit_setting.notify_enabled",
 		"prompt_audit_setting.notify_email",
+		"prompt_audit_setting.notify_user_enabled",
 	} {
 		_, ok := all[key]
 		require.True(t, ok, "缺少可配置项 %s", key)
@@ -221,4 +222,13 @@ func TestPromptAuditPromptStorage(t *testing.T) {
 	s.PromptStorage = PromptAuditStorageNone
 	require.False(t, s.ShouldStorePrompt(true))
 	require.False(t, s.ShouldStorePrompt(false))
+}
+
+func TestPromptAuditSetting_ShouldNotifyUser(t *testing.T) {
+	s := &PromptAuditSetting{NotifyUserEnabled: true}
+	require.True(t, s.ShouldNotifyUser(true))
+	require.False(t, s.ShouldNotifyUser(false), "观察模式未拦截，不应给用户发信")
+
+	s.NotifyUserEnabled = false
+	require.False(t, s.ShouldNotifyUser(true))
 }

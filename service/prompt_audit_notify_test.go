@@ -1,10 +1,12 @@
 package service
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/stretchr/testify/require"
 )
 
@@ -106,4 +108,85 @@ func TestPromptAuditNotifyCooldown(t *testing.T) {
 	require.True(t, promptAuditNotifyAllowed(4244, time.Millisecond))
 	time.Sleep(5 * time.Millisecond)
 	require.True(t, promptAuditNotifyAllowed(4244, time.Millisecond))
+}
+
+func TestPromptAuditUserNotifyHTMLOmitsPromptAndEscapes(t *testing.T) {
+	ev := sampleNotifyEvent()
+	ev.Prompt = `<script>alert(1)</script>`
+	ev.Reason = `<b>注入</b>`
+	body := promptAuditUserNotifyHTML(ev, nil)
+	require.NotContains(t, body, "<script>")
+	require.NotContains(t, body, "<b>注入</b>")
+	require.Contains(t, body, "&lt;b&gt;注入")
+	require.NotContains(t, body, ev.Prompt)
+	require.Contains(t, body, "没有发送给模型")
+	require.Contains(t, body, "alice")
+	require.Contains(t, body, "gpt-5-codex")
+	require.Contains(t, body, "判定理由")
+	require.Contains(t, body, "&lt;b&gt;注入")
+	require.Contains(t, body, "严重警告")
+	require.Contains(t, body, "3 次")
+	require.Contains(t, body, "1 小时内")
+	require.Contains(t, body, "封禁")
+	require.NotContains(t, body, "若这是误判")
+}
+
+func TestPromptAuditUserNotifyHTMLUsesAutoBanConfig(t *testing.T) {
+	ev := sampleNotifyEvent()
+	cfg := &operation_setting.PromptAuditSetting{AutoBanThreshold: 3, AutoBanWindowMin: 60}
+	body := promptAuditUserNotifyHTML(ev, cfg)
+	require.Contains(t, body, "1 小时内拦截次数达到 3 次")
+	require.Contains(t, body, "判定理由")
+	require.Contains(t, body, "请求编写 SSH 爆破脚本")
+
+	cfg.AutoBanThreshold = 5
+	cfg.AutoBanWindowMin = 120
+	body = promptAuditUserNotifyHTML(ev, cfg)
+	require.Contains(t, body, "2 小时内拦截次数达到 5 次")
+	require.NotContains(t, body, "达到 3 次")
+}
+
+func TestPromptAuditBanWindowText(t *testing.T) {
+	require.Equal(t, "1 小时内", promptAuditBanWindowText(60))
+	require.Equal(t, "24 小时内", promptAuditBanWindowText(1440))
+	require.Equal(t, "2 天内", promptAuditBanWindowText(2880))
+	require.Equal(t, "15 分钟内", promptAuditBanWindowText(15))
+	require.Equal(t, "1 小时内", promptAuditBanWindowText(0))
+}
+
+func TestPromptAuditUserNotifySubjectIsStern(t *testing.T) {
+	require.Contains(t, promptAuditUserNotifySubject(), "违规请求已被拦截")
+}
+
+func TestPlausibleEmail(t *testing.T) {
+	require.True(t, plausibleEmail("user@example.com"))
+	require.False(t, plausibleEmail(""))
+	require.False(t, plausibleEmail("not-an-email"))
+	require.False(t, plausibleEmail("a@b@c.com"))
+	require.False(t, plausibleEmail("user @example.com"))
+}
+
+func TestNotifyPromptAuditUserSkipsWithoutEmail(t *testing.T) {
+	orig := lookupPromptAuditUserEmail
+	t.Cleanup(func() { lookupPromptAuditUserEmail = orig })
+	lookupPromptAuditUserEmail = func(int) string { return "" }
+
+	cfg := &operation_setting.PromptAuditSetting{NotifyUserEnabled: true, NotifyCooldownSec: 0}
+	// 没有邮箱必须直接返回，不能去调 SMTP
+	NotifyPromptAuditUser(context.Background(), cfg, sampleNotifyEvent())
+}
+
+func TestNotifyPromptAuditUserSkipsWhenNotBlocked(t *testing.T) {
+	orig := lookupPromptAuditUserEmail
+	t.Cleanup(func() { lookupPromptAuditUserEmail = orig })
+	called := false
+	lookupPromptAuditUserEmail = func(int) string {
+		called = true
+		return "user@example.com"
+	}
+	cfg := &operation_setting.PromptAuditSetting{NotifyUserEnabled: true}
+	ev := sampleNotifyEvent()
+	ev.Blocked = false
+	NotifyPromptAuditUser(context.Background(), cfg, ev)
+	require.False(t, called, "观察模式不应去查用户邮箱")
 }

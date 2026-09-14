@@ -56,6 +56,7 @@ const KEYS = {
   recordAll: 'prompt_audit_setting.record_all',
   sampleRate: 'prompt_audit_setting.sample_rate',
   notifyEnabled: 'prompt_audit_setting.notify_enabled',
+  notifyUserEnabled: 'prompt_audit_setting.notify_user_enabled',
   notifyEmail: 'prompt_audit_setting.notify_email',
   notifyThreshold: 'prompt_audit_setting.notify_threshold',
   notifyBlockedOnly: 'prompt_audit_setting.notify_blocked_only',
@@ -91,7 +92,7 @@ export default function PromptAuditConfig(props) {
     [KEYS.apiKey]: '',
     [KEYS.model]: '',
     [KEYS.threshold]: 0.6,
-    [KEYS.timeoutMs]: 4000,
+    [KEYS.timeoutMs]: 12000,
     [KEYS.maxInputChars]: 8000,
     [KEYS.failOpen]: true,
     [KEYS.systemPrompt]: '',
@@ -99,6 +100,7 @@ export default function PromptAuditConfig(props) {
     [KEYS.recordAll]: false,
     [KEYS.sampleRate]: 100,
     [KEYS.notifyEnabled]: false,
+    [KEYS.notifyUserEnabled]: true,
     [KEYS.notifyEmail]: '',
     [KEYS.notifyThreshold]: 0,
     [KEYS.notifyBlockedOnly]: false,
@@ -114,7 +116,7 @@ export default function PromptAuditConfig(props) {
     [KEYS.fallbackModel]: '',
     [KEYS.disableThinking]: 'auto',
     [KEYS.autoBanEnabled]: false,
-    [KEYS.autoBanThreshold]: 5,
+    [KEYS.autoBanThreshold]: 3,
     [KEYS.autoBanWindowMin]: 60,
     [KEYS.autoBanMinConfidence]: 0,
     [KEYS.autoBanDryRun]: true,
@@ -456,6 +458,7 @@ export default function PromptAuditConfig(props) {
   }
 
   const notifyEnabled = String(inputs[KEYS.notifyEnabled]) === 'true';
+  const notifyUserEnabled = String(inputs[KEYS.notifyUserEnabled]) === 'true';
   const notifyBlockedOnly = String(inputs[KEYS.notifyBlockedOnly]) === 'true';
   const notifyMails = String(inputs[KEYS.notifyEmail] || '').trim();
   // 通知阈值为 0 时实际用拦截阈值，界面上直接把生效值算出来，免得管理员自己推
@@ -1081,6 +1084,18 @@ export default function PromptAuditConfig(props) {
             </Col>
             <Col xs={24} sm={12} md={8}>
               <Form.Switch
+                field={KEYS.notifyUserEnabled}
+                label={t('拦截后通知用户')}
+                extraText={t('真正拦截时，若该用户账号绑定了邮箱，就发严厉警告：窗口内达到封号次数将立即封禁。没有邮箱则跳过。')}
+                size='default'
+                checkedText='｜'
+                uncheckedText='〇'
+                onChange={handleFieldChange(KEYS.notifyUserEnabled)}
+                disabled={!enabled}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Form.Switch
                 field={KEYS.notifyBlockedOnly}
                 label={t('仅拦截时通知')}
                 extraText={t('开启后观察模式的命中不发通知，只有真被拦截才告警')}
@@ -1126,13 +1141,15 @@ export default function PromptAuditConfig(props) {
               <Form.InputNumber
                 field={KEYS.notifyCooldownSec}
                 label={t('同一用户冷却 (秒)')}
-                extraText={t('同个用户在此时间内只发一封，防止连续触发刷爆邮箱；0 不限制')}
+                extraText={t(
+                  '管理员告警与用户拦截邮件共用：同一用户在此时间内各只发一封；0 不限制',
+                )}
                 min={0}
                 max={86400}
                 step={60}
                 style={{ width: '100%' }}
                 onChange={handleFieldChange(KEYS.notifyCooldownSec)}
-                disabled={!enabled || !notifyEnabled}
+                disabled={!enabled || (!notifyEnabled && !notifyUserEnabled)}
               />
             </Col>
           </Row>

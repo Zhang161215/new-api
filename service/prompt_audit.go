@@ -181,7 +181,7 @@ func runPromptAuditOnce(ctx context.Context, cfg *operation_setting.PromptAuditS
 
 	timeout := time.Duration(cfg.TimeoutMs) * time.Millisecond
 	if timeout <= 0 {
-		timeout = 4 * time.Second
+		timeout = 12 * time.Second
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -196,10 +196,13 @@ func runPromptAuditOnce(ctx context.Context, cfg *operation_setting.PromptAuditS
 	if err != nil {
 		return 0, "", failf(PromptAuditFailTransport, "%v", err)
 	}
-	// 若因不支持 thinking 参数被拒（部分网关），去掉该参数重试一次。
+	// 若因不支持 thinking 参数被拒（部分网关），去掉该参数、用完整超时再试一次。
 	// 注意要排除风控拒答：那种情况去掉参数重试同样会被拒，白等一轮。
+	// 必须新开 timeout：第一次若已耗掉大半预算，复用 reqCtx 会立刻 deadline exceeded。
 	if status >= 400 && status < 500 && noThink && !looksLikeModerationRefusal(string(respBytes)) {
-		respBytes, status, err = postAuditRequest(reqCtx, cfg, url, userInput, false)
+		retryCtx, retryCancel := context.WithTimeout(ctx, timeout)
+		respBytes, status, err = postAuditRequest(retryCtx, cfg, url, userInput, false)
+		retryCancel()
 		if err != nil {
 			return 0, "", failf(PromptAuditFailTransport, "%v", err)
 		}

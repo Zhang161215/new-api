@@ -293,16 +293,16 @@ func (m *promptAuditMeta) record(ctx context.Context, cfg *operation_setting.Pro
 	}
 }
 
-// notify 命中时给管理员发告警。是否真的发送由配置（开关/阈值/冷却）决定，
-// 这里只负责把上下文交出去；同 record 一样属于旁路，失败不影响用户请求。
+// notify 命中时给管理员发告警，拦截时再给用户发邮件（有绑定邮箱才发）。
+// 是否真的发送由各自开关决定。同 record 一样属于旁路，失败不影响用户请求。
 func (m *promptAuditMeta) notify(ctx context.Context, cfg *operation_setting.PromptAuditSetting,
 	confidence float64, reason string, blocked bool, latency time.Duration) {
 
-	if cfg == nil || !cfg.ShouldNotify(confidence, blocked) {
+	if cfg == nil {
 		return
 	}
 	username := m.username()
-	service.NotifyPromptAuditHit(ctx, cfg, service.PromptAuditNotifyEvent{
+	ev := service.PromptAuditNotifyEvent{
 		UserId:     m.userId,
 		Username:   username,
 		TokenName:  m.tokenName,
@@ -314,11 +314,16 @@ func (m *promptAuditMeta) notify(ctx context.Context, cfg *operation_setting.Pro
 		Confidence: confidence,
 		Reason:     reason,
 		Blocked:    blocked,
-		// 告警邮件同样遵守留存策略：邮箱里的副本也是一种留存
-		Prompt:    m.promptForStorage(cfg, confidence >= cfg.Threshold),
-		LatencyMs: int(latency.Milliseconds()),
-		CreatedAt: time.Now(),
-	})
+		Prompt:     m.promptForStorage(cfg, confidence >= cfg.Threshold),
+		LatencyMs:  int(latency.Milliseconds()),
+		CreatedAt:  time.Now(),
+	}
+	if cfg.ShouldNotify(confidence, blocked) {
+		service.NotifyPromptAuditHit(ctx, cfg, ev)
+	}
+	if cfg.ShouldNotifyUser(blocked) {
+		service.NotifyPromptAuditUser(ctx, cfg, ev)
+	}
 }
 
 // autoBan 评估本次命中是否触发自动封号。必须在命中记录已落库后调用。

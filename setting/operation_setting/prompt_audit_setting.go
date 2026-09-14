@@ -123,6 +123,9 @@ type PromptAuditSetting struct {
 	NotifyBlockedOnly bool `json:"notify_blocked_only"`
 	// NotifyCooldownSec 同一用户的通知冷却秒数，防止单个用户刷爆邮箱。<=0 表示不限制
 	NotifyCooldownSec int `json:"notify_cooldown_sec"`
+	// NotifyUserEnabled 拦截后是否给该用户自己发邮件。只在账号绑定了邮箱时发送，
+	// 没有邮箱就跳过。观察模式（未真正拦截）不发。与管理员告警独立开关。
+	NotifyUserEnabled bool `json:"notify_user_enabled"`
 	// CacheTTLSec 判定结果缓存秒数。相同内容在此时间内复用上次判定，不再调审核模型。
 	// agent 流量重复率极高（线上实测 85.8%），这是无损的省钱与降延迟手段。<=0 关闭缓存
 	CacheTTLSec int `json:"cache_ttl_sec"`
@@ -190,7 +193,7 @@ var promptAuditSetting = PromptAuditSetting{
 	APIKey:            "",
 	Model:             "deepseek-v4-flash",
 	Threshold:         0.6,
-	TimeoutMs:         8000,
+	TimeoutMs:         12000,
 	MaxInputChars:     8000,
 	FailOpen:          true,
 	SystemPrompt:      "",
@@ -202,6 +205,7 @@ var promptAuditSetting = PromptAuditSetting{
 	NotifyThreshold:   0,
 	NotifyBlockedOnly: false,
 	NotifyCooldownSec: 300,
+	NotifyUserEnabled: true,
 	CacheTTLSec:       3600,
 	AuditScope:        PromptAuditScopeLastUser,
 	ScopeMessages:     4,
@@ -214,7 +218,7 @@ var promptAuditSetting = PromptAuditSetting{
 	DisableThinking:   PromptAuditThinkingAuto,
 	// 自动封号默认全关：这是不可逆操作，必须由管理员显式开启
 	AutoBanEnabled:       false,
-	AutoBanThreshold:     5,
+	AutoBanThreshold:     3,
 	AutoBanWindowMin:     60,
 	AutoBanMinConfidence: 0,
 	AutoBanDryRun:        true, // 即使开了开关，默认也先干跑，避免一上线就误封
@@ -498,4 +502,9 @@ func (s *PromptAuditSetting) ShouldNotify(confidence float64, blocked bool) bool
 		return false
 	}
 	return confidence >= s.EffectiveNotifyThreshold()
+}
+
+// ShouldNotifyUser 是否给被拦截的用户发邮件。只在真正拦截时发，观察模式不惊扰用户。
+func (s *PromptAuditSetting) ShouldNotifyUser(blocked bool) bool {
+	return s.NotifyUserEnabled && blocked
 }
