@@ -84,6 +84,7 @@ export default function CCSwitchModal({
   visible,
   onClose,
   tokenKey,
+  tokenName,
   modelOptions,
 }) {
   const { t } = useTranslation();
@@ -97,13 +98,13 @@ export default function CCSwitchModal({
     if (visible) {
       setModels({});
       setApp('claude');
-      setName(APP_CONFIGS.claude.defaultName);
+      setName(tokenName || APP_CONFIGS.claude.defaultName);
     }
-  }, [visible]);
+  }, [visible, tokenName]);
 
   const handleAppChange = (val) => {
     setApp(val);
-    setName(APP_CONFIGS[val].defaultName);
+    setName(tokenName || APP_CONFIGS[val].defaultName);
     setModels({});
   };
 

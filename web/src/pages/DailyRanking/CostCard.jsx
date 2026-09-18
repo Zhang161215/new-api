@@ -290,7 +290,7 @@ const CostCard = ({
               label: item.label,
             }))}
             onChange={(value) => setForm((prev) => ({ ...prev, category: value }))}
-            style={{ width: 128 }}
+            style={{ width: 148 }}
           />
           <InputNumber
             value={form.amount}

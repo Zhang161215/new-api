@@ -7,6 +7,7 @@ const TABLE_URL = '/api/analytics/ops-costs';
 export const COST_CATEGORIES = [
   { value: 'upstream', label: '上游充值', color: '#286aff' },
   { value: 'account', label: '账号充值', color: '#ff9648' },
+  { value: 'channel_fee', label: '渠道手续费', color: '#e85d75' },
   { value: 'server', label: '服务器', color: '#0cb58a' },
   { value: 'domain', label: '域名 / CDN', color: '#9166ee' },
   { value: 'other', label: '其他', color: '#12bde6' },

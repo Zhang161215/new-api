@@ -12,11 +12,12 @@ const OpsCostOptionKey = "ops_cost_records"
 var (
 	opsCostImportOnce sync.Once
 	opsCostCategories = map[string]string{
-		"upstream": "上游充值",
-		"account":  "账号充值",
-		"server":   "服务器",
-		"domain":   "域名/CDN",
-		"other":    "其他",
+		"upstream":    "上游充值",
+		"account":     "账号充值",
+		"channel_fee": "渠道手续费",
+		"server":      "服务器",
+		"domain":      "域名/CDN",
+		"other":       "其他",
 	}
 )
 

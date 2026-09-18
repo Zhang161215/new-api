@@ -39,6 +39,7 @@ import TokensFilters from './TokensFilters';
 import TokensDescription from './TokensDescription';
 import EditTokenModal from './modals/EditTokenModal';
 import CCSwitchModal from './modals/CCSwitchModal';
+import TokenModelTestModal from './modals/TokenModelTestModal';
 import { useTokensData } from '../../../hooks/tokens/useTokensData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
@@ -49,7 +50,8 @@ function TokensPage() {
   const openCCSwitchModalRef = useRef(null);
   const tokensData = useTokensData(
     (key) => openFluentNotificationRef.current?.(key),
-    (key) => openCCSwitchModalRef.current?.(key),
+    (key, tokenName, models) =>
+      openCCSwitchModalRef.current?.(key, tokenName, models),
   );
   const isMobile = useIsMobile();
   const latestRef = useRef({
@@ -66,6 +68,8 @@ function TokensPage() {
   const [prefillKey, setPrefillKey] = useState('');
   const [ccSwitchVisible, setCCSwitchVisible] = useState(false);
   const [ccSwitchKey, setCCSwitchKey] = useState('');
+  const [ccSwitchTokenName, setCCSwitchTokenName] = useState('');
+  const [ccSwitchModels, setCCSwitchModels] = useState([]);
 
   // Keep latest data for handlers inside notifications
   useEffect(() => {
@@ -191,11 +195,15 @@ function TokensPage() {
   // assign after definition so hook callback can call it safely
   openFluentNotificationRef.current = openFluentNotification;
 
-  function openCCSwitchModal(key) {
-    if (modelOptions.length === 0) {
+  function openCCSwitchModal(key, tokenName, models) {
+    if ((!models || models.length === 0) && modelOptions.length === 0) {
       loadModels();
     }
     setCCSwitchKey(key || '');
+    setCCSwitchTokenName(tokenName || '');
+    setCCSwitchModels(
+      (models || []).map((m) => ({ label: m, value: m })),
+    );
     setCCSwitchVisible(true);
   }
   openCCSwitchModalRef.current = openCCSwitchModal;
@@ -388,7 +396,38 @@ function TokensPage() {
         visible={ccSwitchVisible}
         onClose={() => setCCSwitchVisible(false)}
         tokenKey={ccSwitchKey}
-        modelOptions={modelOptions}
+        tokenName={ccSwitchTokenName}
+        modelOptions={
+          ccSwitchModels.length > 0 ? ccSwitchModels : modelOptions
+        }
+      />
+
+      <TokenModelTestModal
+        showModelTestModal={tokensData.showModelTestModal}
+        currentTestToken={tokensData.currentTestToken}
+        handleCloseModal={tokensData.handleCloseModelTestModal}
+        isBatchTesting={tokensData.isBatchTesting}
+        batchTestModels={tokensData.batchTestModels}
+        modelSearchKeyword={tokensData.modelSearchKeyword}
+        setModelSearchKeyword={tokensData.setModelSearchKeyword}
+        selectedModelKeys={tokensData.selectedModelKeys}
+        setSelectedModelKeys={tokensData.setSelectedModelKeys}
+        modelTestResults={tokensData.modelTestResults}
+        testingModels={tokensData.testingModels}
+        testToken={tokensData.testToken}
+        modelTablePage={tokensData.modelTablePage}
+        setModelTablePage={tokensData.setModelTablePage}
+        isStreamTest={tokensData.isStreamTest}
+        setIsStreamTest={tokensData.setIsStreamTest}
+        allSelectingRef={tokensData.allSelectingRef}
+        tokenModels={
+          tokensData.currentTestToken
+            ? tokensData.tokenModelsMap[tokensData.currentTestToken.id] || []
+            : []
+        }
+        tokenModelsLoading={tokensData.tokenModelsLoading}
+        isMobile={isMobile}
+        t={tokensData.t}
       />
 
       <CardPro

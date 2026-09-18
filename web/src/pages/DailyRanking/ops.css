@@ -865,7 +865,7 @@
 
 .ops-cost-form {
   display: grid;
-  grid-template-columns: 128px 140px 150px minmax(0, 1fr);
+  grid-template-columns: 148px 140px 150px minmax(0, 1fr);
   gap: 8px;
   margin-bottom: 14px;
 }
