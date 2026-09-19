@@ -18,14 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState, useContext, useMemo } from 'react';
-import {
-  Button,
-  Modal,
-  Empty,
-  Tabs,
-  TabPane,
-  Timeline,
-} from '@douyinfe/semi-ui';
+import { Modal, Empty, Timeline } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { API, showError, getRelativeTime } from '../../helpers';
 import { marked } from 'marked';
@@ -35,6 +28,7 @@ import {
 } from '@douyinfe/semi-illustrations';
 import { StatusContext } from '../../context/Status';
 import { Bell, Megaphone } from 'lucide-react';
+import './notice-modal.css';
 
 const NoticeModal = ({
   visible,
@@ -42,9 +36,10 @@ const NoticeModal = ({
   isMobile,
   defaultTab = 'inApp',
   unreadKeys = [],
+  initialContent = '',
 }) => {
   const { t } = useTranslation();
-  const [noticeContent, setNoticeContent] = useState('');
+  const [noticeContent, setNoticeContent] = useState(initialContent || '');
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState(defaultTab);
 
@@ -83,17 +78,21 @@ const NoticeModal = ({
   };
 
   const displayNotice = async () => {
+    if (initialContent) {
+      setNoticeContent(initialContent);
+      setLoading(false);
+      return;
+    }
+    if (noticeContent) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const res = await API.get('/api/notice');
       const { success, message, data } = res.data;
       if (success) {
-        if (data !== '') {
-          const htmlNotice = marked.parse(data);
-          setNoticeContent(htmlNotice);
-        } else {
-          setNoticeContent('');
-        }
+        setNoticeContent(data ? marked.parse(data) : '');
       } else {
         showError(message);
       }
@@ -103,6 +102,12 @@ const NoticeModal = ({
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (initialContent) {
+      setNoticeContent(initialContent);
+    }
+  }, [initialContent]);
 
   useEffect(() => {
     if (visible) {
@@ -119,9 +124,7 @@ const NoticeModal = ({
   const renderMarkdownNotice = () => {
     if (loading) {
       return (
-        <div className='py-12'>
-          <Empty description={t('加载中...')} />
-        </div>
+        <div className='sx-notice-loading'>{t('加载中...')}</div>
       );
     }
 
@@ -210,44 +213,63 @@ const NoticeModal = ({
 
   return (
     <Modal
-      title={
-        <div className='flex items-center justify-between w-full'>
-          <span>{t('系统公告')}</span>
-          <Tabs activeKey={activeTab} onChange={setActiveTab} type='button'>
-            <TabPane
-              tab={
-                <span className='flex items-center gap-1'>
-                  <Bell size={14} /> {t('通知')}
-                </span>
-              }
-              itemKey='inApp'
-            />
-            <TabPane
-              tab={
-                <span className='flex items-center gap-1'>
-                  <Megaphone size={14} /> {t('系统公告')}
-                </span>
-              }
-              itemKey='system'
-            />
-          </Tabs>
-        </div>
-      }
+      title={null}
       visible={visible}
       onCancel={onClose}
-      footer={
-        <div className='flex justify-end'>
-          <Button type='secondary' onClick={handleCloseTodayNotice}>
-            {t('今日关闭')}
-          </Button>
-          <Button type='primary' onClick={onClose}>
-            {t('关闭公告')}
-          </Button>
-        </div>
-      }
-      size={isMobile ? 'full-width' : 'large'}
+      footer={null}
+      closable={false}
+      maskClosable
+      centered
+      width={isMobile ? '92%' : 560}
+      className='sx-notice-modal'
+      maskClassName='sx-notice-mask'
+      bodyStyle={{ padding: 0 }}
     >
-      {renderBody()}
+      <div className='sx-notice'>
+        <div className='sx-notice-head'>
+          <div className='sx-notice-tabs' role='tablist'>
+            <button
+              type='button'
+              role='tab'
+              aria-selected={activeTab === 'inApp'}
+              className={activeTab === 'inApp' ? 'is-active' : ''}
+              onClick={() => setActiveTab('inApp')}
+            >
+              <Bell size={14} /> {t('通知')}
+            </button>
+            <button
+              type='button'
+              role='tab'
+              aria-selected={activeTab === 'system'}
+              className={activeTab === 'system' ? 'is-active' : ''}
+              onClick={() => setActiveTab('system')}
+            >
+              <Megaphone size={14} /> {t('公告')}
+            </button>
+          </div>
+          <button
+            type='button'
+            className='sx-notice-close'
+            onClick={onClose}
+            aria-label={t('关闭公告')}
+          >
+            ×
+          </button>
+        </div>
+        <div className='sx-notice-body'>{renderBody()}</div>
+        <div className='sx-notice-foot'>
+          <button
+            type='button'
+            className='sx-notice-ghost'
+            onClick={handleCloseTodayNotice}
+          >
+            {t('今日关闭')}
+          </button>
+          <button type='button' className='sx-notice-solid' onClick={onClose}>
+            {t('关闭公告')}
+          </button>
+        </div>
+      </div>
     </Modal>
   );
 };

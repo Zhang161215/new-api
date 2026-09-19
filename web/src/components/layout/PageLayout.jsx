@@ -68,8 +68,10 @@ const PageLayout = () => {
     location.pathname === '/console/lottery' ||
     location.pathname === '/console/lottery-admin';
 
+  const isHome = location.pathname === '/';
+
   const shouldHideFooter =
-    cardProPages.includes(location.pathname) || isLotteryConsole;
+    cardProPages.includes(location.pathname) || isLotteryConsole || isHome;
 
   const shouldInnerPadding =
     location.pathname.includes('/console') &&
@@ -122,9 +124,14 @@ const PageLayout = () => {
     let logo = getLogo();
     if (logo) {
       let linkElement = document.querySelector("link[rel~='icon']");
-      if (linkElement) {
-        linkElement.href = logo;
+      if (!linkElement) {
+        linkElement = document.createElement('link');
+        linkElement.rel = 'icon';
+        document.head.appendChild(linkElement);
       }
+      linkElement.type = 'image/png';
+      linkElement.sizes = '32x32';
+      linkElement.href = '/favicon-32.png?v=20260918c';
     }
   }, []);
 
@@ -161,28 +168,31 @@ const PageLayout = () => {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        overflow: isMobile ? 'visible' : 'hidden',
+        overflow: isHome || isMobile ? 'visible' : 'hidden',
+        height: isHome ? 'auto' : undefined,
       }}
     >
-      <Header
-        style={{
-          padding: 0,
-          height: 'auto',
-          lineHeight: 'normal',
-          position: 'fixed',
-          width: '100%',
-          top: 0,
-          zIndex: 100,
-        }}
-      >
-        <HeaderBar
-          onMobileMenuToggle={() => setDrawerOpen((prev) => !prev)}
-          drawerOpen={drawerOpen}
-        />
-      </Header>
+      {!isHome && (
+        <Header
+          style={{
+            padding: 0,
+            height: 'auto',
+            lineHeight: 'normal',
+            position: 'fixed',
+            width: '100%',
+            top: 0,
+            zIndex: 100,
+          }}
+        >
+          <HeaderBar
+            onMobileMenuToggle={() => setDrawerOpen((prev) => !prev)}
+            drawerOpen={drawerOpen}
+          />
+        </Header>
+      )}
       <Layout
         style={{
-          overflow: isMobile ? 'visible' : 'auto',
+          overflow: isHome || isMobile ? 'visible' : 'auto',
           display: 'flex',
           flexDirection: 'column',
         }}
@@ -222,7 +232,7 @@ const PageLayout = () => {
           <Content
             style={{
               flex: '1 0 auto',
-              overflowY: isMobile ? 'visible' : 'hidden',
+              overflowY: isHome || isMobile ? 'visible' : 'hidden',
               WebkitOverflowScrolling: 'touch',
               padding: shouldInnerPadding ? (isMobile ? '5px' : '24px') : '0',
               position: 'relative',

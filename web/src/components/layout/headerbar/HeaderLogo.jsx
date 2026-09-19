@@ -39,14 +39,14 @@ const HeaderLogo = ({
 
   return (
     <Link to='/' className='group flex items-center gap-2'>
-      <div className='relative h-8 w-8 shrink-0'>
+      <div className='relative h-8 w-8 shrink-0 overflow-hidden rounded-[11px] bg-[#111214]'>
         <SkeletonWrapper loading={isLoading || !logoLoaded} type='image' />
         <img
           src={logo}
           alt='logo'
           width={32}
           height={32}
-          className={`app-logo-sm absolute left-0 top-0 transition-transform duration-200 group-hover:scale-110 ${!isLoading && logoLoaded ? 'opacity-100' : 'opacity-0'}`}
+          className={`app-logo-sm absolute left-0 top-0 ${!isLoading && logoLoaded ? 'opacity-100' : 'opacity-0'}`}
         />
       </div>
       <div className='hidden md:flex items-center gap-2'>

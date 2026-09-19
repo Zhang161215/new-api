@@ -56,9 +56,12 @@ img[alt='Logo'],
 header img[alt='logo'] {
   display: block;
   object-fit: cover;
-  border-radius: 50%;
+  object-position: center;
+  border-radius: 36%;
+  background: #111214;
   flex-shrink: 0;
   box-sizing: border-box;
+  clip-path: inset(0 round 36%);
 }
 
 .app-logo,
