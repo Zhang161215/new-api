@@ -38,9 +38,11 @@ var (
 
 // LotteryConfig 转盘全局配置，单行（id = 1）。
 // Enabled 只控制能不能抽：关闭后 DrawLottery 拒绝，充值仍按 TicketsPerPayment 送次数。
+// BroadcastEnabled 控制 QQ 群中奖播报；关闭后不推群，期间中奖不补发。
 type LotteryConfig struct {
 	Id                int   `json:"id" gorm:"primaryKey"`
 	Enabled           bool  `json:"enabled" gorm:"default:true"`
+	BroadcastEnabled  bool  `json:"broadcast_enabled" gorm:"default:true"`
 	TicketsPerPayment int   `json:"tickets_per_payment" gorm:"default:1"`
 	UpdatedAt         int64 `json:"updated_at" gorm:"bigint"`
 }
@@ -133,7 +135,7 @@ func getLotteryConfig(tx *gorm.DB) (*LotteryConfig, error) {
 	var cfg LotteryConfig
 	err := lotteryDB(tx).First(&cfg, 1).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		cfg = LotteryConfig{Id: 1, Enabled: true, TicketsPerPayment: 1, UpdatedAt: time.Now().Unix()}
+		cfg = LotteryConfig{Id: 1, Enabled: true, BroadcastEnabled: true, TicketsPerPayment: 1, UpdatedAt: time.Now().Unix()}
 		if createErr := lotteryDB(tx).Create(&cfg).Error; createErr != nil {
 			return nil, createErr
 		}
@@ -142,7 +144,7 @@ func getLotteryConfig(tx *gorm.DB) (*LotteryConfig, error) {
 	return &cfg, err
 }
 
-func SaveLotteryConfig(enabled bool, ticketsPerPayment int) (*LotteryConfig, error) {
+func SaveLotteryConfig(enabled bool, ticketsPerPayment int, broadcastEnabled bool) (*LotteryConfig, error) {
 	if ticketsPerPayment < 1 {
 		ticketsPerPayment = 1
 	}
@@ -154,6 +156,7 @@ func SaveLotteryConfig(enabled bool, ticketsPerPayment int) (*LotteryConfig, err
 		return nil, err
 	}
 	cfg.Enabled = enabled
+	cfg.BroadcastEnabled = broadcastEnabled
 	cfg.TicketsPerPayment = ticketsPerPayment
 	cfg.UpdatedAt = time.Now().Unix()
 	if err := DB.Save(cfg).Error; err != nil {

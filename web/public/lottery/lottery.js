@@ -281,6 +281,7 @@ function emptyState() {
     payments: 2,
     ticketsPerPayment: 1,
     lotteryEnabled: true,
+    broadcastEnabled: true,
     soldOut: false,
     history: [],
     ticketLog: seedTicketLog(),
@@ -324,6 +325,7 @@ function loadState() {
       state.prizeCatalog = defaultCatalog();
     }
     state.lotteryEnabled = state.lotteryEnabled !== false;
+    state.broadcastEnabled = state.broadcastEnabled !== false;
     state.weights = Object.fromEntries(state.prizeCatalog.map((item) => [item.id, item.weight]));
     state.ticketsPerPayment = Math.max(1, Math.min(10, Number(state.ticketsPerPayment) || 1));
     if (state.today !== todayKey()) {
@@ -968,6 +970,7 @@ const LotteryClient = {
       ...(apiState || emptyState()),
       prizeCatalog: catalog,
       lotteryEnabled: (data.config?.draw_enabled ?? data.config?.enabled) !== false,
+      broadcastEnabled: (data.config?.broadcast_enabled ?? data.config?.broadcastEnabled) !== false,
       ticketsPerPayment: data.config?.tickets_per_payment || 1,
       overview: data.overview,
     };
@@ -1022,14 +1025,25 @@ const LotteryClient = {
   async deleteCode(id) {
     await lotteryRequest(`/api/lottery/admin/codes/${id}`, { method: 'DELETE' });
   },
-  async saveConfig(enabled, ticketsPerPayment) {
+  async saveConfig(enabled, ticketsPerPayment, broadcastEnabled) {
+    const live = apiState || {};
+    const onFlag = enabled !== false;
+    const perPay = Number(ticketsPerPayment) || live.ticketsPerPayment || 1;
+    const broadcast = broadcastEnabled !== undefined
+      ? Boolean(broadcastEnabled)
+      : live.broadcastEnabled !== false;
     const data = await lotteryRequest('/api/lottery/admin/config', {
       method: 'PUT',
-      body: JSON.stringify({ enabled, tickets_per_payment: ticketsPerPayment }),
+      body: JSON.stringify({
+        enabled: onFlag,
+        tickets_per_payment: perPay,
+        broadcast_enabled: broadcast,
+      }),
     });
     if (apiState) {
-      apiState.lotteryEnabled = enabled;
-      apiState.ticketsPerPayment = ticketsPerPayment;
+      apiState.lotteryEnabled = onFlag;
+      apiState.ticketsPerPayment = perPay;
+      apiState.broadcastEnabled = broadcast;
     }
     return data;
   },
@@ -4272,6 +4286,25 @@ function syncEnabledControls(onFlag) {
   document.querySelector('.lz-ad-hero-row')?.classList.toggle('is-off', !onFlag);
 }
 
+function currentBroadcastEnabled() {
+  return ($('cfg-broadcast-overview')?.value || $('cfg-broadcast')?.value || '1') !== '0';
+}
+
+function currentLotteryEnabled() {
+  return ($('cfg-enabled-overview')?.value || $('cfg-enabled')?.value || '1') !== '0';
+}
+
+function syncBroadcastControls(onFlag) {
+  const value = onFlag ? '1' : '0';
+  ['cfg-broadcast', 'cfg-broadcast-overview'].forEach((id) => {
+    const el = $(id);
+    if (el) el.value = value;
+  });
+  const label = $('cfg-broadcast-label');
+  if (label) label.textContent = onFlag ? '播报开启' : '播报关闭';
+  document.querySelector('.lz-ad-mini-switch.is-broadcast')?.classList.toggle('is-off', !onFlag);
+}
+
 async function persistLotteryEnabled(onFlag) {
   const live = LotteryClient.mode === 'api' ? apiState : loadState();
   const prev = live?.lotteryEnabled !== false;
@@ -4294,7 +4327,7 @@ async function persistLotteryEnabled(onFlag) {
   const msg = $('cfg-enabled-msg');
   try {
     if (LotteryClient.mode === 'api') {
-      await LotteryClient.saveConfig(onFlag, Number($('cfg-tickets-per')?.value) || 1);
+      await LotteryClient.saveConfig(onFlag, Number($('cfg-tickets-per')?.value) || 1, currentBroadcastEnabled());
     } else {
       const next = loadState();
       next.lotteryEnabled = onFlag;
@@ -4303,6 +4336,45 @@ async function persistLotteryEnabled(onFlag) {
     if (msg) msg.textContent = onFlag ? '抽奖已开启。' : '抽奖已关闭。充值仍会送次数。';
   } catch (err) {
     syncEnabledControls(prev);
+    if (msg) msg.textContent = err.message || '保存失败';
+  }
+}
+
+async function persistBroadcastEnabled(onFlag) {
+  const live = LotteryClient.mode === 'api' ? apiState : loadState();
+  const prev = live?.broadcastEnabled !== false;
+  if (onFlag === prev) {
+    syncBroadcastControls(onFlag);
+    return;
+  }
+  if (!onFlag) {
+    const ok = await askConfirm({
+      title: '关闭抽奖播报',
+      text: '关闭后 QQ 群不再推送中奖播报。关掉期间抽中的也不会补发。确定关闭？',
+      ok: '关闭播报',
+    });
+    if (!ok) {
+      syncBroadcastControls(true);
+      return;
+    }
+  }
+  syncBroadcastControls(onFlag);
+  const msg = $('cfg-enabled-msg');
+  try {
+    if (LotteryClient.mode === 'api') {
+      await LotteryClient.saveConfig(
+        currentLotteryEnabled(),
+        Number($('cfg-tickets-per')?.value) || 1,
+        onFlag,
+      );
+    } else {
+      const next = loadState();
+      next.broadcastEnabled = onFlag;
+      saveState(next);
+    }
+    if (msg) msg.textContent = onFlag ? '抽奖播报已开启。' : '抽奖播报已关闭。关掉期间抽中的不会补发。';
+  } catch (err) {
+    syncBroadcastControls(prev);
     if (msg) msg.textContent = err.message || '保存失败';
   }
 }
@@ -4337,6 +4409,7 @@ async function bootAdmin() {
   const state = LotteryClient.mode === 'api' ? apiState : loadState();
   const per = $('cfg-tickets-per');
   syncEnabledControls(state.lotteryEnabled !== false);
+  syncBroadcastControls(state.broadcastEnabled !== false);
   if (per) per.value = String(state.ticketsPerPayment || 1);
   fillPrizeOptions('admin-prize-filter');
   refreshUsers();
@@ -4466,11 +4539,13 @@ async function bootAdmin() {
   });
   on('cfg-enabled', 'change', (event) => persistLotteryEnabled(event.target.value !== '0'));
   on('cfg-enabled-overview', 'change', (event) => persistLotteryEnabled(event.target.value !== '0'));
+  on('cfg-broadcast', 'change', (event) => persistBroadcastEnabled(event.target.value !== '0'));
+  on('cfg-broadcast-overview', 'change', (event) => persistBroadcastEnabled(event.target.value !== '0'));
   on('cfg-tickets-per', 'input', async (event) => {
     const perPay = Math.max(1, Math.min(10, Number(event.target.value) || 1));
-    const onFlag = ($('cfg-enabled-overview')?.value || $('cfg-enabled')?.value || '1') !== '0';
+    const onFlag = currentLotteryEnabled();
     if (LotteryClient.mode === 'api') {
-      await LotteryClient.saveConfig(onFlag, perPay);
+      await LotteryClient.saveConfig(onFlag, perPay, currentBroadcastEnabled());
       return;
     }
     const next = loadState();

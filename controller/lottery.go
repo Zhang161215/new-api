@@ -381,6 +381,7 @@ func GetLotteryAdminOverview(c *gin.Context) {
 func UpdateLotteryAdminConfig(c *gin.Context) {
 	var req struct {
 		Enabled           *bool `json:"enabled"`
+		BroadcastEnabled  *bool `json:"broadcast_enabled"`
 		TicketsPerPayment *int  `json:"tickets_per_payment"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -393,14 +394,18 @@ func UpdateLotteryAdminConfig(c *gin.Context) {
 		return
 	}
 	enabled := cfg.Enabled
+	broadcast := cfg.BroadcastEnabled
 	per := cfg.TicketsPerPayment
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
+	if req.BroadcastEnabled != nil {
+		broadcast = *req.BroadcastEnabled
+	}
 	if req.TicketsPerPayment != nil {
 		per = *req.TicketsPerPayment
 	}
-	cfg, err = model.SaveLotteryConfig(enabled, per)
+	cfg, err = model.SaveLotteryConfig(enabled, per, broadcast)
 	if err != nil {
 		common.ApiError(c, err)
 		return

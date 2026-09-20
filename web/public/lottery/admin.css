@@ -186,7 +186,11 @@ body.lz-admin {
 }
 
 .lz-ad-activity.is-off + .lz-ad-hint,
-.lz-ad-hero-row.is-off .lz-ad-mini-switch {
+.lz-ad-hero-row.is-off .lz-ad-mini-switch:not(.is-broadcast) {
+  color: #b45309;
+}
+
+.lz-ad-mini-switch.is-broadcast.is-off {
   color: #b45309;
 }
 

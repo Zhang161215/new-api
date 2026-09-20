@@ -90,7 +90,7 @@ func TestGrantTicketsIdempotentByTradeNo(t *testing.T) {
 func TestGrantTicketsWhileDrawDisabled(t *testing.T) {
 	setupLotteryTables(t)
 	require.NoError(t, EnsureLotteryDefaults())
-	_, err := SaveLotteryConfig(false, 1)
+	_, err := SaveLotteryConfig(false, 1, true)
 	require.NoError(t, err)
 
 	u := &User{Username: "lottery-closed-grant", Password: "x", Quota: 0, Status: common.UserStatusEnabled, Role: common.RoleCommonUser}
@@ -104,6 +104,29 @@ func TestGrantTicketsWhileDrawDisabled(t *testing.T) {
 
 	_, err = DrawLottery(u.Id, u.Username)
 	require.ErrorIs(t, err, ErrLotteryDisabled)
+}
+
+func TestLotteryBroadcastConfigPersists(t *testing.T) {
+	setupLotteryTables(t)
+	require.NoError(t, EnsureLotteryDefaults())
+	cfg, err := GetLotteryConfig()
+	require.NoError(t, err)
+	require.True(t, cfg.BroadcastEnabled)
+
+	cfg, err = SaveLotteryConfig(true, 1, false)
+	require.NoError(t, err)
+	require.False(t, cfg.BroadcastEnabled)
+	require.True(t, cfg.Enabled)
+
+	again, err := GetLotteryConfig()
+	require.NoError(t, err)
+	require.False(t, again.BroadcastEnabled)
+
+	cfg, err = SaveLotteryConfig(false, 2, true)
+	require.NoError(t, err)
+	require.True(t, cfg.BroadcastEnabled)
+	require.False(t, cfg.Enabled)
+	require.Equal(t, 2, cfg.TicketsPerPayment)
 }
 
 func TestDrawLotteryRedeemsCodeNotDirectBalanceField(t *testing.T) {

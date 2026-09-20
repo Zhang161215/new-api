@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light" />
     <meta name="theme-color" content="#f4f6fa" />
     <title>抽奖管理</title>
-    <link rel="stylesheet" href="./admin.css?v=a21" />
+    <link rel="stylesheet" href="./admin.css?v=a22" />
   </head>
   <body class="lz-admin" data-page="admin">
     <aside class="lz-ad-side">
@@ -42,6 +42,13 @@
             <label class="lz-ad-mini-switch">
               <span id="cfg-enabled-label">开启中</span>
               <select id="cfg-enabled-overview" aria-label="抽奖开关">
+                <option value="1">开启</option>
+                <option value="0">关闭</option>
+              </select>
+            </label>
+            <label class="lz-ad-mini-switch is-broadcast">
+              <span id="cfg-broadcast-label">播报开启</span>
+              <select id="cfg-broadcast-overview" aria-label="抽奖播报">
                 <option value="1">开启</option>
                 <option value="0">关闭</option>
               </select>
@@ -192,12 +199,19 @@
       <section class="lz-ad-view" id="view-rules" hidden>
         <header class="lz-ad-hero">
           <h1>次数规则</h1>
-          <p>抽奖开关只控制能不能抽。充值送几次看下面的数字，关闭转盘时充值仍会入账次数。</p>
+          <p>抽奖开关只控制能不能抽。群播报开关只控制中奖后是否推到 QQ 群，关掉期间抽中的不会补发。</p>
         </header>
         <div class="lz-ad-card lz-ad-rules-cfg">
           <label>
             <span>抽奖开关</span>
             <select id="cfg-enabled">
+              <option value="1">开启</option>
+              <option value="0">关闭</option>
+            </select>
+          </label>
+          <label>
+            <span>抽奖播报</span>
+            <select id="cfg-broadcast">
               <option value="1">开启</option>
               <option value="0">关闭</option>
             </select>
@@ -210,7 +224,7 @@
             <button type="button" class="lz-ad-ghost" id="mock-pay">模拟一笔成功支付</button>
             <p class="lz-ad-hint" id="mock-pay-msg"></p>
           </div>
-          <p class="lz-ad-note">用户成功支付 1 笔充值 → +N 次；点击抽奖 → −1 次。关掉抽奖后不能抽，但充值仍会送次数。模拟支付只补次数，不改账户额度。</p>
+          <p class="lz-ad-note">用户成功支付 1 笔充值 → +N 次；点击抽奖 → −1 次。关掉抽奖后不能抽，但充值仍会送次数。关掉播报后群里不再推中奖消息，期间抽中的也不会补发。模拟支付只补次数，不改账户额度。</p>
         </div>
         <div class="lz-ad-rules-split">
           <div class="lz-ad-card lz-ad-lookup">
@@ -495,6 +509,6 @@
       </div>
     </div>
 
-    <script src="./lottery.js?v=w77"></script>
+    <script src="./lottery.js?v=w78"></script>
   </body>
 </html>
