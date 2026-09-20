@@ -727,6 +727,10 @@ func lotteryGiftNoticeReasons() []string {
 	return []string{LotteryReasonMonthlyGift, LotteryReasonAdminAdjust}
 }
 
+func lotteryGiftNoticeSinceUnix() int64 {
+	return time.Date(2026, 9, 20, 0, 0, 0, 0, lotteryShanghaiLoc).Unix()
+}
+
 func LatestUnseenLotteryGiftNotice(userId int) (*LotteryTicketLog, error) {
 	if userId <= 0 {
 		return nil, nil
@@ -736,7 +740,8 @@ func LatestUnseenLotteryGiftNotice(userId int) (*LotteryTicketLog, error) {
 		seen = wallet.GiftNoticeSeenId
 	}
 	var row LotteryTicketLog
-	q := DB.Where("user_id = ? AND delta > 0 AND reason IN ?", userId, lotteryGiftNoticeReasons())
+	q := DB.Where("user_id = ? AND delta > 0 AND reason IN ? AND created_at >= ?",
+		userId, lotteryGiftNoticeReasons(), lotteryGiftNoticeSinceUnix())
 	if seen > 0 {
 		q = q.Where("id > ?", seen)
 	}

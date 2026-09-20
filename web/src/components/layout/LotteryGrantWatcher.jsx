@@ -42,18 +42,9 @@ import {
   writeLotteryGrantSeen,
 } from '../../constants/lottery.constants';
 
-const GIFT_NOTICE_REASONS = new Set(['monthly_gift', 'admin_adjust']);
-
 const latestPaymentGrant = (logs) => {
   const rows = Array.isArray(logs) ? logs : [];
   return rows.find((row) => row?.reason === 'payment_grant' && Number(row.delta) > 0);
-};
-
-const latestGiftGrant = (logs) => {
-  const rows = Array.isArray(logs) ? logs : [];
-  return rows.find(
-    (row) => GIFT_NOTICE_REASONS.has(row?.reason) && Number(row.delta) > 0,
-  );
 };
 
 const LotteryGrantWatcher = () => {
@@ -77,10 +68,7 @@ const LotteryGrantWatcher = () => {
       if (!data) {
         return;
       }
-      const notice =
-        data.gift_notice ||
-        data.giftNotice ||
-        latestGiftGrant(data.ticket_log || data.ticketLog);
+      const notice = data.gift_notice || data.giftNotice;
       if (notice?.id && Number(notice.id) > readLotteryGiftNoticeSeen(userId)) {
         setGift({
           id: notice.id,

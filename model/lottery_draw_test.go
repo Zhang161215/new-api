@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -784,4 +785,21 @@ func TestLotteryGiftNoticeAck(t *testing.T) {
 	wallet, err = GetLotteryWallet(u.Id)
 	require.NoError(t, err)
 	require.Equal(t, 3, wallet.Tickets)
+}
+
+func TestLotteryGiftNoticeIgnoresOldAdminAdjust(t *testing.T) {
+	setupLotteryTables(t)
+	u := &User{Username: "gift-old-adjust", Password: "x", AffCode: "gift-old-adjust", Quota: 0, Status: common.UserStatusEnabled, Role: common.RoleCommonUser}
+	require.NoError(t, DB.Create(u).Error)
+	t.Cleanup(func() {
+		DB.Unscoped().Where("id = ?", u.Id).Delete(&User{})
+	})
+	oldAt := lotteryGiftNoticeSinceUnix() - 86400
+	require.NoError(t, DB.Exec(
+		`INSERT INTO lottery_ticket_logs (user_id, delta, reason, ref_type, ref_id, balance_after, created_at) VALUES (?, 1, ?, ?, ?, 1, ?)`,
+		u.Id, LotteryReasonAdminAdjust, LotteryRefAdmin, fmt.Sprintf("old-%d", u.Id), oldAt,
+	).Error)
+	notice, err := LatestUnseenLotteryGiftNotice(u.Id)
+	require.NoError(t, err)
+	require.Nil(t, notice)
 }
