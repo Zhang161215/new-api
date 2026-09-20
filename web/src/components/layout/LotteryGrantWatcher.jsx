@@ -18,8 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { Button, Modal } from '@douyinfe/semi-ui';
+import { createPortal } from 'react-dom';
+import { Button } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router-dom';
 import { UserContext } from '../../context/User';
 import { API } from '../../helpers';
 import {
@@ -27,9 +29,14 @@ import {
   LOTTERY_REEL_SRC,
   LOTTERY_TICKET_SRC,
   LOTTERY_WHEEL_FRAME_SRC,
+  isLotteryGiftPreview,
+  isLotteryGiftSeen,
   isLotteryGrantMuted,
+  lotteryGiftPeriod,
   openLotteryWindow,
   readLotteryGrantSeen,
+  shouldSkipLotteryGiftPath,
+  writeLotteryGiftSeen,
   writeLotteryGrantMuted,
   writeLotteryGrantSeen,
 } from '../../constants/lottery.constants';
@@ -41,9 +48,11 @@ const latestPaymentGrant = (logs) => {
 
 const LotteryGrantWatcher = () => {
   const { t } = useTranslation();
+  const location = useLocation();
   const [userState] = useContext(UserContext);
   const userId = userState?.user?.id;
   const [grant, setGrant] = useState(null);
+  const [gift, setGift] = useState(null);
   const [muteLater, setMuteLater] = useState(false);
   const busyRef = useRef(false);
 
@@ -119,7 +128,34 @@ const LotteryGrantWatcher = () => {
     };
   }, [userId, check]);
 
-  const close = () => {
+  useEffect(() => {
+    setGift(null);
+  }, [userId]);
+
+  const maybeShowGift = useCallback(() => {
+    const period = lotteryGiftPeriod();
+    const preview = isLotteryGiftPreview();
+    if (!userId || !period) {
+      return;
+    }
+    if (shouldSkipLotteryGiftPath(location.pathname)) {
+      return;
+    }
+    if (!preview && isLotteryGiftSeen(userId, period)) {
+      return;
+    }
+    setGift((cur) => cur || { delta: 1, period });
+  }, [userId, location.pathname]);
+
+  useEffect(() => {
+    if (!userId) {
+      return undefined;
+    }
+    maybeShowGift();
+    return undefined;
+  }, [userId, maybeShowGift]);
+
+  const closeGrant = () => {
     if (grant?.id) {
       writeLotteryGrantSeen(userId, grant.id);
     }
@@ -130,68 +166,96 @@ const LotteryGrantWatcher = () => {
     setMuteLater(false);
   };
 
+  const closeGift = () => {
+    writeLotteryGiftSeen(userId, gift?.period || lotteryGiftPeriod());
+    setGift(null);
+  };
+
+  const hideGift = shouldSkipLotteryGiftPath(location.pathname);
+  const view = grant
+    ? { kind: 'payment', delta: grant.delta, close: closeGrant }
+    : !hideGift && gift
+      ? { kind: 'gift', delta: gift.delta, close: closeGift }
+      : null;
+
   const goDraw = () => {
-    close();
+    if (!view) {
+      return;
+    }
+    view.close();
     openLotteryWindow();
   };
 
-  if (!grant) {
+  if (!view) {
     return null;
   }
 
-  const plus = `+${grant.delta}`;
+  const isGift = view.kind === 'gift';
+  const plus = `+${view.delta || 1}`;
 
-  return (
-    <Modal
-      visible
-      onCancel={close}
-      footer={
-        <label className='lz-grant-mute-row'>
-          <input
-            type='checkbox'
-            checked={muteLater}
-            onChange={(e) => setMuteLater(e.target.checked)}
-          />
-          <span>{t('不再显示抽奖次数 +1 提醒')}</span>
-        </label>
-      }
-      getPopupContainer={() =>
-        document.querySelector('.semi-layout-content') || document.body
-      }
-      zIndex={1100}
-      centered
-      width={420}
-      className='lz-grant-modal'
-      wrapperClassName='lz-grant-wrap'
-      maskClosable
-      bodyStyle={{ padding: 0, overflow: 'visible' }}
-    >
-      <div className='lz-grant-hero'>
-        <div className='lz-grant-stage'>
-          <img className='lz-grant-wheel' src={LOTTERY_REEL_SRC} alt='' />
-          <img className='lz-grant-ticket' src={LOTTERY_TICKET_SRC} alt='' />
-          <img className='lz-grant-frame' src={LOTTERY_WHEEL_FRAME_SRC} alt='' />
+  return createPortal(
+    <div className={`lz-grant-root${isGift ? ' is-gift' : ''}`}>
+      <button
+        type='button'
+        className='lz-grant-mask'
+        aria-label={t('关闭')}
+        onClick={view.close}
+      />
+      <div className='lz-grant-card' role='dialog' aria-modal='true'>
+        <button
+          type='button'
+          className='lz-grant-close'
+          aria-label={t('关闭')}
+          onClick={view.close}
+        >
+          ×
+        </button>
+        <div className='lz-grant-hero'>
+          <div className='lz-grant-stage'>
+            <img className='lz-grant-wheel' src={LOTTERY_REEL_SRC} alt='' />
+            <img className='lz-grant-ticket' src={LOTTERY_TICKET_SRC} alt='' />
+            <img className='lz-grant-frame' src={LOTTERY_WHEEL_FRAME_SRC} alt='' />
+          </div>
+          {isGift ? <div className='lz-grant-badge'>{t('本月礼包')}</div> : null}
+          {isGift ? (
+            <div className='lz-grant-kicker'>{t('礼包赠送')}</div>
+          ) : null}
+          <div className='lz-grant-title'>
+            {t('抽奖次数')} {plus}
+          </div>
+          <p className='lz-grant-sub'>
+            {isGift
+              ? t('本月礼包已到账，赠送一次抽奖次数，点进去试试手气。')
+              : t('充值已到账，点进去试试手气。')}
+          </p>
+          <div className='lz-grant-actions'>
+            <Button className='lz-grant-go' theme='solid' block onClick={goDraw}>
+              {t('去抽奖')}
+            </Button>
+            <Button
+              className='lz-grant-later'
+              theme='borderless'
+              type='tertiary'
+              block
+              onClick={view.close}
+            >
+              {t('稍后再说')}
+            </Button>
+          </div>
         </div>
-        <div className='lz-grant-title'>
-          {t('抽奖次数')} {plus}
-        </div>
-        <p className='lz-grant-sub'>{t('充值已到账，点进去试试手气。')}</p>
-        <div className='lz-grant-actions'>
-          <Button className='lz-grant-go' theme='solid' block onClick={goDraw}>
-            {t('去抽奖')}
-          </Button>
-          <Button
-            className='lz-grant-later'
-            theme='borderless'
-            type='tertiary'
-            block
-            onClick={close}
-          >
-            {t('稍后再说')}
-          </Button>
-        </div>
+        {isGift ? null : (
+          <label className='lz-grant-mute-row'>
+            <input
+              type='checkbox'
+              checked={muteLater}
+              onChange={(e) => setMuteLater(e.target.checked)}
+            />
+            <span>{t('不再显示抽奖次数 +1 提醒')}</span>
+          </label>
+        )}
       </div>
-    </Modal>
+    </div>,
+    document.body,
   );
 };
 

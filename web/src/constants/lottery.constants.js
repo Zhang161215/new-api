@@ -111,3 +111,63 @@ export function writeLotteryGrantSeen(userId, logId) {
     // ignore
   }
 }
+
+export const LOTTERY_GIFT_SEEN_PREFIX = 'synai996.lottery.gift.seen.v2.';
+
+export function lotteryGiftPeriod(now = Date.now()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(new Date(now));
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  if (!year || !month) {
+    return '';
+  }
+  return `${year}-${month}`;
+}
+
+export function lotteryGiftSeenKey(userId) {
+  return `${LOTTERY_GIFT_SEEN_PREFIX}${userId}`;
+}
+
+export function isLotteryGiftSeen(userId, period = lotteryGiftPeriod()) {
+  if (!userId || !period) {
+    return false;
+  }
+  try {
+    return localStorage.getItem(lotteryGiftSeenKey(userId)) === period;
+  } catch (e) {
+    return false;
+  }
+}
+
+export function writeLotteryGiftSeen(userId, period = lotteryGiftPeriod()) {
+  if (!userId || !period) {
+    return;
+  }
+  try {
+    localStorage.setItem(lotteryGiftSeenKey(userId), period);
+  } catch (e) {
+    // ignore
+  }
+}
+
+export function isLotteryGiftPreview() {
+  try {
+    return new URLSearchParams(window.location.search).get('lottery_gift') === '1';
+  } catch (e) {
+    return false;
+  }
+}
+
+export function shouldSkipLotteryGiftPath(pathname = '') {
+  return (
+    pathname === '/' ||
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/register') ||
+    pathname.startsWith('/reset') ||
+    pathname.startsWith('/oauth')
+  );
+}

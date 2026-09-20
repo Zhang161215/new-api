@@ -18,10 +18,12 @@ const (
 	LotteryReasonDrawConsume  = "draw_consume"
 	LotteryReasonPrizeReturn  = "prize_return"
 	LotteryReasonAdminAdjust  = "admin_adjust"
+	LotteryReasonMonthlyGift  = "monthly_gift"
 
 	LotteryRefTopUp = "topup"
 	LotteryRefDraw  = "draw"
 	LotteryRefAdmin = "admin"
+	LotteryRefGift  = "gift"
 )
 
 var (
@@ -327,6 +329,148 @@ func AdminGrantLotteryTickets(userId, n int, refId string) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
 		return addLotteryTickets(tx, userId, n, LotteryReasonAdminAdjust, LotteryRefAdmin, refId)
 	})
+}
+
+var lotteryShanghaiLoc = func() *time.Location {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		return time.FixedZone("CST", 8*3600)
+	}
+	return loc
+}()
+
+func LotteryGiftPeriod(now time.Time) string {
+	return now.In(lotteryShanghaiLoc).Format("2006-01")
+}
+
+func LotteryMonthRange(now time.Time) (start, end int64) {
+	t := now.In(lotteryShanghaiLoc)
+	begin := time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, lotteryShanghaiLoc)
+	return begin.Unix(), begin.AddDate(0, 1, 0).Unix()
+}
+
+func lotteryGiftRefId(userId int, period string) string {
+	return fmt.Sprintf("%d:%s", userId, period)
+}
+
+type LotteryMonthlyGift struct {
+	Eligible bool   `json:"eligible"`
+	Granted  bool   `json:"granted"`
+	Already  bool   `json:"already"`
+	Period   string `json:"period"`
+	Delta    int    `json:"delta"`
+	Tickets  int    `json:"tickets"`
+	LogId    int    `json:"log_id"`
+}
+
+// ClaimMonthlyLotteryGift 仅供运营脚本幂等补发。禁止接到用户可调的 HTTP，避免重复领取。
+func ClaimMonthlyLotteryGift(userId int) (*LotteryMonthlyGift, error) {
+	return ClaimMonthlyLotteryGiftAt(userId, time.Now())
+}
+
+func ClaimMonthlyLotteryGiftAt(userId int, now time.Time) (*LotteryMonthlyGift, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid user")
+	}
+	period := LotteryGiftPeriod(now)
+	start, end := LotteryMonthRange(now)
+	refId := lotteryGiftRefId(userId, period)
+	out := &LotteryMonthlyGift{Period: period, Delta: 1}
+
+	existing, err := findLotteryGiftLog(userId, refId)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		out.Eligible = true
+		out.Already = true
+		out.LogId = existing.Id
+		out.Delta = existing.Delta
+		if wallet, werr := GetLotteryWallet(userId); werr == nil && wallet != nil {
+			out.Tickets = wallet.Tickets
+		}
+		return out, nil
+	}
+
+	eligible, err := userEligibleForMonthlyLotteryGift(userId, start, end)
+	if err != nil {
+		return nil, err
+	}
+	if !eligible {
+		return out, nil
+	}
+
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		return addLotteryTickets(tx, userId, 1, LotteryReasonMonthlyGift, LotteryRefGift, refId)
+	}); err != nil {
+		return nil, err
+	}
+
+	granted, err := findLotteryGiftLog(userId, refId)
+	if err != nil {
+		return nil, err
+	}
+	out.Eligible = true
+	if granted != nil {
+		out.Granted = true
+		out.Already = false
+		out.LogId = granted.Id
+		out.Delta = granted.Delta
+	}
+	if wallet, werr := GetLotteryWallet(userId); werr == nil && wallet != nil {
+		out.Tickets = wallet.Tickets
+	}
+	return out, nil
+}
+
+func findLotteryGiftLog(userId int, refId string) (*LotteryTicketLog, error) {
+	var row LotteryTicketLog
+	err := DB.Where("user_id = ? AND reason = ? AND ref_type = ? AND ref_id = ?",
+		userId, LotteryReasonMonthlyGift, LotteryRefGift, refId).
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func userEligibleForMonthlyLotteryGift(userId int, start, end int64) (bool, error) {
+	paid, err := userHasSuccessfulTopUpBetween(userId, start, end)
+	if err != nil || paid {
+		return paid, err
+	}
+	return userHasConsumeBetween(userId, start, end)
+}
+
+func userHasSuccessfulTopUpBetween(userId int, start, end int64) (bool, error) {
+	var row TopUp
+	err := DB.Select("id").
+		Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).
+		Where("(CASE WHEN complete_time > 0 THEN complete_time ELSE create_time END) >= ? AND (CASE WHEN complete_time > 0 THEN complete_time ELSE create_time END) < ?", start, end).
+		Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func userHasConsumeBetween(userId int, start, end int64) (bool, error) {
+	logDB := LOG_DB
+	if logDB == nil {
+		logDB = DB
+	}
+	var row Log
+	err := logDB.Select("id").
+		Where("user_id = ? AND type = ? AND quota > 0 AND created_at >= ? AND created_at < ?",
+			userId, LogTypeConsume, start, end).
+		Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 func addLotteryTickets(tx *gorm.DB, userId, n int, reason, refType, refId string) error {

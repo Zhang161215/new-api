@@ -2526,6 +2526,7 @@ function reasonLabel(reason) {
   return (
     {
       payment_grant: '支付入账',
+      monthly_gift: '本月礼包',
       draw_consume: '抽奖消耗',
       prize_return: '奖项返还',
       admin_adjust: '手动补发',

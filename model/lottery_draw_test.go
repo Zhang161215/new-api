@@ -492,3 +492,58 @@ func TestGetLotteryOverviewPeriods(t *testing.T) {
 	require.Equal(t, 4.0, ov.All.WonQuota)
 	require.Len(t, ov.TodayPrizes, 2)
 }
+
+func TestClaimMonthlyLotteryGift(t *testing.T) {
+	setupLotteryTables(t)
+	require.NoError(t, DB.AutoMigrate(&TopUp{}, &Log{}))
+	require.NoError(t, EnsureLotteryDefaults())
+	now := time.Now()
+	start, _ := LotteryMonthRange(now)
+	mid := start + 86400
+
+	makeUser := func(name string) *User {
+		u := &User{Username: name, Password: "x", AffCode: name, Quota: 0, Status: common.UserStatusEnabled, Role: common.RoleCommonUser}
+		require.NoError(t, DB.Create(u).Error)
+		t.Cleanup(func() { DB.Unscoped().Where("id = ?", u.Id).Delete(&User{}) })
+		return u
+	}
+
+	idle := makeUser("gift-idle")
+	idleResult, err := ClaimMonthlyLotteryGiftAt(idle.Id, now)
+	require.NoError(t, err)
+	require.False(t, idleResult.Eligible)
+	require.False(t, idleResult.Granted)
+	idleWallet, err := GetLotteryWallet(idle.Id)
+	require.NoError(t, err)
+	require.Equal(t, 0, idleWallet.Tickets)
+
+	paid := makeUser("gift-paid")
+	require.NoError(t, DB.Create(&TopUp{
+		UserId: paid.Id, Amount: 1, Money: 10, TradeNo: "GIFT-PAY-1",
+		Status: common.TopUpStatusSuccess, CreateTime: mid, CompleteTime: mid,
+	}).Error)
+	paidResult, err := ClaimMonthlyLotteryGiftAt(paid.Id, now)
+	require.NoError(t, err)
+	require.True(t, paidResult.Eligible)
+	require.True(t, paidResult.Granted)
+	require.Equal(t, 1, paidResult.Tickets)
+	again, err := ClaimMonthlyLotteryGiftAt(paid.Id, now)
+	require.NoError(t, err)
+	require.True(t, again.Already)
+	require.False(t, again.Granted)
+	require.Equal(t, 1, again.Tickets)
+
+	spentA := makeUser("gift-spent-a")
+	spentB := makeUser("gift-spent-b")
+	require.NoError(t, DB.Create(&Log{UserId: spentA.Id, Type: LogTypeConsume, Quota: 100, CreatedAt: mid}).Error)
+	require.NoError(t, DB.Create(&Log{UserId: spentB.Id, Type: LogTypeConsume, Quota: 100, CreatedAt: mid}).Error)
+	a, err := ClaimMonthlyLotteryGiftAt(spentA.Id, now)
+	require.NoError(t, err)
+	b, err := ClaimMonthlyLotteryGiftAt(spentB.Id, now)
+	require.NoError(t, err)
+	require.True(t, a.Granted)
+	require.True(t, b.Granted)
+	require.Equal(t, 1, a.Tickets)
+	require.Equal(t, 1, b.Tickets)
+	require.Equal(t, LotteryGiftPeriod(now), a.Period)
+}
