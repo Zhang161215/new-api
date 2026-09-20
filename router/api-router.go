@@ -61,6 +61,7 @@ func SetApiRouter(router *gin.Engine) {
 			lotteryRoute.POST("/draw", middleware.LotteryAuth(common.RoleCommonUser), controller.DrawLottery)
 			lotteryRoute.GET("/history", middleware.LotteryAuth(common.RoleCommonUser), controller.GetLotteryHistory)
 			lotteryRoute.GET("/tickets", middleware.LotteryAuth(common.RoleCommonUser), controller.GetLotteryTicketLog)
+			lotteryRoute.POST("/notice/ack", middleware.LotteryAuth(common.RoleCommonUser), controller.AckLotteryGiftNotice)
 
 			lotteryAdmin := lotteryRoute.Group("/admin")
 			lotteryAdmin.Use(middleware.LotteryAuth(common.RoleAdminUser), middleware.LotteryAdminGuard())
@@ -78,6 +79,8 @@ func SetApiRouter(router *gin.Engine) {
 				lotteryAdmin.GET("/draws", controller.GetLotteryAdminDraws)
 				lotteryAdmin.GET("/tickets", controller.GetLotteryAdminTicketLogs)
 				lotteryAdmin.POST("/grant-tickets", controller.AdminGrantLotteryTickets)
+				lotteryAdmin.GET("/gifts", controller.GetLotteryAdminGifts)
+				lotteryAdmin.POST("/gifts/grant", controller.GrantLotteryAdminGifts)
 			}
 		}
 

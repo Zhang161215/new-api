@@ -2,6 +2,7 @@ package model
 
 import (
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -546,4 +547,241 @@ func TestClaimMonthlyLotteryGift(t *testing.T) {
 	require.Equal(t, 1, a.Tickets)
 	require.Equal(t, 1, b.Tickets)
 	require.Equal(t, LotteryGiftPeriod(now), a.Period)
+}
+
+func TestListAndGrantLotteryGifts(t *testing.T) {
+	setupLotteryTables(t)
+	require.NoError(t, DB.AutoMigrate(&TopUp{}, &Log{}))
+	require.NoError(t, EnsureLotteryDefaults())
+	now := time.Now()
+	start, _ := LotteryMonthRange(now)
+	mid := start + 86400
+	period := LotteryGiftPeriod(now)
+
+	makeUser := func(name string, status int) *User {
+		u := &User{Username: name, Password: "x", AffCode: name, Quota: 0, Status: status, Role: common.RoleCommonUser}
+		require.NoError(t, DB.Create(u).Error)
+		t.Cleanup(func() {
+			DB.Unscoped().Where("id = ?", u.Id).Delete(&User{})
+			DB.Where("user_id = ?", u.Id).Delete(&TopUp{})
+			DB.Where("user_id = ?", u.Id).Delete(&Log{})
+		})
+		return u
+	}
+
+	idle := makeUser("gift-admin-idle", common.UserStatusEnabled)
+	paid := makeUser("gift-admin-paid", common.UserStatusEnabled)
+	spent := makeUser("gift-admin-spent", common.UserStatusEnabled)
+	both := makeUser("gift-admin-both", common.UserStatusEnabled)
+	disabled := makeUser("gift-admin-off", common.UserStatusDisabled)
+
+	require.NoError(t, DB.Create(&TopUp{
+		UserId: paid.Id, Amount: 1, Money: 10, TradeNo: "GIFT-ADM-PAY",
+		Status: common.TopUpStatusSuccess, CreateTime: mid, CompleteTime: mid,
+	}).Error)
+	require.NoError(t, DB.Create(&TopUp{
+		UserId: both.Id, Amount: 1, Money: 20, TradeNo: "GIFT-ADM-BOTH",
+		Status: common.TopUpStatusSuccess, CreateTime: mid, CompleteTime: mid,
+	}).Error)
+	require.NoError(t, DB.Create(&TopUp{
+		UserId: disabled.Id, Amount: 1, Money: 5, TradeNo: "GIFT-ADM-OFF",
+		Status: common.TopUpStatusSuccess, CreateTime: mid, CompleteTime: mid,
+	}).Error)
+	require.NoError(t, DB.Create(&Log{UserId: spent.Id, Type: LogTypeConsume, Quota: 100, CreatedAt: mid}).Error)
+	require.NoError(t, DB.Create(&Log{UserId: both.Id, Type: LogTypeConsume, Quota: 50, CreatedAt: mid}).Error)
+
+	preview, err := ListLotteryGiftCandidates(LotteryGiftFilter{
+		Period: period, Audience: LotteryGiftAudienceUnion, Status: LotteryGiftStatusPending, Now: now, Page: 1, Size: 20,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 3, preview.Paid)
+	require.Equal(t, 2, preview.Spent)
+	require.Equal(t, 4, preview.Union)
+	require.Equal(t, 3, preview.Eligible)
+	require.Equal(t, 3, preview.Pending)
+	require.Equal(t, 0, preview.Granted)
+	require.Equal(t, int64(3), preview.Total)
+	ids := map[int]struct{}{}
+	for _, row := range preview.Items {
+		ids[row.UserId] = struct{}{}
+	}
+	_, hasIdle := ids[idle.Id]
+	_, hasDisabled := ids[disabled.Id]
+	require.False(t, hasIdle)
+	require.False(t, hasDisabled)
+	require.Contains(t, ids, paid.Id)
+	require.Contains(t, ids, spent.Id)
+	require.Contains(t, ids, both.Id)
+
+	spentOnly, err := ListLotteryGiftCandidates(LotteryGiftFilter{
+		Period: period, Audience: LotteryGiftAudienceSpentOnly, Status: LotteryGiftStatusAll, Now: now,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, spentOnly.Eligible)
+	require.Equal(t, spent.Id, spentOnly.Items[0].UserId)
+	require.True(t, spentOnly.Items[0].Spent)
+	require.False(t, spentOnly.Items[0].Paid)
+
+	byName, err := ListLotteryGiftCandidates(LotteryGiftFilter{
+		Period: period, Audience: LotteryGiftAudienceUnion, Status: LotteryGiftStatusAll, Keyword: "admin-paid", Now: now,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), byName.Total)
+	require.Equal(t, paid.Id, byName.Items[0].UserId)
+
+	selected, err := AdminGrantLotteryGifts(LotteryGiftGrantRequest{
+		Period: period, Audience: LotteryGiftAudienceUnion, Tickets: 2, UserIds: []int{paid.Id}, Now: now,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, selected.Granted)
+	require.Equal(t, 0, selected.Skipped)
+	paidWallet, err := GetLotteryWallet(paid.Id)
+	require.NoError(t, err)
+	require.Equal(t, 2, paidWallet.Tickets)
+
+	againPaid, err := AdminGrantLotteryGifts(LotteryGiftGrantRequest{
+		Period: period, Audience: LotteryGiftAudienceUnion, Tickets: 2, UserIds: []int{paid.Id}, Now: now,
+	})
+	require.Error(t, err)
+	require.Nil(t, againPaid)
+
+	all, err := AdminGrantLotteryGifts(LotteryGiftGrantRequest{
+		Period: period, Audience: LotteryGiftAudienceUnion, Tickets: 1, GrantAll: true, Now: now,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, all.Granted)
+	require.Equal(t, 0, all.Pending)
+
+	spentWallet, err := GetLotteryWallet(spent.Id)
+	require.NoError(t, err)
+	require.Equal(t, 1, spentWallet.Tickets)
+	bothWallet, err := GetLotteryWallet(both.Id)
+	require.NoError(t, err)
+	require.Equal(t, 1, bothWallet.Tickets)
+	paidWallet, err = GetLotteryWallet(paid.Id)
+	require.NoError(t, err)
+	require.Equal(t, 2, paidWallet.Tickets)
+
+	grantedView, err := ListLotteryGiftCandidates(LotteryGiftFilter{
+		Period: period, Audience: LotteryGiftAudienceUnion, Status: LotteryGiftStatusGranted, Now: now,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 3, grantedView.Granted)
+	require.Equal(t, 0, grantedView.Pending)
+	require.Equal(t, int64(3), grantedView.Total)
+
+	_, err = AdminGrantLotteryGifts(LotteryGiftGrantRequest{
+		Period: period, Audience: LotteryGiftAudienceUnion, Tickets: 1, GrantAll: true, Now: now,
+	})
+	require.EqualError(t, err, "没有可发放的用户")
+}
+
+func TestLotteryGiftCustomAndWeekRange(t *testing.T) {
+	setupLotteryTables(t)
+	require.NoError(t, DB.AutoMigrate(&TopUp{}, &Log{}))
+	require.NoError(t, EnsureLotteryDefaults())
+	now := time.Date(2026, 9, 20, 12, 0, 0, 0, lotteryShanghaiLoc)
+	inside := now.Add(-24 * time.Hour).Unix()
+	outside := now.Add(-40 * 24 * time.Hour).Unix()
+
+	makeUser := func(name string) *User {
+		u := &User{Username: name, Password: "x", AffCode: name, Quota: 0, Status: common.UserStatusEnabled, Role: common.RoleCommonUser}
+		require.NoError(t, DB.Create(u).Error)
+		t.Cleanup(func() {
+			DB.Unscoped().Where("id = ?", u.Id).Delete(&User{})
+			DB.Where("user_id = ?", u.Id).Delete(&TopUp{})
+			DB.Where("user_id = ?", u.Id).Delete(&Log{})
+		})
+		return u
+	}
+	recent := makeUser("gift-range-recent")
+	old := makeUser("gift-range-old")
+	require.NoError(t, DB.Create(&TopUp{
+		UserId: recent.Id, Amount: 1, Money: 10, TradeNo: "GIFT-RANGE-NEW",
+		Status: common.TopUpStatusSuccess, CreateTime: inside, CompleteTime: inside,
+	}).Error)
+	require.NoError(t, DB.Create(&TopUp{
+		UserId: old.Id, Amount: 1, Money: 10, TradeNo: "GIFT-RANGE-OLD",
+		Status: common.TopUpStatusSuccess, CreateTime: outside, CompleteTime: outside,
+	}).Error)
+
+	custom, err := ListLotteryGiftCandidates(LotteryGiftFilter{
+		Range: LotteryGiftRangeCustom, From: "2026-09-18", To: "2026-09-20",
+		Audience: LotteryGiftAudiencePaid, Status: LotteryGiftStatusAll, Now: now,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "c:2026-09-18:2026-09-20", custom.Campaign)
+	require.Equal(t, 1, custom.Eligible)
+	require.Equal(t, recent.Id, custom.Items[0].UserId)
+
+	week, err := ListLotteryGiftCandidates(LotteryGiftFilter{
+		Range: LotteryGiftRangeWeek, Audience: LotteryGiftAudiencePaid, Status: LotteryGiftStatusAll, Now: now,
+	})
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(week.Campaign, "w:"))
+	require.Equal(t, 1, week.Eligible)
+	require.Equal(t, recent.Id, week.Items[0].UserId)
+}
+
+func TestLotteryGiftNoticeAck(t *testing.T) {
+	setupLotteryTables(t)
+	require.NoError(t, DB.AutoMigrate(&TopUp{}, &Log{}))
+	require.NoError(t, EnsureLotteryDefaults())
+	now := time.Now()
+	start, _ := LotteryMonthRange(now)
+	mid := start + 86400
+	u := &User{Username: "gift-notice-user", Password: "x", AffCode: "gift-notice-user", Quota: 0, Status: common.UserStatusEnabled, Role: common.RoleCommonUser}
+	require.NoError(t, DB.Create(u).Error)
+	t.Cleanup(func() {
+		DB.Unscoped().Where("id = ?", u.Id).Delete(&User{})
+		DB.Where("user_id = ?", u.Id).Delete(&TopUp{})
+	})
+	require.NoError(t, DB.Create(&TopUp{
+		UserId: u.Id, Amount: 1, Money: 10, TradeNo: "GIFT-NOTICE-PAY",
+		Status: common.TopUpStatusSuccess, CreateTime: mid, CompleteTime: mid,
+	}).Error)
+
+	none, err := LatestUnseenLotteryGiftNotice(u.Id)
+	require.NoError(t, err)
+	require.Nil(t, none)
+
+	_, err = AdminGrantLotteryGifts(LotteryGiftGrantRequest{
+		Period: LotteryGiftPeriod(now), Audience: LotteryGiftAudiencePaid, Tickets: 1, GrantAll: true, Now: now,
+	})
+	require.NoError(t, err)
+
+	notice, err := LatestUnseenLotteryGiftNotice(u.Id)
+	require.NoError(t, err)
+	require.NotNil(t, notice)
+	require.Equal(t, u.Id, notice.UserId)
+	require.Equal(t, 1, notice.Delta)
+	require.Equal(t, LotteryReasonMonthlyGift, notice.Reason)
+
+	wallet, err := GetLotteryWallet(u.Id)
+	require.NoError(t, err)
+	require.Equal(t, 1, wallet.Tickets)
+
+	require.NoError(t, AckLotteryGiftNotice(u.Id, notice.Id))
+	again, err := LatestUnseenLotteryGiftNotice(u.Id)
+	require.NoError(t, err)
+	require.Nil(t, again)
+
+	wallet, err = GetLotteryWallet(u.Id)
+	require.NoError(t, err)
+	require.Equal(t, 1, wallet.Tickets)
+	require.Equal(t, notice.Id, wallet.GiftNoticeSeenId)
+
+	require.NoError(t, AdminGrantLotteryTickets(u.Id, 2, "notice-adjust"))
+	manual, err := LatestUnseenLotteryGiftNotice(u.Id)
+	require.NoError(t, err)
+	require.NotNil(t, manual)
+	require.Equal(t, LotteryReasonAdminAdjust, manual.Reason)
+	require.Equal(t, 2, manual.Delta)
+	require.NoError(t, AckLotteryGiftNotice(u.Id, manual.Id))
+	cleared, err := LatestUnseenLotteryGiftNotice(u.Id)
+	require.NoError(t, err)
+	require.Nil(t, cleared)
+	wallet, err = GetLotteryWallet(u.Id)
+	require.NoError(t, err)
+	require.Equal(t, 3, wallet.Tickets)
 }

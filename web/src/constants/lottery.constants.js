@@ -113,6 +113,34 @@ export function writeLotteryGrantSeen(userId, logId) {
 }
 
 export const LOTTERY_GIFT_SEEN_PREFIX = 'synai996.lottery.gift.seen.v2.';
+export const LOTTERY_GIFT_NOTICE_SEEN_PREFIX = 'synai996.lottery.gift.notice.seen.';
+
+export function lotteryGiftNoticeSeenKey(userId) {
+  return `${LOTTERY_GIFT_NOTICE_SEEN_PREFIX}${userId}`;
+}
+
+export function readLotteryGiftNoticeSeen(userId) {
+  try {
+    return Number(localStorage.getItem(lotteryGiftNoticeSeenKey(userId)) || 0);
+  } catch (e) {
+    return 0;
+  }
+}
+
+export function writeLotteryGiftNoticeSeen(userId, logId) {
+  if (!userId || !logId) {
+    return;
+  }
+  try {
+    const prev = readLotteryGiftNoticeSeen(userId);
+    localStorage.setItem(
+      lotteryGiftNoticeSeenKey(userId),
+      String(Math.max(prev, Number(logId) || 0)),
+    );
+  } catch (e) {
+    // ignore
+  }
+}
 
 export function lotteryGiftPeriod(now = Date.now()) {
   const parts = new Intl.DateTimeFormat('en-CA', {

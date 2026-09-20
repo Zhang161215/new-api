@@ -30,20 +30,30 @@ import {
   LOTTERY_TICKET_SRC,
   LOTTERY_WHEEL_FRAME_SRC,
   isLotteryGiftPreview,
-  isLotteryGiftSeen,
   isLotteryGrantMuted,
   lotteryGiftPeriod,
   openLotteryWindow,
+  readLotteryGiftNoticeSeen,
   readLotteryGrantSeen,
   shouldSkipLotteryGiftPath,
+  writeLotteryGiftNoticeSeen,
   writeLotteryGiftSeen,
   writeLotteryGrantMuted,
   writeLotteryGrantSeen,
 } from '../../constants/lottery.constants';
 
+const GIFT_NOTICE_REASONS = new Set(['monthly_gift', 'admin_adjust']);
+
 const latestPaymentGrant = (logs) => {
   const rows = Array.isArray(logs) ? logs : [];
   return rows.find((row) => row?.reason === 'payment_grant' && Number(row.delta) > 0);
+};
+
+const latestGiftGrant = (logs) => {
+  const rows = Array.isArray(logs) ? logs : [];
+  return rows.find(
+    (row) => GIFT_NOTICE_REASONS.has(row?.reason) && Number(row.delta) > 0,
+  );
 };
 
 const LotteryGrantWatcher = () => {
@@ -60,14 +70,27 @@ const LotteryGrantWatcher = () => {
     if (!userId || busyRef.current) {
       return;
     }
-    if (isLotteryGrantMuted(userId)) {
-      return;
-    }
     busyRef.current = true;
     try {
       const res = await API.get('/api/lottery', { skipErrorHandler: true });
       const data = res?.data?.success ? res.data.data : null;
       if (!data) {
+        return;
+      }
+      const notice =
+        data.gift_notice ||
+        data.giftNotice ||
+        latestGiftGrant(data.ticket_log || data.ticketLog);
+      if (notice?.id && Number(notice.id) > readLotteryGiftNoticeSeen(userId)) {
+        setGift({
+          id: notice.id,
+          delta: Number(notice.delta) || 1,
+          reason: notice.reason || '',
+        });
+      } else if (!isLotteryGiftPreview()) {
+        setGift(null);
+      }
+      if (isLotteryGrantMuted(userId)) {
         return;
       }
       const latest = latestPaymentGrant(data.ticket_log || data.ticketLog);
@@ -132,28 +155,23 @@ const LotteryGrantWatcher = () => {
     setGift(null);
   }, [userId]);
 
-  const maybeShowGift = useCallback(() => {
-    const period = lotteryGiftPeriod();
-    const preview = isLotteryGiftPreview();
-    if (!userId || !period) {
+  const maybeShowGiftPreview = useCallback(() => {
+    if (!userId || !isLotteryGiftPreview()) {
       return;
     }
     if (shouldSkipLotteryGiftPath(location.pathname)) {
       return;
     }
-    if (!preview && isLotteryGiftSeen(userId, period)) {
-      return;
-    }
-    setGift((cur) => cur || { delta: 1, period });
+    setGift((cur) => cur || { delta: 1, preview: true });
   }, [userId, location.pathname]);
 
   useEffect(() => {
     if (!userId) {
       return undefined;
     }
-    maybeShowGift();
+    maybeShowGiftPreview();
     return undefined;
-  }, [userId, maybeShowGift]);
+  }, [userId, maybeShowGiftPreview]);
 
   const closeGrant = () => {
     if (grant?.id) {
@@ -167,8 +185,19 @@ const LotteryGrantWatcher = () => {
   };
 
   const closeGift = () => {
-    writeLotteryGiftSeen(userId, gift?.period || lotteryGiftPeriod());
+    const id = gift?.id;
+    const preview = Boolean(gift?.preview);
     setGift(null);
+    if (id) {
+      writeLotteryGiftNoticeSeen(userId, id);
+      API.post('/api/lottery/notice/ack', { id }, { skipErrorHandler: true }).catch(
+        () => {},
+      );
+      return;
+    }
+    if (preview) {
+      writeLotteryGiftSeen(userId, lotteryGiftPeriod());
+    }
   };
 
   const hideGift = shouldSkipLotteryGiftPath(location.pathname);
@@ -216,16 +245,13 @@ const LotteryGrantWatcher = () => {
             <img className='lz-grant-ticket' src={LOTTERY_TICKET_SRC} alt='' />
             <img className='lz-grant-frame' src={LOTTERY_WHEEL_FRAME_SRC} alt='' />
           </div>
-          {isGift ? <div className='lz-grant-badge'>{t('本月礼包')}</div> : null}
-          {isGift ? (
-            <div className='lz-grant-kicker'>{t('礼包赠送')}</div>
-          ) : null}
+          {isGift ? <div className='lz-grant-badge'>{t('礼包到账')}</div> : null}
           <div className='lz-grant-title'>
             {t('抽奖次数')} {plus}
           </div>
           <p className='lz-grant-sub'>
             {isGift
-              ? t('本月礼包已到账，赠送一次抽奖次数，点进去试试手气。')
+              ? t('次数已到账，点进去试试手气。')
               : t('充值已到账，点进去试试手气。')}
           </p>
           <div className='lz-grant-actions'>

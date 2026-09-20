@@ -1111,3 +1111,57 @@ body.lz-admin .lz-dialog h2 {
   margin: 0 0 8px;
   font-size: 18px;
 }
+
+.lz-ad-gift-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px 12px;
+  margin: 16px 0 8px;
+}
+
+.lz-ad-gift-actions label {
+  display: grid;
+  gap: 4px;
+  color: var(--ad-muted);
+  font-size: 12px;
+}
+
+.lz-ad-gift-actions input {
+  width: 88px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--ad-line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ad-text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.lz-ad-gift-actions .lz-ad-meta {
+  margin: 0 4px 8px 0;
+}
+
+#gift-msg:empty,
+#gift-table-meta:empty {
+  display: none;
+}
+
+#gift-table .lz-ad-check {
+  width: 36px;
+  text-align: center;
+}
+
+#gift-table tbody tr.is-on {
+  background: #e0e9ff;
+}
+
+.lz-ad-yes {
+  color: var(--ad-ok);
+  font-weight: 650;
+}
+
+.lz-ad-no {
+  color: var(--ad-muted);
+}

@@ -78,11 +78,12 @@ func (p LotteryPrize) IsMiss() bool {
 }
 
 type LotteryWallet struct {
-	UserId        int     `json:"user_id" gorm:"primaryKey"`
-	Tickets       int     `json:"tickets" gorm:"default:0"`
-	TotalDraws    int     `json:"total_draws" gorm:"default:0"`
-	TotalWonQuota float64 `json:"total_won_quota" gorm:"default:0"`
-	UpdatedAt     int64   `json:"updated_at" gorm:"bigint"`
+	UserId           int     `json:"user_id" gorm:"primaryKey"`
+	Tickets          int     `json:"tickets" gorm:"default:0"`
+	TotalDraws       int     `json:"total_draws" gorm:"default:0"`
+	TotalWonQuota    float64 `json:"total_won_quota" gorm:"default:0"`
+	GiftNoticeSeenId int     `json:"gift_notice_seen_id" gorm:"default:0"`
+	UpdatedAt        int64   `json:"updated_at" gorm:"bigint"`
 }
 
 func (LotteryWallet) TableName() string { return "lottery_wallets" }
@@ -400,9 +401,7 @@ func ClaimMonthlyLotteryGiftAt(userId int, now time.Time) (*LotteryMonthlyGift, 
 		return out, nil
 	}
 
-	if err := DB.Transaction(func(tx *gorm.DB) error {
-		return addLotteryTickets(tx, userId, 1, LotteryReasonMonthlyGift, LotteryRefGift, refId)
-	}); err != nil {
+	if err := grantLotteryGiftTickets(userId, 1, period); err != nil {
 		return nil, err
 	}
 

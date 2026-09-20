@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light" />
     <meta name="theme-color" content="#f4f6fa" />
     <title>抽奖管理</title>
-    <link rel="stylesheet" href="./admin.css?v=a19" />
+    <link rel="stylesheet" href="./admin.css?v=a21" />
   </head>
   <body class="lz-admin" data-page="admin">
     <aside class="lz-ad-side">
@@ -22,6 +22,7 @@
         <button type="button" data-view="prizes">奖项配置</button>
         <button type="button" data-view="codes">兑换码</button>
         <button type="button" data-view="rules">次数规则</button>
+        <button type="button" data-view="gifts">礼包发放</button>
         <button type="button" data-view="users">用户记录</button>
         <button type="button" data-view="tickets">次数流水</button>
       </nav>
@@ -258,6 +259,91 @@
         </div>
       </section>
 
+      <section class="lz-ad-view" id="view-gifts" hidden>
+        <header class="lz-ad-hero">
+          <h1>礼包发放</h1>
+          <p>按时间范围内的充值 / 消费筛选人员，确认后再发抽奖次数。同一时间批次同一用户只入账一次。发放后用户打开控制台会弹礼包提醒，关掉后记在账号上，换设备也不会再弹。打开本页不会自动发放。</p>
+        </header>
+        <ul class="lz-ad-kpis" id="gift-kpis">
+          <li><span>期间充值</span><strong id="gift-kpi-paid">—</strong></li>
+          <li><span>期间消费</span><strong id="gift-kpi-spent">—</strong></li>
+          <li><span>充值或消费</span><strong id="gift-kpi-union">—</strong></li>
+          <li><span>未发放</span><strong id="gift-kpi-pending">—</strong></li>
+        </ul>
+        <div class="lz-ad-card">
+          <div class="lz-ad-filters" id="gift-filters">
+            <label>时间范围
+              <select id="gift-range">
+                <option value="month">本月</option>
+                <option value="week">本周</option>
+                <option value="today">今日</option>
+                <option value="custom">自定义</option>
+              </select>
+            </label>
+            <label id="gift-period-wrap">月份
+              <input id="gift-period" type="month" />
+            </label>
+            <label id="gift-from-wrap" hidden>开始日期
+              <input id="gift-from" type="date" />
+            </label>
+            <label id="gift-to-wrap" hidden>结束日期
+              <input id="gift-to" type="date" />
+            </label>
+            <label>人员范围
+              <select id="gift-audience">
+                <option value="union">期间充值或消费</option>
+                <option value="paid">期间有充值</option>
+                <option value="spent">期间有消费</option>
+                <option value="paid_only">仅充值</option>
+                <option value="spent_only">仅消费</option>
+              </select>
+            </label>
+            <label>发放状态
+              <select id="gift-status">
+                <option value="pending">未发放</option>
+                <option value="granted">已发放</option>
+                <option value="all">全部</option>
+              </select>
+            </label>
+            <label class="lz-ad-filter-q">用户
+              <input id="gift-q" type="search" placeholder="用户名或用户 ID" />
+            </label>
+            <button type="button" class="lz-ad-btn" id="gift-filter-btn">筛选</button>
+            <button type="button" class="lz-ad-ghost" id="gift-filter-reset">重置</button>
+          </div>
+          <div class="lz-ad-gift-actions">
+            <label>
+              <span>每人发放次数</span>
+              <input id="gift-tickets" type="number" min="1" max="10" step="1" value="1" />
+            </label>
+            <p class="lz-ad-meta" id="gift-selected-meta">未勾选用户</p>
+            <button type="button" class="lz-ad-btn" id="gift-grant-selected">发放已勾选</button>
+            <button type="button" class="lz-ad-ghost" id="gift-grant-all">发放全部未发</button>
+          </div>
+          <p class="lz-ad-hint" id="gift-msg"></p>
+          <p class="lz-ad-meta" id="gift-table-meta"></p>
+          <div class="lz-ad-table-wrap">
+            <table class="lz-ad-table" id="gift-table">
+              <thead>
+                <tr>
+                  <th class="lz-ad-check"><input id="gift-check-all" type="checkbox" aria-label="本页全选" /></th>
+                  <th>用户 ID</th>
+                  <th>用户名</th>
+                  <th>充值</th>
+                  <th>消费</th>
+                  <th>礼包</th>
+                  <th>剩余次数</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="7">点筛选查看人员</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="lz-ad-pager" id="gift-pager"></div>
+        </div>
+      </section>
+
       <section class="lz-ad-view" id="view-users" hidden>
         <header class="lz-ad-hero">
           <h1>用户记录</h1>
@@ -409,6 +495,6 @@
       </div>
     </div>
 
-    <script src="./lottery.js?v=w74"></script>
+    <script src="./lottery.js?v=w77"></script>
   </body>
 </html>

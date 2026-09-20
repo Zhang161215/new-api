@@ -157,6 +157,9 @@ let adminCodePage = 1;
 let adminTicketPage = 1;
 let adminSelectedUserId = '';
 let adminUserTab = 'summary';
+let adminGiftPage = 1;
+let adminGiftSelected = new Set();
+let adminGiftPreview = null;
 let dashPeriod = 'today';
 let dashDrawPage = 1;
 let pendingCodeFiles = [];
@@ -750,8 +753,14 @@ async function lotteryRequest(url, options = {}) {
     err.status = 401;
     throw err;
   }
-  if (!body || body.success === false) {
-    throw new Error(body?.message || `REQUEST_FAILED_${status}`);
+  if (!body || body.success !== true) {
+    const err = new Error(
+      body?.message ||
+        body?.error?.message ||
+        (status === 404 ? '接口不存在' : `REQUEST_FAILED_${status || 0}`),
+    );
+    err.status = status || 0;
+    throw err;
   }
   return body.data;
 }
@@ -1083,6 +1092,105 @@ const LotteryClient = {
       total: data.total || 0,
       page: data.page || page,
     };
+  },
+  async listAdminGifts({
+    page = 1,
+    range = 'month',
+    period = '',
+    from = '',
+    to = '',
+    audience = 'union',
+    status = 'pending',
+    q = '',
+  } = {}) {
+    if (this.mode !== 'api') {
+      const local = loadState();
+      const row = {
+        user_id: 1,
+        username: local.username || YOU,
+        paid: true,
+        spent: true,
+        granted: false,
+        tickets: local.tickets || 0,
+      };
+      const kw = String(q || '').trim();
+      const hit = !kw || String(row.user_id) === kw || String(row.username).includes(kw);
+      const items = hit && status !== 'granted' ? [row] : [];
+      return {
+        range,
+        period: period || lotteryGiftPeriodNow(),
+        campaign: period || lotteryGiftPeriodNow(),
+        from,
+        to,
+        audience,
+        paid: 1,
+        spent: 1,
+        union: 1,
+        eligible: 1,
+        pending: 1,
+        granted: 0,
+        pending_match: items.length,
+        items,
+        total: items.length,
+        page: 1,
+        page_size: ADMIN_PAGE_SIZE,
+      };
+    }
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: String(ADMIN_PAGE_SIZE),
+      range,
+      period,
+      from,
+      to,
+      audience,
+      status,
+      q,
+    });
+    return lotteryRequest(`/api/lottery/admin/gifts?${params}`);
+  },
+  async grantAdminGifts({
+    range = 'month',
+    period,
+    from = '',
+    to = '',
+    audience,
+    tickets,
+    userIds = [],
+    grantAll = false,
+    q = '',
+  } = {}) {
+    const n = Math.max(1, Math.min(10, Number(tickets) || 1));
+    if (this.mode !== 'api') {
+      const local = loadState();
+      local.tickets = (local.tickets || 0) + n;
+      local.ticketLog = local.ticketLog || [];
+      local.ticketLog.unshift({
+        id: `gift-${Date.now()}`,
+        delta: n,
+        reason: 'monthly_gift',
+        refType: 'gift',
+        refId: `1:${period || lotteryGiftPeriodNow()}`,
+        balanceAfter: local.tickets,
+        at: Date.now(),
+      });
+      saveState(local);
+      return { range, period, audience, tickets: n, granted: 1, skipped: 0, failed: 0, pending: 0, eligible: 1 };
+    }
+    return lotteryRequest('/api/lottery/admin/gifts/grant', {
+      method: 'POST',
+      body: JSON.stringify({
+        range,
+        period,
+        from,
+        to,
+        audience,
+        tickets: n,
+        user_ids: userIds,
+        grant_all: Boolean(grantAll),
+        q: q || '',
+      }),
+    });
   },
   async login(username, password) {
     const res = await fetch('/api/user/login', {
@@ -2848,6 +2956,19 @@ function isoDay(d) {
   return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
 }
 
+function lotteryGiftPeriodNow() {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+    }).format(new Date());
+  } catch {
+    const x = new Date();
+    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}`;
+  }
+}
+
 function todayISO() {
   return isoDay(new Date());
 }
@@ -3716,6 +3837,276 @@ function fillGrantFromWallet(row) {
   }
 }
 
+function giftAudienceLabel(audience) {
+  return (
+    {
+      union: '期间充值或消费',
+      paid: '期间有充值',
+      spent: '期间有消费',
+      paid_only: '仅充值',
+      spent_only: '仅消费',
+    }[audience] || '期间充值或消费'
+  );
+}
+
+function shanghaiYMD(date = new Date()) {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  } catch {
+    return isoDay(date);
+  }
+}
+
+function syncGiftRangeFields() {
+  const range = $('gift-range')?.value || 'month';
+  const periodWrap = $('gift-period-wrap');
+  const fromWrap = $('gift-from-wrap');
+  const toWrap = $('gift-to-wrap');
+  if (periodWrap) periodWrap.hidden = range !== 'month';
+  if (fromWrap) fromWrap.hidden = range !== 'custom';
+  if (toWrap) toWrap.hidden = range !== 'custom';
+  if (range === 'custom') {
+    const today = shanghaiYMD();
+    if ($('gift-from') && !$('gift-from').value) $('gift-from').value = `${today.slice(0, 8)}01`;
+    if ($('gift-to') && !$('gift-to').value) $('gift-to').value = today;
+  }
+}
+
+function currentGiftFilter() {
+  syncGiftRangeFields();
+  return {
+    range: $('gift-range')?.value || 'month',
+    period: ($('gift-period')?.value || lotteryGiftPeriodNow()).trim(),
+    from: ($('gift-from')?.value || '').trim(),
+    to: ($('gift-to')?.value || '').trim(),
+    audience: $('gift-audience')?.value || 'union',
+    status: $('gift-status')?.value || 'pending',
+    q: ($('gift-q')?.value || '').trim(),
+  };
+}
+
+function ensureGiftPeriod() {
+  const input = $('gift-period');
+  if (input && !input.value) input.value = lotteryGiftPeriodNow();
+  syncGiftRangeFields();
+}
+
+function giftYesNo(flag) {
+  return flag ? '<span class="lz-ad-yes">有</span>' : '<span class="lz-ad-no">无</span>';
+}
+
+function updateGiftSelectionMeta() {
+  const meta = $('gift-selected-meta');
+  const n = adminGiftSelected.size;
+  if (meta) meta.textContent = n ? `已勾选 ${n} 人` : '未勾选用户';
+  document.querySelectorAll('#gift-table tbody tr').forEach((tr) => {
+    const id = tr.dataset.userId;
+    const on = id && adminGiftSelected.has(id);
+    tr.classList.toggle('is-on', Boolean(on));
+    const box = tr.querySelector('input[type="checkbox"]');
+    if (box) box.checked = Boolean(on);
+  });
+  const pageBoxes = [...document.querySelectorAll('#gift-table tbody input[data-gift-id]')];
+  const all = $('gift-check-all');
+  if (all) {
+    const checked = pageBoxes.filter((el) => el.checked).length;
+    all.checked = pageBoxes.length > 0 && checked === pageBoxes.length;
+    all.indeterminate = checked > 0 && checked < pageBoxes.length;
+  }
+}
+
+function giftErrorText(err) {
+  const raw = String(err?.message || '');
+  if (err?.status === 404 || /Invalid URL|接口不存在|REQUEST_FAILED_404/i.test(raw)) {
+    return '礼包发放接口还没有发到现网。现在只能看页面，筛选和发放要发版后才能用。';
+  }
+  if (raw === 'NEED_LOGIN') return '请先用管理员账号登录';
+  return raw || '筛选失败';
+}
+
+function setGiftLoading(on) {
+  const ids = [
+    'gift-filter-btn',
+    'gift-filter-reset',
+    'gift-grant-selected',
+    'gift-grant-all',
+    'gift-range',
+    'gift-audience',
+    'gift-status',
+    'gift-period',
+    'gift-from',
+    'gift-to',
+    'gift-tickets',
+  ];
+  ids.forEach((id) => {
+    const el = $(id);
+    if (el) el.disabled = Boolean(on);
+  });
+}
+
+function paintGiftKpis(data) {
+  const setText = (id, value) => {
+    const el = $(id);
+    if (el) el.textContent = value == null ? '—' : String(value);
+  };
+  setText('gift-kpi-paid', data?.paid ?? '—');
+  setText('gift-kpi-spent', data?.spent ?? '—');
+  setText('gift-kpi-union', data?.union ?? '—');
+  setText('gift-kpi-pending', data?.pending ?? '—');
+}
+
+async function renderAdminGifts() {
+  const body = document.querySelector('#gift-table tbody');
+  if (!body) return;
+  ensureGiftPeriod();
+  const filter = currentGiftFilter();
+  const msg = $('gift-msg');
+  const tableMeta = $('gift-table-meta');
+  if (filter.range === 'custom' && (!filter.from || !filter.to)) {
+    if (msg) msg.textContent = '请选择开始日期和结束日期。';
+    return;
+  }
+  if (msg) msg.textContent = '正在筛选…';
+  if (tableMeta) tableMeta.textContent = '正在加载符合条件的用户…';
+  body.innerHTML = '<tr><td colspan="7">正在筛选…</td></tr>';
+  setGiftLoading(true);
+  try {
+    const data = await LotteryClient.listAdminGifts({ ...filter, page: adminGiftPage });
+    if (!data || typeof data !== 'object') {
+      throw new Error('筛选失败');
+    }
+    adminGiftPreview = data;
+    paintGiftKpis(data);
+    const items = Array.isArray(data.items) ? data.items.filter(Boolean) : [];
+    if (tableMeta) {
+      const span = data.from && data.to ? `${data.from} 至 ${data.to}` : (data.period || '');
+      tableMeta.textContent = data.total
+        ? `${span} · ${giftAudienceLabel(data.audience)} · 列表 ${data.total} 人，其中未发放 ${data.pending ?? 0} 人`
+        : (filter.q ? '没有匹配用户' : '当前筛选没有人员');
+    }
+    if (msg) msg.textContent = '';
+    if (!items.length) {
+      body.innerHTML = `<tr><td colspan="7">${filter.q ? '没有匹配用户' : '当前筛选没有人员'}</td></tr>`;
+      renderPager($('gift-pager'), { total: 0, pages: 1, current: 1 }, () => {});
+      updateGiftSelectionMeta();
+      return;
+    }
+    body.replaceChildren(
+      ...items.map((row) => {
+        const tr = document.createElement('tr');
+        const id = String(row.user_id || '');
+        const granted = Boolean(row.granted);
+        tr.dataset.userId = id;
+        tr.innerHTML = `<td class="lz-ad-check"><input type="checkbox" data-gift-id="${escapeHtml(id)}" ${granted ? 'disabled' : ''} /></td><td class="lz-ad-id">${escapeHtml(id)}</td><td>${escapeHtml(row.username || '')}</td><td>${giftYesNo(row.paid)}</td><td>${giftYesNo(row.spent)}</td><td>${granted ? '<span class="lz-ad-yes">已发</span>' : '<span class="lz-ad-no">未发</span>'}</td><td>${row.tickets ?? 0}</td>`;
+        const box = tr.querySelector('input[data-gift-id]');
+        if (box && !granted) {
+          box.addEventListener('change', () => {
+            if (box.checked) adminGiftSelected.add(id);
+            else adminGiftSelected.delete(id);
+            updateGiftSelectionMeta();
+          });
+        }
+        return tr;
+      }),
+    );
+    renderPager($('gift-pager'), adminPager(data.total, data.page || 1), (next) => {
+      adminGiftPage = next;
+      renderAdminGifts();
+    });
+    updateGiftSelectionMeta();
+  } catch (err) {
+    adminGiftPreview = null;
+    paintGiftKpis(null);
+    if (msg) msg.textContent = giftErrorText(err);
+    body.innerHTML = '<tr><td colspan="7">筛选失败</td></tr>';
+    renderPager($('gift-pager'), { total: 0, pages: 1, current: 1 }, () => {});
+  } finally {
+    setGiftLoading(false);
+  }
+}
+
+function resetGiftFilters() {
+  if ($('gift-range')) $('gift-range').value = 'month';
+  if ($('gift-period')) $('gift-period').value = lotteryGiftPeriodNow();
+  if ($('gift-from')) $('gift-from').value = '';
+  if ($('gift-to')) $('gift-to').value = '';
+  if ($('gift-audience')) $('gift-audience').value = 'union';
+  if ($('gift-status')) $('gift-status').value = 'pending';
+  if ($('gift-q')) $('gift-q').value = '';
+  adminGiftPage = 1;
+  adminGiftSelected = new Set();
+  syncGiftRangeFields();
+  renderAdminGifts();
+}
+
+async function confirmGrantGifts({ grantAll = false } = {}) {
+  const msg = $('gift-msg');
+  const filter = currentGiftFilter();
+  const n = Math.max(1, Math.min(10, Number($('gift-tickets')?.value) || 1));
+  const pending = Number(adminGiftPreview?.pending_match ?? adminGiftPreview?.pending ?? 0);
+  const selected = [...adminGiftSelected];
+  if (filter.range === 'custom' && (!filter.from || !filter.to)) {
+    if (msg) msg.textContent = '请选择开始日期和结束日期。';
+    return;
+  }
+  if (!grantAll && !selected.length) {
+    if (msg) msg.textContent = '请先勾选用户，或使用「发放全部未发」。';
+    return;
+  }
+  if (grantAll && pending < 1) {
+    if (msg) msg.textContent = '当前范围没有未发放用户。';
+    return;
+  }
+  const span = adminGiftPreview?.from && adminGiftPreview?.to
+    ? `${adminGiftPreview.from} 至 ${adminGiftPreview.to}`
+    : (filter.period || '');
+  const who = grantAll
+    ? `${span} ${giftAudienceLabel(filter.audience)}${filter.q ? `、搜索「${filter.q}」` : ''}未发放的 ${pending} 人`
+    : `已勾选的 ${selected.length} 人`;
+  const ok = await askConfirm({
+    title: '确认发放礼包',
+    text: `将给${who}每人发放 ${n} 次抽奖次数。同一时间批次同一用户只入账一次。发放后用户打开控制台会看到礼包提醒。只加次数，不改账户额度。`,
+    ok: '发放',
+  });
+  if (!ok) return;
+  if (msg) msg.textContent = '正在发放…';
+  const selectedBtn = $('gift-grant-selected');
+  const allBtn = $('gift-grant-all');
+  if (selectedBtn) selectedBtn.disabled = true;
+  if (allBtn) allBtn.disabled = true;
+  try {
+    const res = await LotteryClient.grantAdminGifts({
+      range: filter.range,
+      period: filter.period,
+      from: filter.from,
+      to: filter.to,
+      audience: filter.audience,
+      tickets: n,
+      userIds: grantAll ? [] : selected.map((id) => Number(id)),
+      grantAll,
+      q: filter.q,
+    });
+    adminGiftSelected = new Set();
+    adminGiftPage = 1;
+    if (msg) {
+      msg.textContent = `已发放 ${res.granted || 0} 人，跳过 ${res.skipped || 0} 人${res.failed ? `，失败 ${res.failed} 人` : ''}。剩余未发 ${res.pending ?? 0} 人。`;
+    }
+    await renderAdminGifts();
+    renderAdminTickets();
+    renderWalletLookup();
+  } catch (err) {
+    if (msg) msg.textContent = err.message || '发放失败';
+  } finally {
+    if (selectedBtn) selectedBtn.disabled = false;
+    if (allBtn) allBtn.disabled = false;
+  }
+}
+
 async function renderWalletLookup() {
   const body = document.querySelector('#wallet-lookup-table tbody');
   if (!body) return;
@@ -3961,6 +4352,10 @@ async function bootAdmin() {
       if (btn.dataset.view === 'codes') renderAdminCodes();
       if (btn.dataset.view === 'tickets') renderAdminTickets();
       if (btn.dataset.view === 'rules') renderWalletLookup();
+      if (btn.dataset.view === 'gifts') {
+        ensureGiftPeriod();
+        renderAdminGifts();
+      }
     });
   });
   document.querySelectorAll('#dash-period-tabs [data-dash-period]').forEach((btn) => {
@@ -4123,6 +4518,41 @@ async function bootAdmin() {
     } catch (err) {
       if (msg) msg.textContent = err.message || '补发失败';
     }
+  });
+  const searchGifts = () => {
+    adminGiftPage = 1;
+    adminGiftSelected = new Set();
+    renderAdminGifts();
+  };
+  on('gift-filter-btn', 'click', searchGifts);
+  on('gift-filter-reset', 'click', resetGiftFilters);
+  on('gift-audience', 'change', searchGifts);
+  on('gift-status', 'change', searchGifts);
+  on('gift-period', 'change', searchGifts);
+  on('gift-range', 'change', () => {
+    syncGiftRangeFields();
+    searchGifts();
+  });
+  on('gift-from', 'change', searchGifts);
+  on('gift-to', 'change', searchGifts);
+  on('gift-q', 'keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    searchGifts();
+  });
+  on('gift-grant-selected', 'click', () => confirmGrantGifts({ grantAll: false }));
+  on('gift-grant-all', 'click', () => confirmGrantGifts({ grantAll: true }));
+  on('gift-check-all', 'change', (event) => {
+    const onFlag = Boolean(event.target.checked);
+    document.querySelectorAll('#gift-table tbody input[data-gift-id]').forEach((box) => {
+      if (box.disabled) return;
+      const id = box.dataset.giftId;
+      if (!id) return;
+      box.checked = onFlag;
+      if (onFlag) adminGiftSelected.add(id);
+      else adminGiftSelected.delete(id);
+    });
+    updateGiftSelectionMeta();
   });
   const searchSummary = () => {
     adminUserPage = 1;

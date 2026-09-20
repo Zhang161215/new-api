@@ -304,10 +304,11 @@
 
 .lz-grant-sub {
   margin-top: 8px;
-  max-width: 280px;
+  width: 100%;
   font-size: 13px;
   line-height: 1.6;
   color: #6b5748;
+  white-space: nowrap;
 }
 
 .lz-grant-actions {

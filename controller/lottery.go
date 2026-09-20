@@ -252,6 +252,11 @@ func GetLottery(c *gin.Context) {
 			data["ticket_log"] = items
 			data["ticketLog"] = items
 		}
+		if notice, err := model.LatestUnseenLotteryGiftNotice(userId); err == nil && notice != nil {
+			item := lotteryLogDTO(*notice)
+			data["gift_notice"] = item
+			data["giftNotice"] = item
+		}
 	}
 
 	common.ApiSuccess(c, data)
@@ -708,4 +713,80 @@ func AdminGrantLotteryTickets(c *gin.Context) {
 		username = user.Username
 	}
 	common.ApiSuccess(c, gin.H{"user_id": userId, "username": username, "tickets": tickets})
+}
+
+func GetLotteryAdminGifts(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	preview, err := model.ListLotteryGiftCandidates(model.LotteryGiftFilter{
+		Range:    c.DefaultQuery("range", model.LotteryGiftRangeMonth),
+		Period:   c.Query("period"),
+		From:     c.Query("from"),
+		To:       c.Query("to"),
+		Audience: c.DefaultQuery("audience", model.LotteryGiftAudienceUnion),
+		Status:   c.DefaultQuery("status", model.LotteryGiftStatusPending),
+		Keyword:  c.Query("q"),
+		Page:     page,
+		Size:     size,
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, preview)
+}
+
+func GrantLotteryAdminGifts(c *gin.Context) {
+	var req struct {
+		Range    string `json:"range"`
+		Period   string `json:"period"`
+		From     string `json:"from"`
+		To       string `json:"to"`
+		Audience string `json:"audience"`
+		Tickets  int    `json:"tickets"`
+		UserIds  []int  `json:"user_ids"`
+		GrantAll bool   `json:"grant_all"`
+		Keyword  string `json:"q"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	result, err := model.AdminGrantLotteryGifts(model.LotteryGiftGrantRequest{
+		Range:    req.Range,
+		Period:   req.Period,
+		From:     req.From,
+		To:       req.To,
+		Audience: req.Audience,
+		Tickets:  req.Tickets,
+		UserIds:  req.UserIds,
+		GrantAll: req.GrantAll,
+		Keyword:  req.Keyword,
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.SysLog(fmt.Sprintf(
+		"lottery gift grant by user %d: range=%s period=%s audience=%s tickets=%d granted=%d skipped=%d failed=%d",
+		lotteryUserID(c), result.Range, result.Period, result.Audience, result.Tickets, result.Granted, result.Skipped, result.Failed,
+	))
+	common.ApiSuccess(c, result)
+}
+
+func AckLotteryGiftNotice(c *gin.Context) {
+	userId := lotteryUserID(c)
+	if userId <= 0 {
+		common.ApiErrorMsg(c, "请先登录")
+		return
+	}
+	var req struct {
+		Id int `json:"id"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	if err := model.AckLotteryGiftNotice(userId, req.Id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"id": req.Id})
 }
