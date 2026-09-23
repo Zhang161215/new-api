@@ -24,28 +24,19 @@ import {
   formatLatency,
   formatThroughput,
 } from '../../view/card/ModelStatusRow';
-import { groupColor } from '../../squareUtils';
+import {
+  groupColor,
+  successBarColor,
+  successBarHeight,
+  successTextColor,
+} from '../../squareUtils';
 
 // 结构与样式对齐上游 model-details-performance.tsx / model-details-charts.tsx
 
 const CHART_OPTION = { fallbacks: true };
 
-// 上游 getSuccessRateLevel：100 满绿，>=90 浅绿，>=70 琥珀，其余红
-const levelColor = (rate) => {
-  if (!Number.isFinite(rate)) return '#9ca3af';
-  if (rate >= 100) return '#10b981';
-  if (rate >= 90) return '#34d399';
-  if (rate >= 70) return '#f59e0b';
-  return '#ef4444';
-};
-
-const levelTextColor = (rate) => {
-  if (!Number.isFinite(rate)) return 'var(--semi-color-text-2)';
-  if (rate >= 100) return '#059669';
-  if (rate >= 90) return '#10b981';
-  if (rate >= 70) return '#d97706';
-  return '#dc2626';
-};
+const levelColor = successBarColor;
+const levelTextColor = successTextColor;
 
 const formatPct = (rate) =>
   Number.isFinite(rate) ? `${Number(rate).toFixed(2)}%` : '—';
@@ -140,13 +131,7 @@ const StatCard = ({ icon: Icon, label, value, hint, color }) => (
 );
 
 // 上游 UptimeSparkline（sm）：只画有数据的小时，越差越矮
-const heightFor = (rate) => {
-  if (rate >= 99.9) return '100%';
-  if (rate >= 99) return '88%';
-  if (rate >= 95) return '72%';
-  if (rate >= 90) return '55%';
-  return '40%';
-};
+const heightFor = successBarHeight;
 
 const UptimeSparkline = ({ buckets, overall }) => {
   const points = dataPoints(buckets || []);

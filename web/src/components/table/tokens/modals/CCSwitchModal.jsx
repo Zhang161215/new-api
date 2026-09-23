@@ -80,6 +80,18 @@ function buildCCSwitchURL(app, name, models, apiKey) {
   return `ccswitch://v1/import?${params.toString()}`;
 }
 
+// 自定义协议不能用 window.open(url, '_blank')：浏览器会先开一个 about:blank 新标签再把协议交给它，
+// 多数情况下就停在空白页、唤不起应用。改为在当前页点一个隐藏链接，协议交给系统处理，页面本身不会跳走。
+function openCCSwitch(url) {
+  const link = document.createElement('a');
+  link.href = url;
+  link.rel = 'noopener noreferrer';
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
 export default function CCSwitchModal({
   visible,
   onClose,
@@ -117,8 +129,9 @@ export default function CCSwitchModal({
       Toast.warning(t('请选择主模型'));
       return;
     }
-    const url = buildCCSwitchURL(app, name, models, 'sk-' + tokenKey);
-    window.open(url, '_blank');
+    const key = tokenKey.startsWith('sk-') ? tokenKey : 'sk-' + tokenKey;
+    openCCSwitch(buildCCSwitchURL(app, name, models, key));
+    Toast.info(t('正在唤起 CC Switch，如无反应请确认已安装并运行 CC Switch'));
     onClose();
   };
 

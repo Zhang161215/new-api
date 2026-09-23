@@ -19,10 +19,17 @@ const (
 
 // ClassifyRelayOutcome 判断一次已结束的请求算不算健康样本。
 // 业务拒绝、客户端取消、用户侧参数/额度错误不进分母；与重试、禁用渠道、计费无关。
-// 移植自上游；fork 的 StreamStatus 还没有协议终态（ResponseOutcome），这里只用 EndReason/错误计数判断流。
+// 移植自上游，流式请求结合协议终态（ResponseOutcome）判断：没等到终态就 EOF 的流算截断失败。
 func ClassifyRelayOutcome(ctx context.Context, info *relaycommon.RelayInfo, apiErr *types.NewAPIError) Outcome {
 	if info == nil || info.PerformanceBusinessRejection {
 		return OutcomeIgnored
+	}
+	if apiErr != nil && errors.Is(apiErr, context.Canceled) {
+		return OutcomeIgnored
+	}
+	stream := info.StreamStatus.OutcomeSnapshot()
+	if stream.Response == relaycommon.ResponseOutcomeFailed {
+		return classifyFailure(false, stream.ErrorCode, stream.ErrorType, stream.ErrorStatus)
 	}
 	if apiErr != nil {
 		// 只在出错时看客户端是否已离开。成功的非流式响应在 handler 里就写完了，客户端读完即断开，
@@ -36,22 +43,34 @@ func ClassifyRelayOutcome(ctx context.Context, info *relaycommon.RelayInfo, apiE
 		return classifyFailure(local, string(root.GetErrorCode()), string(root.ToOpenAIError().Type), root.StatusCode)
 	}
 
-	stream := info.StreamStatus
-	if stream == nil {
+	if info.StreamStatus == nil {
 		return OutcomeSuccess
 	}
-	deadlineExceeded := errors.Is(stream.EndError, context.DeadlineExceeded)
-	if stream.EndReason == relaycommon.StreamEndReasonPingFail {
+	deadlineExceeded := errors.Is(info.StreamStatus.EndError, context.DeadlineExceeded)
+	if stream.Response == relaycommon.ResponseOutcomeCancelled || stream.EndReason == relaycommon.StreamEndReasonPingFail {
 		return OutcomeIgnored
 	}
 	if stream.EndReason == relaycommon.StreamEndReasonClientGone && !deadlineExceeded {
 		return OutcomeIgnored
 	}
-	if stream.HasErrors() || deadlineExceeded {
+	if stream.Response == relaycommon.ResponseOutcomeIncomplete {
+		switch stream.IncompleteReason {
+		case "max_output_tokens", "max_tokens":
+			return OutcomeSuccess
+		case "content_filter", "safety", "content_policy_violation":
+			return OutcomeIgnored
+		default:
+			return OutcomeFailure
+		}
+	}
+	if stream.HasErrors || deadlineExceeded {
 		return OutcomeFailure
 	}
 	switch stream.EndReason {
 	case relaycommon.StreamEndReasonTimeout, relaycommon.StreamEndReasonScannerErr, relaycommon.StreamEndReasonPanic:
+		return OutcomeFailure
+	}
+	if stream.ExpectsTerminal && stream.Response == relaycommon.ResponseOutcomeUnknown && stream.EndReason != relaycommon.StreamEndReasonDone {
 		return OutcomeFailure
 	}
 	return OutcomeSuccess

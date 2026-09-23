@@ -28,11 +28,15 @@ import {
 import {
   formatLatency,
   formatThroughput,
-  successTextColor,
 } from '../../view/card/ModelStatusRow';
 import ModelPerformancePanel from './ModelPerformancePanel';
 import ModelApiSamples from './ModelApiSamples';
-import { billingTypeOf, groupColor, trimPrice } from '../../squareUtils';
+import {
+  billingTypeOf,
+  groupColor,
+  successTextColor,
+  trimPrice,
+} from '../../squareUtils';
 
 const sectionTitleStyle = {
   margin: '0 0 12px',

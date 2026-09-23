@@ -916,8 +916,279 @@ html.dark .with-pastel-balls::before {
 
 /* ==================== 模型定价页面布局 ==================== */
 /* 模型广场：整页滚动，内容放在两侧留白的宽容器里，左侧筛选卡片吸顶（对齐上游新版） */
+/* 整页背景 + 顶部三团柔光（对齐上游 pricing 页 hero 装饰） */
+.pricing-page {
+  position: relative;
+  overflow-x: clip;
+  min-height: 100vh;
+  background: var(--semi-color-bg-0);
+}
+
+.pricing-hero-glow {
+  pointer-events: none;
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 600px;
+  opacity: 0.2;
+  background:
+    radial-gradient(
+      60% 50% at 20% 20%,
+      rgba(56, 152, 255, 0.8) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      50% 40% at 80% 15%,
+      rgba(0, 170, 190, 0.6) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      40% 35% at 50% 70%,
+      rgba(140, 130, 235, 0.4) 0%,
+      transparent 70%
+    );
+}
+
+body[theme-mode='dark'] .pricing-hero-glow,
+.dark .pricing-hero-glow {
+  opacity: 0.1;
+}
+
 .pricing-layout {
+  position: relative;
   margin-top: 60px;
+}
+
+.pricing-hero {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 44px 16px 0;
+  margin-bottom: 40px;
+  text-align: center;
+}
+
+.pricing-hero-title {
+  margin: 0;
+  color: var(--semi-color-text-0);
+  font-size: clamp(2rem, 5.5vw, 3.5rem);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.pricing-hero-subtitle {
+  margin-top: 16px;
+  color: var(--semi-color-text-1);
+  font-size: 16px;
+  opacity: 0.8;
+}
+
+.pricing-hero-desc {
+  max-width: 42rem;
+  margin: 8px auto 0;
+  color: var(--semi-color-text-2);
+  font-size: 14px;
+  line-height: 1.625;
+  opacity: 0.8;
+}
+
+.pricing-hero-search {
+  max-width: 42rem;
+  margin: 24px auto 0;
+  text-align: left;
+}
+
+.pricing-hero-search .semi-input-wrapper {
+  height: 40px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 16px;
+  background: var(--semi-color-bg-0);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.pricing-hero-search .semi-input-wrapper:hover {
+  border-color: var(--semi-color-text-3);
+  background: var(--semi-color-bg-0);
+}
+
+.pricing-hero-search .semi-input-wrapper-focus,
+.pricing-hero-search .semi-input-wrapper-focus:hover {
+  border-color: rgba(var(--semi-blue-5), 0.5);
+  background: var(--semi-color-bg-0);
+  box-shadow: 0 0 0 3px rgba(var(--semi-blue-5), 0.15);
+}
+
+.pricing-hero-search .semi-input {
+  height: 38px;
+  font-size: 14px;
+}
+
+.pricing-hero-search .semi-input::placeholder {
+  color: var(--semi-color-text-3);
+}
+
+.pricing-hero-kbd {
+  margin-right: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 4px;
+  background: var(--semi-color-fill-0);
+  color: var(--semi-color-text-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  line-height: 16px;
+  pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .pricing-hero {
+    padding-top: 20px;
+    margin-bottom: 20px;
+  }
+
+  .pricing-hero-subtitle {
+    margin-top: 12px;
+    font-size: 14px;
+  }
+
+  .pricing-hero-desc {
+    font-size: 12px;
+  }
+
+  .pricing-hero-kbd {
+    display: none;
+  }
+}
+
+/* 内容区工具栏：模型数 + 价格口径 / 单位 / 倍率 / 排序 / 视图（对齐上游） */
+.pricing-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 20px;
+  background: var(--semi-color-bg-0);
+}
+
+.pricing-toolbar-count {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding-left: 4px;
+  color: var(--semi-color-text-1);
+  font-size: 14px;
+}
+
+.pricing-toolbar-count strong {
+  color: var(--semi-color-text-0);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pricing-toolbar-total {
+  color: var(--semi-color-text-3);
+  font-size: 12px;
+}
+
+.pricing-toggle-group {
+  display: inline-flex;
+  height: 28px;
+  overflow: hidden;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 10px;
+  background: var(--semi-color-bg-0);
+}
+
+.pricing-toggle-group > button,
+.pricing-toolbar-btn {
+  display: inline-flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 9px;
+  border: 0;
+  background: transparent;
+  color: var(--semi-color-text-1);
+  font-size: 12.8px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.pricing-toggle-group > button + button {
+  border-left: 1px solid var(--semi-color-border);
+}
+
+.pricing-toggle-group > button:hover,
+.pricing-toolbar-btn:hover {
+  background: var(--semi-color-fill-0);
+  color: var(--semi-color-text-0);
+}
+
+.pricing-toggle-group > button[data-active='true'] {
+  background: var(--semi-color-fill-1);
+  color: var(--semi-color-text-0);
+  font-weight: 600;
+}
+
+.pricing-toolbar-btn {
+  height: 28px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 10px;
+}
+
+.pricing-toolbar-btn[data-active='true'] {
+  border-color: rgba(var(--semi-blue-5), 0.35);
+  background: rgba(var(--semi-blue-5), 0.1);
+  color: rgba(var(--semi-blue-6), 1);
+}
+
+/* 模型卡片：大圆角 + 细边框，悬停轻微浮起（对齐上游 ring-1 卡片） */
+.pricing-model-card.semi-card {
+  border: 1px solid var(--semi-color-border);
+  border-radius: 20px;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.pricing-model-card.semi-card:hover {
+  border-color: rgba(var(--semi-blue-5), 0.35);
+  box-shadow: 0 10px 30px -12px rgba(15, 23, 42, 0.18);
+  transform: translateY(-2px);
+}
+
+.pricing-model-card-selected.semi-card {
+  border-color: rgba(var(--semi-blue-5), 0.7);
+  background: rgba(var(--semi-blue-5), 0.05);
+}
+
+.pricing-model-icon {
+  position: relative;
+  display: flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 14px;
+  background: var(--semi-color-fill-0);
+}
+
+.pricing-sidebar-card {
+  padding: 12px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 20px;
+  background: var(--semi-color-bg-0);
 }
 
 .pricing-shell {
@@ -935,7 +1206,7 @@ html.dark .with-pastel-balls::before {
   width: 280px;
   max-height: calc(100dvh - 6rem);
   overflow-y: auto;
-  border-radius: 12px;
+  border-radius: 20px;
 }
 
 .pricing-content {

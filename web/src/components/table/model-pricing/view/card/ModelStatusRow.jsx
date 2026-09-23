@@ -18,24 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-
-const MISSING = 'rgba(156, 163, 175, 0.35)';
-
-export const barColor = (avail) => {
-  if (!Number.isFinite(avail) || avail < 0) return MISSING;
-  if (avail >= 99.9) return '#10b981';
-  if (avail >= 90) return '#34d399';
-  if (avail >= 70) return '#f59e0b';
-  return '#ef4444';
-};
-
-export const successTextColor = (rate) => {
-  if (!Number.isFinite(rate)) return 'var(--semi-color-text-2)';
-  if (rate >= 99.9) return '#059669';
-  if (rate >= 90) return '#10b981';
-  if (rate >= 70) return '#d97706';
-  return '#dc2626';
-};
+import {
+  successBarColor,
+  successBarHeight,
+  successTextColor,
+} from '../../squareUtils';
 
 export const formatLatency = (seconds) => {
   if (!Number.isFinite(seconds) || seconds <= 0) return '—';
@@ -101,7 +88,11 @@ const ModelStatusRow = ({ status, t, children, showTtft = false }) => {
           >
             <span>{tr('状态')}</span>
             <span
-              style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}
+              style={{
+                fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                color: hasData ? successTextColor(availability) : undefined,
+                fontWeight: hasData ? 600 : undefined,
+              }}
             >
               {hasData ? `${availability.toFixed(2)}%` : '—'}
             </span>
@@ -112,7 +103,7 @@ const ModelStatusRow = ({ status, t, children, showTtft = false }) => {
             title={tr('最近成功率；灰色竖条表示该小时没有请求')}
             style={{
               display: 'flex',
-              alignItems: 'center',
+              alignItems: 'flex-end',
               gap: 1,
               height: 12,
               marginTop: 4,
@@ -135,10 +126,10 @@ const ModelStatusRow = ({ status, t, children, showTtft = false }) => {
                   style={{
                     display: 'block',
                     width: 3,
-                    height: 12,
+                    height: successBarHeight(value),
                     flex: '0 0 3px',
                     borderRadius: 1,
-                    backgroundColor: barColor(value),
+                    backgroundColor: successBarColor(value),
                   }}
                 />
               );

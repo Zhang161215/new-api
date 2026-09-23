@@ -40,7 +40,8 @@ const PricingPage = () => {
   };
 
   return (
-    <div className='bg-white'>
+    <div className='pricing-page'>
+      <div className='pricing-hero-glow' aria-hidden='true' />
       <div className='pricing-layout'>
         <PricingSquareHeader
           count={(pricingData.models || []).length}

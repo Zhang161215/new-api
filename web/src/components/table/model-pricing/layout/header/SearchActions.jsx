@@ -18,8 +18,35 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { memo, useCallback } from 'react';
-import { Input, Button, Switch, Select, Divider } from '@douyinfe/semi-ui';
+import { Input, Button, Select, Dropdown } from '@douyinfe/semi-ui';
 import { IconSearch, IconCopy, IconFilter } from '@douyinfe/semi-icons';
+import { ArrowUpDown, Check, LayoutGrid, Table2 } from 'lucide-react';
+
+const SORT_OPTIONS = [
+  { value: 'default', label: '默认排序' },
+  { value: 'name', label: '名称' },
+  { value: 'price-asc', label: '价格：从低到高' },
+  { value: 'price-desc', label: '价格：从高到低' },
+];
+
+// 分段切换（对齐上游 ToggleGroup）：options = [{ value, label, title }]
+const ToggleGroup = ({ value, onChange, options, ariaLabel }) => (
+  <div className='pricing-toggle-group' role='group' aria-label={ariaLabel}>
+    {options.map((option) => (
+      <button
+        key={String(option.value)}
+        type='button'
+        title={option.title}
+        aria-label={option.title}
+        aria-pressed={value === option.value}
+        data-active={value === option.value}
+        onClick={() => onChange?.(option.value)}
+      >
+        {option.label}
+      </button>
+    ))}
+  </div>
+);
 
 const SearchActions = memo(
   ({
@@ -42,10 +69,15 @@ const SearchActions = memo(
     setViewMode,
     tokenUnit,
     setTokenUnit,
+    sortBy = 'default',
+    setSortBy,
     hideSearch = false,
     t,
   }) => {
     const supportsCurrencyDisplay = siteDisplayType !== 'TOKENS';
+    const sortLabel =
+      SORT_OPTIONS.find((option) => option.value === sortBy)?.label ||
+      SORT_OPTIONS[0].label;
 
     const handleCopyClick = useCallback(() => {
       if (copyText && selectedRowKeys.length > 0) {
@@ -57,18 +89,8 @@ const SearchActions = memo(
       setShowFilterModal?.(true);
     }, [setShowFilterModal]);
 
-    const handleViewModeToggle = useCallback(() => {
-      setViewMode?.(viewMode === 'table' ? 'card' : 'table');
-    }, [viewMode, setViewMode]);
-
-    const handleTokenUnitToggle = useCallback(() => {
-      setTokenUnit?.(tokenUnit === 'K' ? 'M' : 'K');
-    }, [tokenUnit, setTokenUnit]);
-
     return (
-      <div
-        className={`flex w-full items-center gap-2 ${hideSearch ? 'flex-wrap justify-end' : ''}`}
-      >
+      <div className='flex flex-wrap items-center justify-end gap-2'>
         {!hideSearch && (
           <div className='flex-1'>
             <Input
@@ -83,39 +105,46 @@ const SearchActions = memo(
           </div>
         )}
 
-        <Button
-          theme='outline'
-          type='primary'
-          icon={<IconCopy />}
-          onClick={handleCopyClick}
-          disabled={selectedRowKeys.length === 0}
-          className='!bg-blue-500 hover:!bg-blue-600 !text-white disabled:!bg-gray-300 disabled:!text-gray-500'
-        >
-          {t('复制')}
-        </Button>
+        {selectedRowKeys.length > 0 && (
+          <Button
+            size='small'
+            theme='light'
+            type='primary'
+            icon={<IconCopy />}
+            onClick={handleCopyClick}
+          >
+            {t('复制已选 {{count}} 个', { count: selectedRowKeys.length })}
+          </Button>
+        )}
 
         {!isMobile && (
           <>
-            <Divider layout='vertical' margin='8px' />
-
-            {/* 充值价格显示开关 */}
             {supportsCurrencyDisplay && (
-              <div className='flex items-center gap-2'>
-                <span className='text-sm text-gray-600'>
-                  {t('充值价格显示')}
-                </span>
-                <Switch
-                  checked={showWithRecharge}
-                  onChange={setShowWithRecharge}
-                />
-              </div>
+              <ToggleGroup
+                ariaLabel={t('价格口径')}
+                value={Boolean(showWithRecharge)}
+                onChange={setShowWithRecharge}
+                options={[
+                  {
+                    value: false,
+                    label: t('标准'),
+                    title: t('按站点标准价显示'),
+                  },
+                  {
+                    value: true,
+                    label: t('充值'),
+                    title: t('按充值汇率换算显示'),
+                  },
+                ]}
+              />
             )}
 
-            {/* 货币单位选择 */}
             {supportsCurrencyDisplay && showWithRecharge && (
               <Select
+                size='small'
                 value={currency}
                 onChange={setCurrency}
+                style={{ width: 110 }}
                 optionList={[
                   { value: 'USD', label: 'USD' },
                   { value: 'CNY', label: 'CNY' },
@@ -124,34 +153,75 @@ const SearchActions = memo(
               />
             )}
 
-            {/* 显示倍率开关 */}
-            <div className='flex items-center gap-2'>
-              <span className='text-sm text-gray-600'>{t('倍率')}</span>
-              <Switch checked={showRatio} onChange={setShowRatio} />
-            </div>
+            <ToggleGroup
+              ariaLabel={t('Token 单位')}
+              value={tokenUnit}
+              onChange={setTokenUnit}
+              options={[
+                { value: 'M', label: '/1M', title: t('每百万 tokens') },
+                { value: 'K', label: '/1K', title: t('每千 tokens') },
+              ]}
+            />
 
-            {/* 视图模式切换按钮 */}
-            <Button
-              theme={viewMode === 'table' ? 'solid' : 'outline'}
-              type={viewMode === 'table' ? 'primary' : 'tertiary'}
-              onClick={handleViewModeToggle}
+            <button
+              type='button'
+              className='pricing-toolbar-btn'
+              data-active={Boolean(showRatio)}
+              aria-pressed={Boolean(showRatio)}
+              onClick={() => setShowRatio?.(!showRatio)}
             >
-              {t('表格视图')}
-            </Button>
+              {t('倍率')}
+            </button>
 
-            {/* Token单位切换按钮 */}
-            <Button
-              theme={tokenUnit === 'K' ? 'solid' : 'outline'}
-              type={tokenUnit === 'K' ? 'primary' : 'tertiary'}
-              onClick={handleTokenUnitToggle}
+            <Dropdown
+              trigger='click'
+              position='bottomRight'
+              render={
+                <Dropdown.Menu>
+                  {SORT_OPTIONS.map((option) => (
+                    <Dropdown.Item
+                      key={option.value}
+                      active={option.value === sortBy}
+                      onClick={() => setSortBy?.(option.value)}
+                    >
+                      <span className='inline-flex w-4'>
+                        {option.value === sortBy && <Check size={14} />}
+                      </span>
+                      {t(option.label)}
+                    </Dropdown.Item>
+                  ))}
+                </Dropdown.Menu>
+              }
             >
-              {tokenUnit}
-            </Button>
+              <button type='button' className='pricing-toolbar-btn'>
+                <ArrowUpDown size={14} />
+                {t(sortLabel)}
+              </button>
+            </Dropdown>
+
+            <ToggleGroup
+              ariaLabel={t('视图模式')}
+              value={viewMode}
+              onChange={setViewMode}
+              options={[
+                {
+                  value: 'card',
+                  label: <LayoutGrid size={15} />,
+                  title: t('卡片视图'),
+                },
+                {
+                  value: 'table',
+                  label: <Table2 size={15} />,
+                  title: t('表格视图'),
+                },
+              ]}
+            />
           </>
         )}
 
         {isMobile && (
           <Button
+            size='small'
             theme='outline'
             type='tertiary'
             icon={<IconFilter />}

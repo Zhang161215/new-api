@@ -24,6 +24,16 @@ func streamInfo(reason relaycommon.StreamEndReason, endErr error, softErrors int
 	return &relaycommon.RelayInfo{IsStream: true, StreamStatus: st}
 }
 
+// terminalInfo 模拟声明了协议终态的流：mark 为 nil 表示直到结束都没收到终态事件。
+func terminalInfo(reason relaycommon.StreamEndReason, mark func(*relaycommon.StreamStatus)) *relaycommon.RelayInfo {
+	info := streamInfo(reason, nil, 0)
+	if mark != nil {
+		mark(info.StreamStatus)
+	}
+	info.StreamStatus.RequireTerminal()
+	return info
+}
+
 func upstreamErr(status int, errType string, code any) *types.NewAPIError {
 	return types.WithOpenAIError(types.OpenAIError{Message: "x", Type: errType, Code: code}, status)
 }
@@ -59,6 +69,33 @@ func TestClassifyRelayOutcome(t *testing.T) {
 		{"stream timeout", context.Background(), streamInfo(relaycommon.StreamEndReasonTimeout, nil, 0), nil, OutcomeFailure},
 		{"stream soft errors", context.Background(), streamInfo(relaycommon.StreamEndReasonDone, nil, 2), nil, OutcomeFailure},
 		{"stream ping fail", context.Background(), streamInfo(relaycommon.StreamEndReasonPingFail, errors.New("ping"), 0), nil, OutcomeIgnored},
+		// 线上实测：Responses 流 20~35s 后直接 EOF、没有 response.completed，Codex 报 stream disconnected
+		{"eof without terminal", context.Background(), terminalInfo(relaycommon.StreamEndReasonEOF, nil), nil, OutcomeFailure},
+		{"eof after completed", context.Background(), terminalInfo(relaycommon.StreamEndReasonEOF, (*relaycommon.StreamStatus).MarkCompleted), nil, OutcomeSuccess},
+		{"done marker without terminal", context.Background(), terminalInfo(relaycommon.StreamEndReasonDone, nil), nil, OutcomeSuccess},
+		{"client gone before terminal", context.Background(), func() *relaycommon.RelayInfo {
+			info := terminalInfo(relaycommon.StreamEndReasonEOF, nil)
+			info.StreamStatus = relaycommon.NewStreamStatus()
+			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, context.Canceled)
+			info.StreamStatus.RequireTerminal()
+			return info
+		}(), nil, OutcomeIgnored},
+		{"response failed event", context.Background(), terminalInfo(relaycommon.StreamEndReasonEOF, func(s *relaycommon.StreamStatus) {
+			s.MarkCompleted()
+			s.MarkFailed("server_error", "", 0)
+		}), nil, OutcomeFailure},
+		{"response failed context length", context.Background(), terminalInfo(relaycommon.StreamEndReasonEOF, func(s *relaycommon.StreamStatus) {
+			s.MarkFailed("context_length_exceeded", "", 0)
+		}), nil, OutcomeIgnored},
+		{"incomplete max tokens", context.Background(), terminalInfo(relaycommon.StreamEndReasonEOF, func(s *relaycommon.StreamStatus) {
+			s.MarkIncomplete("max_output_tokens")
+		}), nil, OutcomeSuccess},
+		{"incomplete unknown reason", context.Background(), terminalInfo(relaycommon.StreamEndReasonEOF, func(s *relaycommon.StreamStatus) {
+			s.MarkIncomplete("")
+		}), nil, OutcomeFailure},
+		{"cancelled", context.Background(), terminalInfo(relaycommon.StreamEndReasonEOF, (*relaycommon.StreamStatus).MarkCancelled), nil, OutcomeIgnored},
+		// 没声明终态的旧 handler 维持原判定
+		{"legacy stream eof", context.Background(), streamInfo(relaycommon.StreamEndReasonEOF, nil, 0), nil, OutcomeSuccess},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

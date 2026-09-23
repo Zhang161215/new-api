@@ -20,6 +20,7 @@ import (
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/tidwall/gjson"
 )
 
 func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, forceFormat bool, thinkToContent bool) error {
@@ -141,8 +142,10 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 
 			lastStreamData = data
 			streamItems = append(streamItems, data)
+			observeStreamFinishReason(info, data)
 		}
 	})
+	info.StreamStatus.RequireTerminal()
 
 	// 对音频模型，从倒数第二个stream data中提取usage信息
 	if isAudioModel && secondLastStreamData != "" {
@@ -715,4 +718,21 @@ func extractLlamaCachedTokensFromBody(body []byte) (int, bool) {
 		return 0, false
 	}
 	return *payload.Timings.CachedTokens, true
+}
+
+// observeStreamFinishReason 见到 finish_reason 即视为协议终态；content_filter 属于业务拒绝，不计入可用率。移植自上游。
+func observeStreamFinishReason(info *relaycommon.RelayInfo, data string) {
+	if info == nil || info.StreamStatus == nil || !strings.Contains(data, "finish_reason") {
+		return
+	}
+	for _, reason := range gjson.Get(data, "choices.#.finish_reason").Array() {
+		value := reason.String()
+		if value == "" {
+			continue
+		}
+		if value == constant.FinishReasonContentFilter {
+			info.PerformanceBusinessRejection = true
+		}
+		info.StreamStatus.MarkCompleted()
+	}
 }

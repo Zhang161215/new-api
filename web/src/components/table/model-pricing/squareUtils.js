@@ -51,3 +51,26 @@ export const groupColor = (name) => {
   }
   return GROUP_COLORS[hash % GROUP_COLORS.length];
 };
+
+// 成功率分级（卡片竖条、详情走势、分组表共用）。上游是 100/90/70，对中转站太宽：
+// 一小时 95% 也显示成绿色，老板看到的就是"一直百分百绿"。这里按用户能感知的波动收紧。
+const SUCCESS_LEVELS = [
+  { min: 99.5, bar: '#10b981', text: '#059669', height: '100%' },
+  { min: 98, bar: '#84cc16', text: '#65a30d', height: '80%' },
+  { min: 95, bar: '#f59e0b', text: '#d97706', height: '60%' },
+  { min: -Infinity, bar: '#ef4444', text: '#dc2626', height: '40%' },
+];
+const MISSING_BAR = 'rgba(156, 163, 175, 0.35)';
+
+const successLevel = (rate) =>
+  Number.isFinite(rate) && rate >= 0
+    ? SUCCESS_LEVELS.find((level) => rate >= level.min)
+    : null;
+
+export const successBarColor = (rate) => successLevel(rate)?.bar ?? MISSING_BAR;
+
+export const successTextColor = (rate) =>
+  successLevel(rate)?.text ?? 'var(--semi-color-text-2)';
+
+// 越差越矮，颜色之外再给一层直观提示（对齐上游 UptimeSparkline）
+export const successBarHeight = (rate) => successLevel(rate)?.height ?? '100%';

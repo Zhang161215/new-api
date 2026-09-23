@@ -24,6 +24,11 @@ import { Modal } from '@douyinfe/semi-ui';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 
+const modelSortPrice = (model) =>
+  model.quota_type === 1
+    ? Number(model.model_price) || 0
+    : (Number(model.model_ratio) || 0) * 2;
+
 export const useModelPricingData = () => {
   const { t } = useTranslation();
   const [searchValue, setSearchValue] = useState('');
@@ -44,6 +49,7 @@ export const useModelPricingData = () => {
   const [currency, setCurrency] = useState('USD');
   const [showWithRecharge, setShowWithRecharge] = useState(false);
   const [tokenUnit, setTokenUnit] = useState('M');
+  const [sortBy, setSortBy] = useState('default'); // 'default' | 'name' | 'price-asc' | 'price-desc'
   const [models, setModels] = useState([]);
   const [vendorsMap, setVendorsMap] = useState({});
   const [loading, setLoading] = useState(true);
@@ -163,6 +169,18 @@ export const useModelPricingData = () => {
       );
     }
 
+    if (sortBy !== 'default') {
+      result = [...result].sort((a, b) => {
+        if (sortBy === 'name') {
+          return a.model_name.localeCompare(b.model_name);
+        }
+        // 按量按输入单价（$/1M = 模型倍率 × 2）、按次按单次价格比较；分组倍率对所有模型相同，不影响次序
+        const diff = modelSortPrice(a) - modelSortPrice(b);
+        if (diff !== 0) return sortBy === 'price-desc' ? -diff : diff;
+        return a.model_name.localeCompare(b.model_name);
+      });
+    }
+
     return result;
   }, [
     models,
@@ -172,6 +190,7 @@ export const useModelPricingData = () => {
     filterEndpointType,
     filterVendor,
     filterTag,
+    sortBy,
   ]);
 
   const rowSelection = useMemo(
@@ -352,6 +371,7 @@ export const useModelPricingData = () => {
     filterVendor,
     filterTag,
     searchValue,
+    sortBy,
   ]);
 
   return {
@@ -391,6 +411,8 @@ export const useModelPricingData = () => {
     setShowWithRecharge,
     tokenUnit,
     setTokenUnit,
+    sortBy,
+    setSortBy,
     models,
     loading,
     groupRatio,

@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
@@ -97,6 +98,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			return
 		}
 		sendResponsesStreamData(c, streamResponse, data)
+		observeResponsesOutcome(info, &streamResponse, data)
 		switch streamResponse.Type {
 		case "response.completed":
 			if streamResponse.Response != nil {
@@ -138,6 +140,8 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		}
 	})
 
+	info.StreamStatus.RequireTerminal()
+
 	if usage.CompletionTokens == 0 {
 		// 计算输出文本的 token 数量
 		tempStr := responseTextBuilder.String()
@@ -155,4 +159,34 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 
 	return usage, nil
+}
+
+// observeResponsesOutcome 按 Responses 事件标记协议终态，供模型广场可用率采样；只留 code/type，不留消息正文。移植自上游。
+func observeResponsesOutcome(info *relaycommon.RelayInfo, event *dto.ResponsesStreamResponse, data string) {
+	if info == nil || info.StreamStatus == nil || event == nil {
+		return
+	}
+	var responseStatus string
+	if event.Response != nil && len(event.Response.Status) > 0 {
+		_ = common.Unmarshal(event.Response.Status, &responseStatus)
+	}
+	switch {
+	case event.Type == "error" || event.Type == "response.failed" || event.Type == "response.error" || responseStatus == "failed":
+		code, errorType := gjson.Get(data, "code").String(), ""
+		if event.Response != nil {
+			if oaiErr := event.Response.GetOpenAIError(); oaiErr != nil {
+				if oaiErr.Code != nil {
+					code = fmt.Sprint(oaiErr.Code)
+				}
+				errorType = oaiErr.Type
+			}
+		}
+		info.StreamStatus.MarkFailed(code, errorType, 0)
+	case event.Type == "response.incomplete" || responseStatus == "incomplete":
+		info.StreamStatus.MarkIncomplete(gjson.Get(data, "response.incomplete_details.reason").String())
+	case event.Type == "response.cancelled" || event.Type == "response.canceled" || responseStatus == "cancelled":
+		info.StreamStatus.MarkCancelled()
+	case event.Type == "response.completed" || event.Type == "response.done" || responseStatus == "completed":
+		info.StreamStatus.MarkCompleted()
+	}
 }

@@ -17,11 +17,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useState, memo } from 'react';
+import React, { useEffect, useRef, useState, memo } from 'react';
 import { Input } from '@douyinfe/semi-ui';
 import { IconSearch } from '@douyinfe/semi-icons';
 import PricingFilterModal from '../../modal/PricingFilterModal';
 import SearchActions from './SearchActions';
+
+const isMacLike = () =>
+  typeof navigator !== 'undefined' &&
+  /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
 
 export const PricingSquareHeader = ({
   count,
@@ -30,31 +34,54 @@ export const PricingSquareHeader = ({
   handleChange,
   handleCompositionStart,
   handleCompositionEnd,
-}) => (
-  <header className='mx-auto w-full max-w-3xl shrink-0 px-4 pt-5 pb-3 text-center'>
-    <h1 className='text-4xl font-bold tracking-tight'>{t('模型广场')}</h1>
-    <p className='mt-2 text-sm' style={{ color: 'var(--semi-color-text-2)' }}>
-      {t('本站当前已启用模型，总计 {{count}} 个', { count: count || 0 })}
-    </p>
-    <p
-      className='mx-auto mt-1 max-w-2xl text-xs leading-relaxed'
-      style={{ color: 'var(--semi-color-text-3)' }}
-    >
-      {t('探索精选 AI 模型，清晰比较价格与能力，为不同场景选择合适的模型。')}
-    </p>
-    <div className='mx-auto mt-4 max-w-2xl text-left'>
-      <Input
-        prefix={<IconSearch />}
-        placeholder={t('搜索模型名称、供应商、端点或标签')}
-        value={searchValue}
-        onCompositionStart={handleCompositionStart}
-        onCompositionEnd={handleCompositionEnd}
-        onChange={handleChange}
-        showClear
-      />
-    </div>
-  </header>
-);
+}) => {
+  const inputRef = useRef(null);
+
+  // ⌘K / Ctrl+K 聚焦搜索（对齐上游）
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        String(event.key).toLowerCase() === 'k'
+      ) {
+        event.preventDefault();
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  return (
+    <header className='pricing-hero'>
+      <h1 className='pricing-hero-title'>{t('模型广场')}</h1>
+      <p className='pricing-hero-subtitle'>
+        {t('本站当前已启用模型，总计 {{count}} 个', { count: count || 0 })}
+      </p>
+      <p className='pricing-hero-desc'>
+        {t('探索精选 AI 模型，清晰比较价格与能力，为不同场景选择合适的模型。')}
+      </p>
+      <div className='pricing-hero-search'>
+        <Input
+          ref={inputRef}
+          prefix={<IconSearch />}
+          suffix={
+            <kbd className='pricing-hero-kbd'>
+              {isMacLike() ? '⌘K' : 'Ctrl K'}
+            </kbd>
+          }
+          placeholder={t('搜索模型名称、供应商、端点或标签...')}
+          aria-label={t('搜索模型')}
+          value={searchValue}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
+          onChange={handleChange}
+          showClear
+        />
+      </div>
+    </header>
+  );
+};
 
 const PricingTopSection = memo(
   ({
@@ -81,6 +108,8 @@ const PricingTopSection = memo(
     setViewMode,
     tokenUnit,
     setTokenUnit,
+    sortBy,
+    setSortBy,
     t,
   }) => {
     const [showFilterModal, setShowFilterModal] = useState(false);
@@ -106,23 +135,30 @@ const PricingTopSection = memo(
         setViewMode={setViewMode}
         tokenUnit={tokenUnit}
         setTokenUnit={setTokenUnit}
+        sortBy={sortBy}
+        setSortBy={setSortBy}
         hideSearch
         t={t}
       />
     );
 
+    const shown = (filteredModels || []).length;
+    const total = (models || []).length;
+
     return (
       <>
-        <p
-          className='mb-2 px-1 text-xs'
-          style={{ color: 'var(--semi-color-text-2)' }}
-        >
-          {t('显示 {{count}} / {{total}} 个模型', {
-            count: (filteredModels || []).length,
-            total: (models || []).length,
-          })}
-        </p>
-        {search}
+        <div className='pricing-toolbar'>
+          <div className='pricing-toolbar-count'>
+            <strong>{shown}</strong>
+            <span>{t('个模型')}</span>
+            {shown !== total && (
+              <span className='pricing-toolbar-total'>
+                {t('/ 共 {{total}} 个', { total })}
+              </span>
+            )}
+          </div>
+          {search}
+        </div>
         {isMobile && (
           <PricingFilterModal
             visible={showFilterModal}

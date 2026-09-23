@@ -147,11 +147,10 @@ const MetaLine = ({ label, values }) => {
 };
 
 const CARD_STYLES = {
-  container:
-    'w-12 h-12 rounded-2xl flex items-center justify-center relative shadow-md',
-  icon: 'w-8 h-8 flex items-center justify-center',
-  selected: 'border-blue-500 bg-blue-50',
-  default: 'border-gray-200 hover:border-gray-300',
+  container: 'pricing-model-icon',
+  icon: 'w-7 h-7 flex items-center justify-center',
+  selected: 'pricing-model-card-selected',
+  default: '',
 };
 
 const PricingCardView = ({
@@ -210,7 +209,7 @@ const PricingCardView = ({
       return (
         <div className={CARD_STYLES.container}>
           <div className={CARD_STYLES.icon}>
-            {getLobeHubIcon(model.icon, 32)}
+            {getLobeHubIcon(model.icon, 26)}
           </div>
         </div>
       );
@@ -220,7 +219,7 @@ const PricingCardView = ({
       return (
         <div className={CARD_STYLES.container}>
           <div className={CARD_STYLES.icon}>
-            {getLobeHubIcon(model.vendor_icon, 32)}
+            {getLobeHubIcon(model.vendor_icon, 26)}
           </div>
         </div>
       );
@@ -234,10 +233,10 @@ const PricingCardView = ({
         <Avatar
           size='large'
           style={{
-            width: 48,
-            height: 48,
-            borderRadius: 16,
-            fontSize: 16,
+            width: 44,
+            height: 44,
+            borderRadius: 14,
+            fontSize: 15,
             fontWeight: 'bold',
           }}
         >
@@ -277,7 +276,7 @@ const PricingCardView = ({
   }
 
   return (
-    <div className='pt-2'>
+    <div className='pt-4'>
       <div className='pricing-card-grid'>
         {paginatedModels.map((model, index) => {
           const modelKey = getModelKey(model);
@@ -297,7 +296,7 @@ const PricingCardView = ({
           return (
             <Card
               key={modelKey || index}
-              className={`!rounded-2xl transition-all duration-200 hover:shadow-lg border cursor-pointer ${isSelected ? CARD_STYLES.selected : CARD_STYLES.default}`}
+              className={`pricing-model-card cursor-pointer ${isSelected ? CARD_STYLES.selected : CARD_STYLES.default}`}
               bodyStyle={{ height: '100%' }}
               onClick={() => openModelDetail && openModelDetail(model)}
             >
@@ -387,7 +386,8 @@ const PricingCardView = ({
                       className='text-xs italic line-through'
                       style={{ color: 'var(--semi-color-text-2)' }}
                     >
-                      {cardPrices.original.label} {cardPrices.original.value}
+                      {cardPrices.original.label}{' '}
+                      {trimPrice(cardPrices.original.value)}
                     </div>
                   )}
                   {cardPrices.extras.length > 0 && (
@@ -402,7 +402,7 @@ const PricingCardView = ({
                             className='font-mono'
                             style={{ color: 'var(--semi-color-text-1)' }}
                           >
-                            {item.value}
+                            {trimPrice(item.value)}
                             {item.suffix}
                           </span>
                         </span>

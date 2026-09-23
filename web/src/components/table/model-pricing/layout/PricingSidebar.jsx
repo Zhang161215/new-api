@@ -239,13 +239,7 @@ const PricingSidebar = ({
   ];
 
   return (
-    <aside
-      className='rounded-xl border p-3'
-      style={{
-        borderColor: 'var(--semi-color-border)',
-        background: 'var(--semi-color-bg-0)',
-      }}
-    >
+    <aside className='pricing-sidebar-card'>
       <div className='mb-2.5 flex items-center justify-between gap-2'>
         <div className='min-w-0'>
           <h2
