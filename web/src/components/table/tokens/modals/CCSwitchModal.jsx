@@ -16,8 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
+  Banner,
+  Button,
   Modal,
   RadioGroup,
   Radio,
@@ -27,7 +29,10 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
-import { selectFilter } from '../../../../helpers';
+import { copy, selectFilter } from '../../../../helpers';
+
+// 唤起成功时浏览器窗口会失焦；超过这个时间还没失焦，就提示用户检查本机 CC Switch
+const LAUNCH_DETECT_MS = 2500;
 
 const APP_CONFIGS = {
   claude: {
@@ -103,16 +108,31 @@ export default function CCSwitchModal({
   const [app, setApp] = useState('claude');
   const [name, setName] = useState(APP_CONFIGS.claude.defaultName);
   const [models, setModels] = useState({});
+  // idle：未点击；waiting：已发出链接、等窗口失焦；failed：超时仍无反应
+  const [launchState, setLaunchState] = useState('idle');
+  const launchCleanupRef = useRef(null);
 
   const currentConfig = APP_CONFIGS[app];
+
+  const stopLaunchDetect = () => {
+    launchCleanupRef.current?.();
+    launchCleanupRef.current = null;
+  };
 
   useEffect(() => {
     if (visible) {
       setModels({});
       setApp('claude');
       setName(tokenName || APP_CONFIGS.claude.defaultName);
+      setLaunchState('idle');
     }
+    return stopLaunchDetect;
   }, [visible, tokenName]);
+
+  const buildLink = () => {
+    const key = tokenKey.startsWith('sk-') ? tokenKey : 'sk-' + tokenKey;
+    return buildCCSwitchURL(app, name, models, key);
+  };
 
   const handleAppChange = (val) => {
     setApp(val);
@@ -129,10 +149,37 @@ export default function CCSwitchModal({
       Toast.warning(t('请选择主模型'));
       return;
     }
-    const key = tokenKey.startsWith('sk-') ? tokenKey : 'sk-' + tokenKey;
-    openCCSwitch(buildCCSwitchURL(app, name, models, key));
-    Toast.info(t('正在唤起 CC Switch，如无反应请确认已安装并运行 CC Switch'));
-    onClose();
+    stopLaunchDetect();
+    setLaunchState('waiting');
+    const onLaunched = () => {
+      stopLaunchDetect();
+      setLaunchState('idle');
+      Toast.success(t('已唤起 CC Switch，请在 CC Switch 中确认导入'));
+      onClose();
+    };
+    const onVisibility = () => document.hidden && onLaunched();
+    // 超时只亮提示、不停监听：浏览器"要打开 CC Switch 吗"的确认框期间窗口不失焦，用户稍后点允许仍能自动关窗
+    const timer = setTimeout(() => setLaunchState('failed'), LAUNCH_DETECT_MS);
+    window.addEventListener('blur', onLaunched);
+    document.addEventListener('visibilitychange', onVisibility);
+    launchCleanupRef.current = () => {
+      clearTimeout(timer);
+      window.removeEventListener('blur', onLaunched);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+    openCCSwitch(buildLink());
+  };
+
+  const handleCopyLink = async () => {
+    if (!models.model) {
+      Toast.warning(t('请选择主模型'));
+      return;
+    }
+    if (await copy(buildLink())) {
+      Toast.success(
+        t('已复制导入链接，粘贴到浏览器地址栏回车即可唤起 CC Switch'),
+      );
+    }
   };
 
   const fieldLabelStyle = useMemo(
@@ -149,13 +196,51 @@ export default function CCSwitchModal({
       title={t('填入 CC Switch')}
       visible={visible}
       onCancel={onClose}
-      onOk={handleSubmit}
-      okText={t('打开 CC Switch')}
-      cancelText={t('取消')}
       maskClosable={false}
       width={480}
+      footer={
+        <div className='flex justify-end gap-2'>
+          <Button onClick={onClose}>{t('取消')}</Button>
+          <Button onClick={handleCopyLink}>{t('复制导入链接')}</Button>
+          <Button
+            theme='solid'
+            type='primary'
+            loading={launchState === 'waiting'}
+            onClick={handleSubmit}
+          >
+            {t('打开 CC Switch')}
+          </Button>
+        </div>
+      }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {launchState === 'failed' && (
+          <Banner
+            type='warning'
+            fullMode={false}
+            closeIcon={null}
+            description={
+              <div className='text-xs leading-5'>
+                <div className='mb-1 text-sm font-semibold'>
+                  {t('没有检测到 CC Switch 响应')}
+                </div>
+                <div>
+                  {t(
+                    '1. 确认 CC Switch 已安装在「应用程序」（Windows 为安装版），并且手动打开过一次；便携版、直接在下载目录里运行的不会注册 ccswitch:// 协议。',
+                  )}
+                </div>
+                <div>
+                  {t('2. 浏览器如果弹出「要打开 CC Switch 吗」，请点允许。')}
+                </div>
+                <div>
+                  {t(
+                    '3. 仍然不行时点「复制导入链接」，粘贴到浏览器地址栏回车。',
+                  )}
+                </div>
+              </div>
+            }
+          />
+        )}
         <div>
           <div style={fieldLabelStyle}>{t('应用')}</div>
           <RadioGroup
