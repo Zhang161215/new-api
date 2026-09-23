@@ -42,6 +42,7 @@ const SearchActions = memo(
     setViewMode,
     tokenUnit,
     setTokenUnit,
+    hideSearch = false,
     t,
   }) => {
     const supportsCurrencyDisplay = siteDisplayType !== 'TOKENS';
@@ -65,18 +66,22 @@ const SearchActions = memo(
     }, [tokenUnit, setTokenUnit]);
 
     return (
-      <div className='flex items-center gap-2 w-full'>
-        <div className='flex-1'>
-          <Input
-            prefix={<IconSearch />}
-            placeholder={t('模糊搜索模型名称')}
-            value={searchValue}
-            onCompositionStart={handleCompositionStart}
-            onCompositionEnd={handleCompositionEnd}
-            onChange={handleChange}
-            showClear
-          />
-        </div>
+      <div
+        className={`flex w-full items-center gap-2 ${hideSearch ? 'flex-wrap justify-end' : ''}`}
+      >
+        {!hideSearch && (
+          <div className='flex-1'>
+            <Input
+              prefix={<IconSearch />}
+              placeholder={t('搜索模型名称、供应商、端点或标签')}
+              value={searchValue}
+              onCompositionStart={handleCompositionStart}
+              onCompositionEnd={handleCompositionEnd}
+              onChange={handleChange}
+              showClear
+            />
+          </div>
+        )}
 
         <Button
           theme='outline'
@@ -96,7 +101,9 @@ const SearchActions = memo(
             {/* 充值价格显示开关 */}
             {supportsCurrencyDisplay && (
               <div className='flex items-center gap-2'>
-                <span className='text-sm text-gray-600'>{t('充值价格显示')}</span>
+                <span className='text-sm text-gray-600'>
+                  {t('充值价格显示')}
+                </span>
                 <Switch
                   checked={showWithRecharge}
                   onChange={setShowWithRecharge}

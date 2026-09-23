@@ -169,6 +169,10 @@ type RelayInfo struct {
 
 	StreamStatus *StreamStatus
 
+	// 模型广场性能采样用：结算时写入输出 token 数；adaptor 识别到业务拒绝时置 true（不计入可用率）。
+	PerformanceOutputTokens      int64
+	PerformanceBusinessRejection bool
+
 	ThinkingContentInfo
 	TokenCountMeta
 	*ClaudeConvertInfo

@@ -32,6 +32,7 @@ import {
   renderDescription,
 } from '../../../../common/ui/RenderUtils';
 import { useIsMobile } from '../../../../../hooks/common/useIsMobile';
+import ModelStatusRow from '../card/ModelStatusRow';
 
 function renderQuotaType(type, t) {
   switch (type) {
@@ -69,7 +70,10 @@ const renderVendor = (vendorName, vendorIcon, t) => {
 // Render tags list using RenderUtils
 const renderTags = (text) => {
   if (!text) return '-';
-  const tagsArr = text.split(',').filter((tag) => tag.trim());
+  const tagsArr = text
+    .split(/[,;|]+/)
+    .map((tag) => tag.trim())
+    .filter(Boolean);
   return renderLimitedItems({
     items: tagsArr,
     renderItem: (tag, idx) => (
@@ -242,22 +246,42 @@ export const getPricingTableColumns = ({
             <div key={item.key}>
               {item.isMainPrice ? (
                 <div className='flex items-center gap-2 flex-wrap'>
-                  <span style={{ color: 'var(--semi-color-success)', fontWeight: 500 }}>
+                  <span
+                    style={{
+                      color: 'var(--semi-color-success)',
+                      fontWeight: 500,
+                    }}
+                  >
                     {item.inputLabel} {item.inputValue}
                   </span>
-                  <span style={{ color: 'var(--semi-color-success)', fontWeight: 500 }}>
+                  <span
+                    style={{
+                      color: 'var(--semi-color-success)',
+                      fontWeight: 500,
+                    }}
+                  >
                     {item.outputLabel} {item.outputValue}
                   </span>
                 </div>
               ) : item.isOriginalPrice ? (
                 <div>
-                  <span style={{ color: 'var(--semi-color-text-2)', textDecoration: 'line-through', fontSize: 12, fontWeight: 600, fontStyle: 'italic', fontFamily: 'revert-layer' }}>
+                  <span
+                    style={{
+                      color: 'var(--semi-color-text-2)',
+                      textDecoration: 'line-through',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      fontStyle: 'italic',
+                      fontFamily: 'revert-layer',
+                    }}
+                  >
                     {item.label} {item.value}
                   </span>
                 </div>
               ) : (
                 <div className='text-gray-700'>
-                  {item.label} {item.value}{item.suffix}
+                  {item.label} {item.value}
+                  {item.suffix}
                 </div>
               )}
             </div>
@@ -267,7 +291,18 @@ export const getPricingTableColumns = ({
     },
   };
 
+  const statusColumn = {
+    title: t('状态'),
+    dataIndex: 'status',
+    render: (status) => (
+      <div style={{ minWidth: 300 }}>
+        <ModelStatusRow status={status} t={t} showTtft />
+      </div>
+    ),
+  };
+
   const columns = [...baseColumns];
+  columns.push(statusColumn);
   columns.push(endpointColumn);
   if (showRatio) {
     columns.push(ratioColumn);

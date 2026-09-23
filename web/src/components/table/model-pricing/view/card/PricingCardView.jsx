@@ -21,30 +21,130 @@ import React from 'react';
 import {
   Card,
   Tag,
-  Tooltip,
   Checkbox,
   Empty,
   Pagination,
   Button,
   Avatar,
+  Tooltip,
 } from '@douyinfe/semi-ui';
 import { IconHelpCircle } from '@douyinfe/semi-icons';
-import { Copy } from 'lucide-react';
+import { ChevronRight, Copy } from 'lucide-react';
 import {
   IllustrationNoResult,
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import {
-  stringToColor,
   calculateModelPrice,
-  formatPriceInfo,
   getLobeHubIcon,
+  getModelPriceItems,
+  stringToColor,
 } from '../../../../../helpers';
+import { renderLimitedItems } from '../../../../common/ui/RenderUtils';
+import { billingTypeOf, trimPrice } from '../../squareUtils';
 import PricingCardSkeleton from './PricingCardSkeleton';
 import ModelStatusRow from './ModelStatusRow';
 import { useMinimumLoadingTime } from '../../../../../hooks/common/useMinimumLoadingTime';
-import { renderLimitedItems } from '../../../../common/ui/RenderUtils';
 import { useIsMobile } from '../../../../../hooks/common/useIsMobile';
+
+const PriceCell = ({ label, value, unit }) => {
+  const unitText = unit === 'M' || unit === 'K' ? `1${unit}` : unit;
+  return (
+    <div className='min-w-0'>
+      <div className='text-xs' style={{ color: 'var(--semi-color-text-2)' }}>
+        {label}
+      </div>
+      <div className='font-mono text-sm font-semibold tabular-nums'>
+        {trimPrice(value) || '—'}
+        {unitText && (
+          <span
+            className='ml-1 text-xs font-normal'
+            style={{ color: 'var(--semi-color-text-2)' }}
+          >
+            / {unitText}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// 统一走 getModelPriceItems：USD/CNY 显示价格，TOKENS 显示倍率，按次显示单价；
+// 前三项放主格，其余（缓存创建、图片、音频）收成一行小字，原价单独一行删除线。
+const buildCardPrices = (priceData, t, displayType) => {
+  const items = getModelPriceItems(priceData, t, displayType);
+  const main = items.find((item) => item.isMainPrice);
+  const original = items.find((item) => item.isOriginalPrice);
+  const rest = items.filter(
+    (item) => !item.isMainPrice && !item.isOriginalPrice,
+  );
+  if (main) {
+    const unit = priceData.unitLabel;
+    const cache = rest.find((item) => item.key === 'cache');
+    const cells = [
+      { key: 'input', label: t('输入'), value: priceData.inputPrice, unit },
+      {
+        key: 'output',
+        label: t('输出'),
+        value: priceData.completionPrice,
+        unit,
+      },
+    ];
+    if (cache)
+      cells.push({ key: 'cache', label: t('缓存'), value: cache.value, unit });
+    return {
+      cells,
+      extras: rest.filter((item) => item.key !== 'cache'),
+      original,
+    };
+  }
+  if (priceData.isPerToken) {
+    return {
+      cells: rest.slice(0, 3).map((item) => ({
+        key: item.key,
+        label: item.label,
+        value: `${item.value}${item.suffix || ''}`,
+      })),
+      extras: rest.slice(3),
+      original: null,
+    };
+  }
+  return {
+    cells: [
+      { key: 'price', label: t('价格'), value: priceData.price, unit: t('次') },
+    ],
+    extras: [],
+    original: null,
+  };
+};
+
+const splitTags = (tags) =>
+  String(tags || '')
+    .split(/[,;|]+/)
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+
+const MetaLine = ({ label, values }) => {
+  if (!values || values.length === 0) return null;
+  return (
+    <div className='flex min-w-0 items-baseline gap-1'>
+      <span className='shrink-0' style={{ color: 'var(--semi-color-text-2)' }}>
+        {label}
+      </span>
+      <span className='truncate' title={values.join(', ')}>
+        {values[0]}
+      </span>
+      {values.length > 1 && (
+        <span
+          className='shrink-0'
+          style={{ color: 'var(--semi-color-text-2)' }}
+        >
+          +{values.length - 1}
+        </span>
+      )}
+    </div>
+  );
+};
 
 const CARD_STYLES = {
   container:
@@ -152,67 +252,6 @@ const PricingCardView = ({
     return record.description || '';
   };
 
-  // 渲染标签
-  const renderTags = (record) => {
-    // 计费类型标签（左边）
-    let billingTag = (
-      <Tag key='billing' shape='circle' color='white' size='small'>
-        -
-      </Tag>
-    );
-    if (record.quota_type === 1) {
-      billingTag = (
-        <Tag key='billing' shape='circle' color='teal' size='small'>
-          {t('按次计费')}
-        </Tag>
-      );
-    } else if (record.quota_type === 0) {
-      billingTag = (
-        <Tag key='billing' shape='circle' color='violet' size='small'>
-          {t('按量计费')}
-        </Tag>
-      );
-    }
-
-    // 自定义标签（右边）
-    const customTags = [];
-    if (record.tags) {
-      const tagArr = record.tags.split(',').filter(Boolean);
-      tagArr.forEach((tg, idx) => {
-        customTags.push(
-          <Tag
-            key={`custom-${idx}`}
-            shape='circle'
-            color={stringToColor(tg)}
-            size='small'
-          >
-            {tg}
-          </Tag>,
-        );
-      });
-    }
-
-    return (
-      <div className='flex items-center justify-between gap-2'>
-        <div className='flex items-center gap-2 flex-wrap min-w-0'>
-          {billingTag}
-          <ModelStatusRow status={record.status} t={t} />
-        </div>
-        <div className='flex items-center gap-1 shrink-0'>
-          {customTags.length > 0 &&
-            renderLimitedItems({
-              items: customTags.map((tag, idx) => ({
-                key: `custom-${idx}`,
-                element: tag,
-              })),
-              renderItem: (item, idx) => item.element,
-              maxDisplay: 3,
-            })}
-        </div>
-      </div>
-    );
-  };
-
   // 显示骨架屏
   if (showSkeleton) {
     return (
@@ -238,8 +277,8 @@ const PricingCardView = ({
   }
 
   return (
-    <div className='px-2 pt-2'>
-      <div className='grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-4'>
+    <div className='pt-2'>
+      <div className='pricing-card-grid'>
         {paginatedModels.map((model, index) => {
           const modelKey = getModelKey(model);
           const isSelected = selectedRowKeys.includes(modelKey);
@@ -253,6 +292,7 @@ const PricingCardView = ({
             currency,
             quotaDisplayType: siteDisplayType,
           });
+          const cardPrices = buildCardPrices(priceData, t, siteDisplayType);
 
           return (
             <Card
@@ -261,100 +301,184 @@ const PricingCardView = ({
               bodyStyle={{ height: '100%' }}
               onClick={() => openModelDetail && openModelDetail(model)}
             >
-              <div className='flex flex-col h-full'>
-                {/* 头部：图标 + 模型名称 + 操作按钮 */}
-                <div className='flex items-start justify-between mb-3'>
-                  <div className='flex items-start space-x-3 flex-1 min-w-0'>
-                    {getModelIcon(model)}
-                    <div className='flex-1 min-w-0'>
-                      <h3 className='text-lg font-bold text-gray-900 truncate'>
-                        {model.model_name}
-                      </h3>
-                      <div className='flex flex-col gap-1 text-xs mt-1'>
-                        {formatPriceInfo(priceData, t, siteDisplayType)}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className='flex items-center space-x-2 ml-3'>
-                    {/* 复制按钮 */}
-                    <Button
-                      size='small'
-                      theme='outline'
-                      type='tertiary'
-                      icon={<Copy size={12} />}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        copyText(model.model_name);
-                      }}
-                    />
-
-                    {/* 选择框 */}
-                    {rowSelection && (
-                      <Checkbox
-                        checked={isSelected}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          handleCheckboxChange(model, e.target.checked);
-                        }}
-                      />
+              <div className='flex h-full flex-col gap-3'>
+                <div className='flex items-start gap-3'>
+                  <div className='shrink-0'>{getModelIcon(model)}</div>
+                  <div className='min-w-0 flex-1'>
+                    <h3 className='line-clamp-2 break-all font-mono text-[15px] font-semibold'>
+                      {model.model_name}
+                    </h3>
+                    {model.vendor_name && (
+                      <p
+                        className='mt-1 truncate text-xs'
+                        style={{ color: 'var(--semi-color-text-2)' }}
+                      >
+                        {model.vendor_name}
+                      </p>
                     )}
                   </div>
+                  <Button
+                    size='small'
+                    theme='borderless'
+                    type='tertiary'
+                    icon={<Copy size={14} />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      copyText(model.model_name);
+                    }}
+                  />
+                  {rowSelection && (
+                    <Checkbox
+                      checked={isSelected}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        handleCheckboxChange(model, e.target.checked);
+                      }}
+                    />
+                  )}
                 </div>
 
-                {/* 模型描述 - 占据剩余空间 */}
-                <div className='flex-1 mb-4'>
-                  <p
-                    className='text-xs line-clamp-2 leading-relaxed'
-                    style={{ color: 'var(--semi-color-text-2)' }}
-                  >
-                    {getModelDescription(model)}
-                  </p>
-                </div>
+                <p
+                  className='line-clamp-2 text-[13px] leading-5'
+                  style={{ color: 'var(--semi-color-text-2)' }}
+                >
+                  {getModelDescription(model) || t('暂无描述。')}
+                </p>
 
-                {/* 底部区域 */}
-                <div className='mt-auto'>
-                  {/* 标签区域（含可用性状态：吞吐/延迟/24格/可用率） */}
-                  {renderTags(model)}
-
-                  {/* 倍率信息（可选） */}
-                  {showRatio && (
-                    <div className='pt-3'>
-                      <div className='flex items-center space-x-1 mb-2'>
-                        <span className='text-xs font-medium text-gray-700'>
-                          {t('倍率信息')}
-                        </span>
-                        <Tooltip
-                          content={t('倍率是为了方便换算不同价格的模型')}
-                        >
-                          <IconHelpCircle
-                            className='text-blue-500 cursor-pointer'
-                            size='small'
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setModalImageUrl('/ratio.png');
-                              setIsModalOpenurl(true);
-                            }}
-                          />
-                        </Tooltip>
-                      </div>
-                      <div className='grid grid-cols-3 gap-2 text-xs text-gray-600'>
-                        <div>
-                          {t('模型')}:{' '}
-                          {model.quota_type === 0 ? model.model_ratio : t('无')}
-                        </div>
-                        <div>
-                          {t('补全')}:{' '}
-                          {model.quota_type === 0
-                            ? parseFloat(model.completion_ratio.toFixed(3))
-                            : t('无')}
-                        </div>
-                        <div>
-                          {t('分组')}: {priceData?.usedGroupRatio ?? '-'}
-                        </div>
-                      </div>
+                <div className='mt-auto flex flex-col gap-2'>
+                  <div className='flex min-w-0 flex-wrap items-center gap-1'>
+                    <span
+                      className='text-xs'
+                      style={{ color: billingTypeOf(model, t).color }}
+                    >
+                      {billingTypeOf(model, t).label}
+                    </span>
+                    {splitTags(model.tags).length > 0 &&
+                      renderLimitedItems({
+                        items: splitTags(model.tags).map((tag) => ({
+                          key: tag,
+                          element: (
+                            <Tag
+                              key={tag}
+                              size='small'
+                              shape='circle'
+                              color={stringToColor(tag)}
+                            >
+                              {tag}
+                            </Tag>
+                          ),
+                        })),
+                        renderItem: (item) => item.element,
+                        maxDisplay: 3,
+                      })}
+                  </div>
+                  <div className='grid grid-cols-3 gap-2'>
+                    {cardPrices.cells.map((cell) => (
+                      <PriceCell
+                        key={cell.key}
+                        label={cell.label}
+                        value={cell.value}
+                        unit={cell.unit}
+                      />
+                    ))}
+                  </div>
+                  {cardPrices.original && (
+                    <div
+                      className='text-xs italic line-through'
+                      style={{ color: 'var(--semi-color-text-2)' }}
+                    >
+                      {cardPrices.original.label} {cardPrices.original.value}
                     </div>
                   )}
+                  {cardPrices.extras.length > 0 && (
+                    <div
+                      className='flex flex-wrap gap-x-3 gap-y-0.5 text-xs'
+                      style={{ color: 'var(--semi-color-text-2)' }}
+                    >
+                      {cardPrices.extras.map((item) => (
+                        <span key={item.key}>
+                          {item.label}{' '}
+                          <span
+                            className='font-mono'
+                            style={{ color: 'var(--semi-color-text-1)' }}
+                          >
+                            {item.value}
+                            {item.suffix}
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className='grid grid-cols-2 gap-2 text-xs'>
+                    <MetaLine
+                      label={t('分组')}
+                      values={model.enable_groups || []}
+                    />
+                    <MetaLine
+                      label={t('端点')}
+                      values={model.supported_endpoint_types || []}
+                    />
+                  </div>
+                </div>
+
+                {showRatio && (
+                  <div
+                    className='text-xs'
+                    style={{ color: 'var(--semi-color-text-2)' }}
+                  >
+                    <div className='mb-1 flex items-center gap-1'>
+                      <span className='font-medium'>{t('倍率信息')}</span>
+                      <Tooltip content={t('倍率是为了方便换算不同价格的模型')}>
+                        <IconHelpCircle
+                          className='cursor-pointer text-blue-500'
+                          size='small'
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setModalImageUrl?.('/ratio.png');
+                            setIsModalOpenurl?.(true);
+                          }}
+                        />
+                      </Tooltip>
+                    </div>
+                    <div className='grid grid-cols-3 gap-2'>
+                      <div>
+                        {t('模型')}:{' '}
+                        {model.quota_type === 0 ? model.model_ratio : t('无')}
+                      </div>
+                      <div>
+                        {t('补全')}:{' '}
+                        {model.quota_type === 0
+                          ? parseFloat(
+                              Number(model.completion_ratio || 0).toFixed(3),
+                            )
+                          : t('无')}
+                      </div>
+                      <div>
+                        {t('分组')}: {priceData?.usedGroupRatio ?? '-'}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div
+                  className='border-t pt-2'
+                  style={{ borderColor: 'var(--semi-color-border)' }}
+                >
+                  <ModelStatusRow status={model.status} t={t}>
+                    <Button
+                      size='small'
+                      theme='borderless'
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openModelDetail && openModelDetail(model);
+                      }}
+                    >
+                      <span className='inline-flex items-center gap-0.5'>
+                        {t('详情')}
+                        <ChevronRight size={14} />
+                      </span>
+                    </Button>
+                  </ModelStatusRow>
                 </div>
               </div>
             </Card>

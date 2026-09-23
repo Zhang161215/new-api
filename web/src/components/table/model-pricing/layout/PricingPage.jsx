@@ -18,16 +18,16 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Layout, ImagePreview } from '@douyinfe/semi-ui';
+import { ImagePreview } from '@douyinfe/semi-ui';
 import PricingSidebar from './PricingSidebar';
 import PricingContent from './content/PricingContent';
+import { PricingSquareHeader } from './header/PricingTopSection';
 import ModelDetailSideSheet from '../modal/ModelDetailSideSheet';
 import { useModelPricingData } from '../../../../hooks/model-pricing/useModelPricingData';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 
 const PricingPage = () => {
   const pricingData = useModelPricingData();
-  const { Sider, Content } = Layout;
   const isMobile = useIsMobile();
   const [showRatio, setShowRatio] = React.useState(false);
   const [viewMode, setViewMode] = React.useState('card');
@@ -41,21 +41,30 @@ const PricingPage = () => {
 
   return (
     <div className='bg-white'>
-      <Layout className='pricing-layout'>
-        {!isMobile && (
-          <Sider className='pricing-scroll-hide pricing-sidebar'>
-            <PricingSidebar {...allProps} />
-          </Sider>
-        )}
-
-        <Content className='pricing-scroll-hide pricing-content'>
-          <PricingContent
-            {...allProps}
-            isMobile={isMobile}
-            sidebarProps={allProps}
-          />
-        </Content>
-      </Layout>
+      <div className='pricing-layout'>
+        <PricingSquareHeader
+          count={(pricingData.models || []).length}
+          t={pricingData.t}
+          searchValue={pricingData.searchValue}
+          handleChange={pricingData.handleChange}
+          handleCompositionStart={pricingData.handleCompositionStart}
+          handleCompositionEnd={pricingData.handleCompositionEnd}
+        />
+        <div className='pricing-shell'>
+          {!isMobile && (
+            <div className='pricing-scroll-hide pricing-sidebar'>
+              <PricingSidebar {...allProps} />
+            </div>
+          )}
+          <div className='pricing-content'>
+            <PricingContent
+              {...allProps}
+              isMobile={isMobile}
+              sidebarProps={allProps}
+            />
+          </div>
+        </div>
+      </div>
 
       <ImagePreview
         src={pricingData.modalImageUrl}

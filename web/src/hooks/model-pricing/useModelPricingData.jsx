@@ -153,7 +153,13 @@ export const useModelPricingData = () => {
             model.description.toLowerCase().includes(searchTerm)) ||
           (model.tags && model.tags.toLowerCase().includes(searchTerm)) ||
           (model.vendor_name &&
-            model.vendor_name.toLowerCase().includes(searchTerm)),
+            model.vendor_name.toLowerCase().includes(searchTerm)) ||
+          (model.enable_groups || []).some((group) =>
+            String(group).toLowerCase().includes(searchTerm),
+          ) ||
+          (model.supported_endpoint_types || []).some((endpoint) =>
+            String(endpoint).toLowerCase().includes(searchTerm),
+          ),
       );
     }
 

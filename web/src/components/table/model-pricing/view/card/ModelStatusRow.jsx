@@ -19,111 +19,175 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 
-// 每小时可用率% -> 竖条颜色 + 高度（-1 表示无数据）
-const barStyle = (avail) => {
-  if (avail < 0) return { color: 'var(--semi-color-fill-2)', height: '30%' };
-  if (avail >= 99.9) return { color: 'rgb(16, 185, 129)', height: '100%' }; // emerald-500
-  if (avail >= 99) return { color: 'rgb(52, 211, 153)', height: '85%' }; // emerald-400
-  if (avail >= 95) return { color: 'rgb(251, 191, 36)', height: '70%' }; // amber-400
-  if (avail >= 90) return { color: 'rgb(245, 158, 11)', height: '60%' }; // amber-500
-  return { color: 'rgb(244, 63, 94)', height: '50%' }; // rose-500
+const MISSING = 'rgba(156, 163, 175, 0.35)';
+
+export const barColor = (avail) => {
+  if (!Number.isFinite(avail) || avail < 0) return MISSING;
+  if (avail >= 99.9) return '#10b981';
+  if (avail >= 90) return '#34d399';
+  if (avail >= 70) return '#f59e0b';
+  return '#ef4444';
 };
 
-// 整体可用率 -> 百分比文字颜色
-const availColor = (avail) => {
-  if (avail >= 99) return 'rgb(5, 150, 105)'; // emerald-600
-  if (avail >= 90) return 'rgb(217, 119, 6)'; // amber-600
-  return 'rgb(225, 29, 72)'; // rose-600
+export const successTextColor = (rate) => {
+  if (!Number.isFinite(rate)) return 'var(--semi-color-text-2)';
+  if (rate >= 99.9) return '#059669';
+  if (rate >= 90) return '#10b981';
+  if (rate >= 70) return '#d97706';
+  return '#dc2626';
 };
 
-// 两位补零
-const pad = (n) => String(n).padStart(2, '0');
+export const formatLatency = (seconds) => {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '—';
+  const ms = seconds * 1000;
+  if (ms >= 1000) return `${(ms / 1000).toFixed(2)}s`;
+  return `${Math.round(ms)}ms`;
+};
 
-const ModelStatusRow = ({ status, t }) => {
+export const formatThroughput = (tps) => {
+  if (!Number.isFinite(tps) || tps <= 0) return '—';
+  if (tps >= 1000) return `${(tps / 1000).toFixed(1)}K t/s`;
+  return `${tps.toFixed(tps < 10 ? 2 : 1)} t/s`;
+};
+
+const labelStyle = {
+  color: 'var(--semi-color-text-2)',
+  fontSize: 11,
+  lineHeight: '16px',
+};
+
+const ModelStatusRow = ({ status, t, children, showTtft = false }) => {
   const tr = (s) => (typeof t === 'function' ? t(s) : s);
-
-  if (!status || !status.has_data) return null;
-
-  const throughput = Number(status.throughput || 0);
-  const latency = Number(status.latency || 0);
-  const availability = Number(status.availability || 0);
+  const hasData = Boolean(status?.has_data);
+  const throughput = Number(status?.throughput || 0);
+  const latency = Number(status?.latency || 0);
+  const ttft = Number(status?.ttft || 0);
+  const availability = Number(status?.availability || 0);
   const buckets =
-    Array.isArray(status.buckets) && status.buckets.length > 0
+    Array.isArray(status?.buckets) && status.buckets.length > 0
       ? status.buckets
       : new Array(24).fill(-1);
-  const n = buckets.length;
-
-  // 最近一个桶的整点时间（展示用）
-  const now = new Date();
-  const latestLabel = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
-    now.getDate(),
-  )} ${pad(now.getHours())}:00`;
+  const latencyText = formatLatency(latency);
+  const ttftText = formatLatency(ttft);
+  const throughputText = formatThroughput(throughput).replace(' t/s', 't/s');
 
   return (
-    <div className='flex items-center gap-3 text-xs shrink-0'>
-      {/* 吞吐 */}
-      <span className='inline-flex items-baseline gap-1'>
-        <span style={{ color: 'var(--semi-color-text-2)' }}>{tr('吞吐')}</span>
-        <span
-          className='font-mono tabular-nums'
-          style={{ color: 'var(--semi-color-text-0)' }}
-        >
-          {throughput.toFixed(1)} t/s
-        </span>
-      </span>
-
-      {/* 延迟 */}
-      <span className='inline-flex items-baseline gap-1'>
-        <span style={{ color: 'var(--semi-color-text-2)' }}>{tr('延迟')}</span>
-        <span
-          className='font-mono tabular-nums'
-          style={{ color: 'var(--semi-color-text-0)' }}
-        >
-          {latency.toFixed(2)}s
-        </span>
-      </span>
-
-      {/* 24 格迷你在线率 + 可用率 */}
-      <div className='relative'>
-        <span
-          className='absolute bottom-full left-0 mb-0.5 whitespace-nowrap text-[10px] leading-none'
-          style={{ color: 'var(--semi-color-text-3)' }}
-        >
-          {latestLabel}
-        </span>
-        <div className='flex items-center gap-2'>
-          <div className='flex items-end gap-[2px] h-4'>
+    <div
+      aria-label={tr('最近 24 小时性能')}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        width: '100%',
+        minWidth: 0,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 20,
+          minWidth: 0,
+        }}
+      >
+        <div style={{ width: 96, flex: '0 0 96px' }}>
+          <div
+            style={{
+              ...labelStyle,
+              display: 'flex',
+              justifyContent: 'space-between',
+            }}
+          >
+            <span>{tr('状态')}</span>
+            <span
+              style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}
+            >
+              {hasData ? `${availability.toFixed(2)}%` : '—'}
+            </span>
+          </div>
+          <div
+            role='img'
+            aria-label={tr('最近成功率；灰色竖条表示该小时没有请求')}
+            title={tr('最近成功率；灰色竖条表示该小时没有请求')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              height: 12,
+              marginTop: 4,
+              width: 96,
+            }}
+          >
             {buckets.map((avail, i) => {
-              const { color, height } = barStyle(avail);
-              const hoursAgo = n - 1 - i;
+              const value = Number(avail);
+              const hoursAgo = buckets.length - 1 - i;
               const when =
                 hoursAgo === 0 ? tr('当前小时') : `${hoursAgo}h ${tr('前')}`;
               const title =
-                avail < 0
+                value < 0
                   ? `${when} · ${tr('无数据')}`
-                  : `${when} · ${avail.toFixed(2)}%`;
+                  : `${when} · ${value.toFixed(2)}%`;
               return (
                 <span
                   key={i}
-                  className='flex shrink-0 items-end w-1 h-full'
                   title={title}
-                >
-                  <span
-                    className='block w-full rounded-sm'
-                    style={{ backgroundColor: color, height }}
-                  />
-                </span>
+                  style={{
+                    display: 'block',
+                    width: 3,
+                    height: 12,
+                    flex: '0 0 3px',
+                    borderRadius: 1,
+                    backgroundColor: barColor(value),
+                  }}
+                />
               );
             })}
           </div>
-          <span
-            className='font-mono font-semibold text-xs tabular-nums'
-            style={{ color: availColor(availability) }}
+        </div>
+        {showTtft && (
+          <div
+            style={{ flex: '0 0 auto' }}
+            title={tr('首字延迟（流式请求首个 token）')}
           >
-            {availability.toFixed(1)}%
-          </span>
+            <div style={labelStyle}>{tr('首字')}</div>
+            <div
+              style={{
+                marginTop: 4,
+                fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {ttftText === '—' ? '—s' : ttftText}
+            </div>
+          </div>
+        )}
+        <div style={{ flex: '0 0 auto' }} title={tr('平均延迟')}>
+          <div style={labelStyle}>{tr('延迟')}</div>
+          <div
+            style={{
+              marginTop: 4,
+              fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {latencyText === '—' ? '—s' : latencyText}
+          </div>
+        </div>
+        <div style={{ flex: '0 0 auto' }} title={tr('吞吐')}>
+          <div style={labelStyle}>{tr('吞吐')}</div>
+          <div
+            style={{
+              marginTop: 4,
+              fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {throughputText === '—' ? '—t/s' : throughputText}
+          </div>
         </div>
       </div>
+      {children}
     </div>
   );
 };

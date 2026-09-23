@@ -7,8 +7,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -19,6 +21,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
+	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/router"
 	"github.com/QuantumNous/new-api/service"
@@ -298,6 +301,10 @@ func InitResources() error {
 		return err
 	}
 
+	// 模型广场性能采集
+	perfmetrics.Init()
+	flushPerfMetricsOnShutdown()
+
 	// 启动系统监控
 	common.StartSystemMonitor()
 
@@ -320,4 +327,24 @@ func InitResources() error {
 	}
 
 	return nil
+}
+
+// flushPerfMetricsOnShutdown 在 docker stop（SIGTERM）/Ctrl+C 时先把内存里的性能计数落库再退出。
+// 进程原本没有优雅停机，收到信号直接退出，这里保持"立即退出"的行为，只多做一次 flush（最多等 5 秒）。
+func flushPerfMetricsOnShutdown() {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGTERM, os.Interrupt)
+	go func() {
+		<-ch
+		done := make(chan struct{})
+		go func() {
+			perfmetrics.FlushAll()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+		}
+		os.Exit(0)
+	}()
 }

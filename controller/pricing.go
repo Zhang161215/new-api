@@ -3,6 +3,7 @@ package controller
 import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
@@ -76,12 +77,22 @@ func GetPricing(c *gin.Context) {
 	})
 }
 
-// GetPricingStatus 返回各模型的可用性状态（吞吐/延迟/可用率/24格），
-// 数据来自真实用量日志聚合，带 60s 内存缓存。独立于 /pricing，互不影响。
+// GetPricingStatus 返回各模型最近 24h 的请求级性能（可用率/延迟/首字/吞吐/24 格/分组）。
+// 数据来自 perf_metrics 采集器；只统计当前用户（未登录按默认）可用的分组，和 /pricing 的过滤口径一致。
 func GetPricingStatus(c *gin.Context) {
+	var group string
+	if userId, exists := c.Get("id"); exists {
+		if user, err := model.GetUserCache(userId.(int)); err == nil {
+			group = user.Group
+		}
+	}
+	allowed := make(map[string]struct{})
+	for g := range service.GetUserUsableGroups(group) {
+		allowed[g] = struct{}{}
+	}
 	c.JSON(200, gin.H{
 		"success": true,
-		"data":    model.GetModelStatuses(),
+		"data":    perfmetrics.GetModelStatuses(allowed),
 	})
 }
 

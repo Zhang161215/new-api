@@ -18,16 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { SideSheet, Typography, Button } from '@douyinfe/semi-ui';
+import { SideSheet } from '@douyinfe/semi-ui';
 import { IconClose } from '@douyinfe/semi-icons';
 
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
-import ModelHeader from './components/ModelHeader';
-import ModelBasicInfo from './components/ModelBasicInfo';
-import ModelEndpoints from './components/ModelEndpoints';
-import ModelPricingTable from './components/ModelPricingTable';
-
-const { Text } = Typography;
+import ModelSquareDetail from './components/ModelSquareDetail';
 
 const ModelDetailSideSheet = ({
   visible,
@@ -38,9 +33,7 @@ const ModelDetailSideSheet = ({
   siteDisplayType,
   tokenUnit,
   displayPrice,
-  showRatio,
   usableGroup,
-  vendorsMap,
   endpointMap,
   autoGroups,
   t,
@@ -50,60 +43,37 @@ const ModelDetailSideSheet = ({
   return (
     <SideSheet
       placement='right'
-      title={
-        <ModelHeader modelData={modelData} vendorsMap={vendorsMap} t={t} />
-      }
+      title={null}
+      headerStyle={{
+        justifyContent: 'flex-end',
+        padding: '12px 16px 0',
+        borderBottom: 0,
+      }}
       bodyStyle={{
-        padding: '0',
-        display: 'flex',
-        flexDirection: 'column',
-        borderBottom: '1px solid var(--semi-color-border)',
+        padding: '0 24px 28px',
+      }}
+      maskStyle={{
+        background: 'rgba(15, 23, 42, 0.12)',
+        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)',
       }}
       visible={visible}
-      width={isMobile ? '100%' : 600}
-      closeIcon={
-        <Button
-          className='semi-button-tertiary semi-button-size-small semi-button-borderless'
-          type='button'
-          icon={<IconClose />}
-          onClick={onClose}
-        />
-      }
+      width={isMobile ? '100%' : 900}
+      closeIcon={<IconClose />}
       onCancel={onClose}
     >
-      <div className='p-2'>
-        {!modelData && (
-          <div className='flex justify-center items-center py-10'>
-            <Text type='secondary'>{t('加载中...')}</Text>
-          </div>
-        )}
-        {modelData && (
-          <>
-            <ModelBasicInfo
-              modelData={modelData}
-              vendorsMap={vendorsMap}
-              t={t}
-            />
-            <ModelEndpoints
-              modelData={modelData}
-              endpointMap={endpointMap}
-              t={t}
-            />
-            <ModelPricingTable
-              modelData={modelData}
-              groupRatio={groupRatio}
-              currency={currency}
-              siteDisplayType={siteDisplayType}
-              tokenUnit={tokenUnit}
-              displayPrice={displayPrice}
-              showRatio={showRatio}
-              usableGroup={usableGroup}
-              autoGroups={autoGroups}
-              t={t}
-            />
-          </>
-        )}
-      </div>
+      <ModelSquareDetail
+        modelData={modelData}
+        groupRatio={groupRatio}
+        currency={currency}
+        siteDisplayType={siteDisplayType}
+        tokenUnit={tokenUnit}
+        displayPrice={displayPrice}
+        usableGroup={usableGroup}
+        endpointMap={endpointMap}
+        autoGroups={autoGroups}
+        t={t}
+      />
     </SideSheet>
   );
 };

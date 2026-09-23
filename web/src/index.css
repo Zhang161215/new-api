@@ -915,26 +915,32 @@ html.dark .with-pastel-balls::before {
 }
 
 /* ==================== 模型定价页面布局 ==================== */
+/* 模型广场：整页滚动，内容放在两侧留白的宽容器里，左侧筛选卡片吸顶（对齐上游新版） */
 .pricing-layout {
-  height: calc(100vh - 60px);
-  overflow: hidden;
   margin-top: 60px;
 }
 
+.pricing-shell {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  /* 跟随屏幕铺开，两侧只留约 2% 的边距，卡片列数随宽度自动增加 */
+  padding: 0 clamp(16px, 2vw, 40px) 32px;
+}
+
 .pricing-sidebar {
-  width: clamp(280px, 24vw, 520px) !important;
-  min-width: clamp(280px, 24vw, 520px) !important;
-  max-width: clamp(280px, 24vw, 520px) !important;
-  height: calc(100vh - 60px);
-  background-color: var(--semi-color-bg-0);
-  overflow: auto;
+  position: sticky;
+  top: 80px;
+  flex: 0 0 280px;
+  width: 280px;
+  max-height: calc(100dvh - 6rem);
+  overflow-y: auto;
+  border-radius: 12px;
 }
 
 .pricing-content {
-  height: calc(100vh - 60px);
-  background-color: var(--semi-color-bg-0);
-  display: flex;
-  flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
 .pricing-pagination-divider {
@@ -949,12 +955,8 @@ html.dark .with-pastel-balls::before {
 }
 
 .pricing-search-header {
-  padding: 0.5rem;
-  background-color: var(--semi-color-bg-0);
+  padding: 0 0 12px;
   flex-shrink: 0;
-  position: sticky;
-  top: 0;
-  z-index: 5;
 }
 
 .pricing-view-container {
@@ -2483,4 +2485,202 @@ html.dark .synai-code-card pre {
 html.dark .synai-code-card {
   background: rgba(14, 24, 46, 0.62);
   border-color: rgba(157, 182, 255, 0.18);
+}
+
+/* 模型广场筛选胶囊（对齐上游新版 pricing-sidebar） */
+.pricing-filter-section {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.pricing-filter-section:last-child {
+  border-bottom: 0;
+}
+
+.pricing-filter-chip {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 10px;
+  background: var(--semi-color-bg-0);
+  color: var(--semi-color-text-0);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 150ms, border-color 150ms;
+}
+
+.pricing-filter-chip:hover {
+  background: var(--semi-color-fill-0);
+}
+
+.pricing-filter-chip[data-active='true'] {
+  border-color: transparent;
+  background: var(--semi-color-fill-1);
+  color: var(--semi-color-primary);
+}
+
+.pricing-filter-chip-suffix {
+  flex-shrink: 0;
+  border-radius: 6px;
+  padding: 0 6px;
+  background: var(--semi-color-fill-0);
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.pricing-filter-chip[data-active='true'] .pricing-filter-chip-suffix {
+  background: var(--semi-color-bg-0);
+  color: var(--semi-color-text-0);
+}
+
+.pricing-filter-reset {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--semi-color-text-1);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pricing-filter-reset:hover:not(:disabled) {
+  background: var(--semi-color-fill-0);
+}
+
+.pricing-filter-reset:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pricing-filter-active-badge {
+  display: inline-flex;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  padding: 2px 8px;
+  background: var(--semi-color-fill-0);
+  color: var(--semi-color-text-1);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 模型详情概览指标条（对齐上游 OverviewSummaryGrid） */
+.pricing-metric-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 16px;
+  overflow: hidden;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 8px;
+  background: var(--semi-color-fill-0);
+}
+
+.pricing-metric-strip > * + * {
+  border-left: 1px solid var(--semi-color-border);
+}
+
+@media (max-width: 640px) {
+  .pricing-metric-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pricing-metric-strip > * + * {
+    border-left: 0;
+  }
+}
+
+.pricing-perf-row:hover {
+  background: var(--semi-color-fill-0);
+}
+
+/* 模型详情 API 页：分段切换 + 代码块（对齐上游 Tabs / CodeBlock） */
+.pricing-segmented {
+  display: inline-flex;
+  height: 32px;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--semi-color-fill-0);
+}
+
+.pricing-segmented > button {
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--semi-color-text-1);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.pricing-segmented > button[data-active='true'] {
+  background: var(--semi-color-bg-0);
+  color: var(--semi-color-text-0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.pricing-code-block {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 12px;
+  background: var(--semi-color-fill-0);
+}
+
+.pricing-code-block pre {
+  margin: 0;
+  overflow-x: auto;
+  padding: 16px;
+  color: var(--semi-color-text-0);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 24px;
+}
+
+.pricing-code-copy {
+  position: absolute;
+  z-index: 1;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--semi-color-text-1);
+  cursor: pointer;
+}
+
+.pricing-code-copy:hover {
+  background: var(--semi-color-fill-1);
+}
+
+/* 卡片网格按内容区宽度自适应列数（1440 宽约 3 列，对齐上游） */
+.pricing-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .pricing-shell {
+    padding: 0 12px 24px;
+  }
 }
