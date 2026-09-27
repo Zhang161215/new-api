@@ -26,4 +26,6 @@ export const PAYMENT_METHOD_MAP = {
   waffo: 'Waffo',
   alipay: '支付宝',
   wxpay: '微信',
+  offline: '线下转账',
+  usdt: 'USDT',
 };

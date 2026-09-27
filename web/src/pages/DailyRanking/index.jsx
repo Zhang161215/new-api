@@ -8,6 +8,7 @@ import { API, convertUSDToCurrency } from '../../helpers';
 import { DATE_RANGE_PRESETS } from '../../constants/console.constants';
 import { PAYMENT_METHOD_MAP } from '../../constants/payment.constants';
 import CostCard from './CostCard';
+import OfflineTopupModal from './OfflineTopupModal';
 import { listOpsCosts } from './costApi';
 import './ops.css';
 
@@ -387,7 +388,13 @@ const buildRevenue = (items, start, end, days) => {
     const money = Number(item.money || 0);
     const status = String(item.status || '');
     const method = String(item.payment_method || '').trim();
-    const online = !isSub && method && method !== 'manual' && method !== 'admin';
+    const online =
+      !isSub &&
+      method &&
+      method !== 'manual' &&
+      method !== 'admin' &&
+      method !== 'offline' &&
+      method !== 'usdt';
 
     orders.push({
       trade_no: item.trade_no,
@@ -722,6 +729,7 @@ const DailyRanking = () => {
   const [overview, setOverview] = useState(null);
   const [costItems, setCostItems] = useState([]);
   const [previous, setPrevious] = useState(null);
+  const [offlineOpen, setOfflineOpen] = useState(false);
 
   const loadCosts = useCallback(async () => {
     try {
@@ -1555,6 +1563,9 @@ const DailyRanking = () => {
             <article className='card bottom-card'>
               <div className='panel-head'>
                 <h2 className='panel-title'>{t('充值概览')}</h2>
+                <Button size='small' onClick={() => setOfflineOpen(true)}>
+                  {t('记线下充值')}
+                </Button>
               </div>
               <div>
                 {[
@@ -1698,6 +1709,15 @@ const DailyRanking = () => {
         <div className='page-body-placeholder' />
       )}
       </div>
+      <OfflineTopupModal
+        visible={offlineOpen}
+        onCancel={() => setOfflineOpen(false)}
+        onSuccess={() => {
+          setOfflineOpen(false);
+          loadData(true);
+        }}
+        t={t}
+      />
     </div>
   );
 };

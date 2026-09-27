@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -487,6 +488,14 @@ type AdminCompleteTopupRequest struct {
 	TradeNo string `json:"trade_no"`
 }
 
+type AdminCreateOfflineTopUpRequest struct {
+	UserId        int     `json:"user_id"`
+	Money         float64 `json:"money"`
+	PaymentMethod string  `json:"payment_method"`
+	CreditQuota   *bool   `json:"credit_quota"`
+	Remark        string  `json:"remark"`
+}
+
 // AdminCompleteTopUp 管理员补单接口
 func AdminCompleteTopUp(c *gin.Context) {
 	var req AdminCompleteTopupRequest
@@ -504,5 +513,34 @@ func AdminCompleteTopUp(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, nil)
+}
+
+// AdminCreateOfflineTopUp 管理员为线下转账创建成功充值单，计入签到累计。
+func AdminCreateOfflineTopUp(c *gin.Context) {
+	var req AdminCreateOfflineTopUpRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	creditQuota := true
+	if req.CreditQuota != nil {
+		creditQuota = *req.CreditQuota
+	}
+	topUp, quotaToAdd, err := model.CreateOfflineTopUp(req.UserId, req.Money, req.PaymentMethod, creditQuota)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	adminName := c.GetString("username")
+	if remark := strings.TrimSpace(req.Remark); remark != "" {
+		model.RecordLog(req.UserId, model.LogTypeManage, fmt.Sprintf("管理员(%s)线下充值备注：%s（订单 %s）", adminName, remark, topUp.TradeNo))
+	}
+	common.ApiSuccess(c, gin.H{
+		"trade_no":     topUp.TradeNo,
+		"user_id":      topUp.UserId,
+		"money":        topUp.Money,
+		"quota":        quotaToAdd,
+		"credit_quota": creditQuota,
+	})
 }
 

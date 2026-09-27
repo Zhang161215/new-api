@@ -87,7 +87,7 @@ func FillTopUpCurrency(topups []*model.TopUp) {
 // symbol 可能为空（冷门币种不硬猜符号），前端需回退成显示币种代码。
 func receiptCurrency(paymentMethod string) (code string, symbol string) {
 	switch strings.ToLower(strings.TrimSpace(paymentMethod)) {
-	case "stripe", "creem":
+	case "stripe", "creem", "offline", "usdt":
 		return "USD", "$"
 	case "waffo":
 		// Waffo 的币种是管理员可配的，读实际配置而不是假定

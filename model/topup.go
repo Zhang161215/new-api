@@ -3,6 +3,8 @@ package model
 import (
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -365,6 +367,75 @@ func ManualCompleteTopUp(tradeNo string) error {
 		fireAffiliateRebate(completed)
 	}
 	return nil
+}
+
+// CreateOfflineTopUp 管理员为线下转账补一张成功充值单。
+// money 按美元记，计入签到累计；creditQuota=true 时同时加余额。
+func CreateOfflineTopUp(userId int, money float64, paymentMethod string, creditQuota bool) (*TopUp, int, error) {
+	if userId <= 0 {
+		return nil, 0, errors.New("请选择用户")
+	}
+	if money < 0.01 {
+		return nil, 0, errors.New("金额必须大于 0.01")
+	}
+	paymentMethod = strings.TrimSpace(paymentMethod)
+	if paymentMethod == "" {
+		paymentMethod = "offline"
+	}
+
+	dMoney := decimal.NewFromFloat(money).Round(2)
+	money, _ = dMoney.Float64()
+	amount := dMoney.IntPart()
+	if amount <= 0 {
+		amount = 1
+	}
+
+	quotaToAdd := 0
+	if creditQuota {
+		quotaToAdd = int(dMoney.Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart())
+		if quotaToAdd <= 0 {
+			return nil, 0, errors.New("无效的充值额度")
+		}
+	}
+
+	now := common.GetTimestamp()
+	topUp := &TopUp{
+		UserId:        userId,
+		Amount:        amount,
+		Money:         money,
+		TradeNo:       fmt.Sprintf("OFF%d%d", userId, time.Now().UnixNano()),
+		PaymentMethod: paymentMethod,
+		CreateTime:    now,
+		CompleteTime:  now,
+		Status:        common.TopUpStatusSuccess,
+	}
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var user User
+		if err := tx.Select("id").Where("id = ?", userId).First(&user).Error; err != nil {
+			return errors.New("用户不存在")
+		}
+		if err := tx.Create(topUp).Error; err != nil {
+			return err
+		}
+		if quotaToAdd > 0 {
+			if err := tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", quotaToAdd)).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if quotaToAdd > 0 {
+		RecordLog(userId, LogTypeTopup, fmt.Sprintf("管理员线下充值成功，充值金额: %v，支付金额：%.2f，订单号：%s", logger.FormatQuota(quotaToAdd), money, topUp.TradeNo))
+	} else {
+		RecordLog(userId, LogTypeTopup, fmt.Sprintf("管理员补记线下充值订单（未加额度），支付金额：%.2f，订单号：%s", money, topUp.TradeNo))
+	}
+	fireAffiliateRebate(topUp)
+	return topUp, quotaToAdd, nil
 }
 func RechargeCreem(referenceId string, customerEmail string, customerName string) (err error) {
 	if referenceId == "" {
