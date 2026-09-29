@@ -257,10 +257,11 @@ func TestCrossGroup_StaleSpecialRatio_NotAppliedToWallet(t *testing.T) {
 	require.Nil(t, apiErr)
 	assert.Equal(t, BillingSourceWallet, session.funding.Source(),
 		"跨组应强制钱包")
-	// 记录当前行为：跨组走 wallet_only，不会触发 switchRatio，倍率保持传入值。
-	// 这说明倍率的正确性完全依赖上游 HandleGroupRatio，而非计费层兜底。
-	assert.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio,
-		"当前实现：计费层不修正上游倍率（上游 HandleGroupRatio 已保证跨组取对值）")
+	assert.Equal(t, 0.1, ri.PriceData.GroupRatioInfo.GroupRatio,
+		"跨组钱包必须降回 Claude_Aws 的 GroupRatio，不能把订阅 1x 带进钱包")
+	assert.False(t, ri.PriceData.GroupRatioInfo.HasSpecialRatio)
+	assert.Equal(t, 10, session.GetPreConsumedQuota(),
+		"预扣费应按 0.1/1 缩放：100 → 10")
 }
 
 // 账号分组被后买的日卡覆盖后，GPT 月卡额度耗尽回落钱包仍必须 1x → 0.3x。
@@ -393,4 +394,56 @@ func TestWeeklyCard_AliasBpsGroup_StackedClaudeUser(t *testing.T) {
 	session, apiErr := NewBillingSession(c, ri, 100)
 	require.Nil(t, apiErr)
 	assert.Equal(t, BillingSourceSubscription, session.funding.Source())
+}
+
+// wallet_only 直达钱包：不能把周卡专属 1x 带到钱包上（线上 zcg 不降令牌）。
+func TestWeeklyCard_AliasBpsGroup_WalletOnly_Uses03(t *testing.T) {
+	ensureSubscriptionPlanMigrated(t)
+	truncateCross(t)
+	setWeeklyCardBpsAliasRatios(t)
+
+	const userID, tokenID, planID, subID = 3304, 3304, 504, 504
+	seedUser(t, userID, 10_000_000)
+	seedToken(t, tokenID, userID, "sk-bps-4", 5_000_000)
+	seedPlan(t, planID, "Codex_GPT_PRO")
+	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 5_000_000, 0, "active", 86400)
+
+	c := newTestGinContext()
+	ri := makeRelayInfo(userID, tokenID, "sk-bps-4", "Codex_GPT_PRO", bpsGroup, "wallet_only")
+	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	require.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio,
+		"前置：HandleGroupRatio 仍会先套上专属 1x")
+
+	session, apiErr := NewBillingSession(c, ri, 1000)
+	require.Nil(t, apiErr)
+	assert.Equal(t, BillingSourceWallet, session.funding.Source())
+	assert.Equal(t, 0.3, ri.PriceData.GroupRatioInfo.GroupRatio,
+		"仅钱包必须用 GroupRatio[不降智]=0.3，不能停在周卡 1x")
+	assert.False(t, ri.PriceData.GroupRatioInfo.HasSpecialRatio)
+	assert.Equal(t, 300, session.GetPreConsumedQuota(),
+		"预扣费应按 0.3/1 缩放：1000 → 300")
+}
+
+// wallet_first 钱包够用时同样降回 0.3，不能因为账号组是 PRO 就按 1x 扣钱包。
+func TestWeeklyCard_AliasBpsGroup_WalletFirst_HasBalance_Uses03(t *testing.T) {
+	ensureSubscriptionPlanMigrated(t)
+	truncateCross(t)
+	setWeeklyCardBpsAliasRatios(t)
+
+	const userID, tokenID, planID, subID = 3305, 3305, 505, 505
+	seedUser(t, userID, 10_000_000)
+	seedToken(t, tokenID, userID, "sk-bps-5", 5_000_000)
+	seedPlan(t, planID, "Codex_GPT_PRO")
+	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 5_000_000, 0, "active", 86400)
+
+	c := newTestGinContext()
+	ri := makeRelayInfo(userID, tokenID, "sk-bps-5", "Codex_GPT_PRO", bpsGroup, "wallet_first")
+	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+
+	session, apiErr := NewBillingSession(c, ri, 1000)
+	require.Nil(t, apiErr)
+	assert.Equal(t, BillingSourceWallet, session.funding.Source())
+	assert.Equal(t, 0.3, ri.PriceData.GroupRatioInfo.GroupRatio)
+	assert.False(t, ri.PriceData.GroupRatioInfo.HasSpecialRatio)
+	assert.Equal(t, 300, session.GetPreConsumedQuota())
 }

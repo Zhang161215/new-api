@@ -265,21 +265,19 @@ func (s *BillingSession) syncRelayInfo() {
 // NewBillingSession 工厂 — 根据计费偏好创建会话并处理回退
 // ---------------------------------------------------------------------------
 
-// switchRatioForFundingFallback 在资金源发生回落时，把计价倍率切换到与新资金源
-// 匹配的那一档，并按比例缩放预扣费额度，返回新的预扣费额度。
+// switchRatioForFundingFallback 把计价倍率切到与即将使用的资金源匹配的那一档，
+// 并按比例缩放预扣费额度，返回新的预扣费额度。
 //
-// 背景：订阅套餐把用户升到 Codex_GPT_PRO 这类分组，同时用 GroupGroupRatio
-// 给「该分组用该分组令牌」配了 1 倍，使订阅额度按 1:1 消耗、便于按套餐总额定价；
-// 而常规分组倍率（GroupRatio）只有 0.2。倍率在 relay/helper/price.go 的
-// HandleGroupRatio 里就已锁定，那时还不知道这次请求最终用哪个资金源，
-// 于是回落后倍率与资金源不匹配：
+// 规则：钱包走 GroupRatio[usingGroup]（如不降智 0.3）；订阅走 GroupGroupRatio
+// 专属倍率（周卡 1x）。HandleGroupRatio 在资金源确定前就会套上专属 1x，
+// 所以 wallet_only / wallet_first 直达钱包、以及回落钱包时都必须在这里降回去，
+// 否则用户按订阅价扣钱包。
 //
-//	toWallet=true （订阅额度耗尽 → 钱包）：倍率停在 1，用户按 1 倍扣钱包，
-//	    比常规 0.2 贵 5 倍 —— 用户吃亏。
-//	toWallet=false（钱包余额不足 → 订阅）：倍率停在 0.2，订阅额度只按 1/5
-//	    的速度消耗，300 刀套餐当 1500 刀用 —— 平台吃亏。
+//	toWallet=true ：用常规分组倍率。含 wallet_only、wallet_first 成功、
+//	    订阅耗尽/无订阅回落钱包、跨组强制钱包。
+//	toWallet=false：用专属倍率。含走订阅、以及钱包不足回落订阅。
 //
-// 为什么在这里改而不在 HandleGroupRatio 里预判：
+// 为什么不在 HandleGroupRatio 里按偏好预判：
 // PreConsumeUserSubscription 会先执行 maybeResetUserSubscriptionWithPlanTx
 // （按周期重置额度）再判断余额，属于惰性重置。若在算倍率时提前查库判断
 // 「订阅还有没有额度」，会读到「该重置但尚未重置」的旧值，把有额度误判成耗尽，
@@ -294,8 +292,13 @@ func switchRatioForFundingFallback(c *gin.Context, relayInfo *relaycommon.RelayI
 	normalRatio := ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
 	covered := helper.UsingGroupCoveredByActiveSub(relayInfo)
 	specialRatio, hasSpecial := ratio_setting.ResolveSpecialGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup, covered)
-	if !hasSpecial {
-		// 没有为该令牌组配特殊倍率，两个资金源用的是同一个倍率，无需切换
+	// 钱包：配置有专属倍率，或上游已经套上（含跨组残留的 1x），都降回 GroupRatio。
+	// 订阅：必须真有专属倍率可切，否则两个资金源同倍率，不动。
+	if toWallet {
+		if !hasSpecial && !gri.HasSpecialRatio {
+			return preConsumedQuota
+		}
+	} else if !hasSpecial {
 		return preConsumedQuota
 	}
 
@@ -330,13 +333,13 @@ func switchRatioForFundingFallback(c *gin.Context, relayInfo *relaycommon.RelayI
 		gri.HasSpecialRatio = true
 	}
 
-	reason := "订阅额度已耗尽，回落钱包"
-	if !toWallet {
-		reason = "钱包额度不足，回落订阅"
+	funding := "subscription"
+	if toWallet {
+		funding = "wallet"
 	}
 	logger.LogInfo(c, fmt.Sprintf(
-		"用户 %d %s，倍率切换 (usingGroup=%s, %.4g → %.4g, 预扣费 %d → %d)",
-		relayInfo.UserId, reason, relayInfo.UsingGroup,
+		"用户 %d 倍率对齐资金源 (funding=%s, usingGroup=%s, %.4g → %.4g, 预扣费 %d → %d)",
+		relayInfo.UserId, funding, relayInfo.UsingGroup,
 		oldRatio, newRatio, preConsumedQuota, newPreConsumed))
 
 	return newPreConsumed
@@ -366,6 +369,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 
 	// 钱包路径需要先检查用户额度
 	tryWallet := func() (*BillingSession, *types.NewAPIError) {
+		preConsumedQuota = switchRatioForFundingFallback(c, relayInfo, preConsumedQuota, true)
 		userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
 		if err != nil {
 			return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
@@ -395,6 +399,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	}
 
 	trySubscription := func() (*BillingSession, *types.NewAPIError) {
+		preConsumedQuota = switchRatioForFundingFallback(c, relayInfo, preConsumedQuota, false)
 		subConsume := int64(preConsumedQuota)
 		if subConsume <= 0 {
 			subConsume = 1
@@ -430,9 +435,6 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		session, err := tryWallet()
 		if err != nil {
 			if err.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
-				// 钱包余额不足 → 回落订阅。倍率要从常规分组倍率切到订阅专用的
-				// 特殊倍率，否则订阅额度只按 1/5 速度消耗（平台吃亏）。
-				preConsumedQuota = switchRatioForFundingFallback(c, relayInfo, preConsumedQuota, false)
 				return trySubscription()
 			}
 			return nil, err
@@ -451,11 +453,6 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		session, apiErr := trySubscription()
 		if apiErr != nil {
 			if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
-				// 订阅额度耗尽 → 回落钱包。此时必须把订阅专用的分组特殊倍率
-				// 降回常规分组倍率，否则用户会以订阅倍率（如 1）扣钱包，
-				// 而不是常规优惠倍率（如 0.2）。tryWallet 闭包捕获的是
-				// preConsumedQuota 变量本身，重新赋值即可让其使用缩放后的值。
-				preConsumedQuota = switchRatioForFundingFallback(c, relayInfo, preConsumedQuota, true)
 				return tryWallet()
 			}
 			return nil, apiErr

@@ -206,3 +206,58 @@ func TestSubscriptionExhausted_NoSpecialRatio_Untouched(t *testing.T) {
 	assert.Equal(t, 1000, session.GetPreConsumedQuota(),
 		"未套用特殊倍率时不得缩放预扣费")
 }
+
+// wallet_only 即使账号组=令牌组=订阅组，HandleGroupRatio 套上 1x 后也必须降回常规倍率。
+func TestWalletOnly_SameGroup_UsesNormalGroupRatio(t *testing.T) {
+	ensureSubscriptionPlanMigrated(t)
+	truncateCross(t)
+	setRatios(t, "gpt_month", 0.2, 1)
+
+	const userID, tokenID, planID, subID = 2106, 2106, 196, 96
+	seedUser(t, userID, 10_000_000)
+	seedToken(t, tokenID, userID, "sk-ratio-6", 5_000_000)
+	seedPlan(t, planID, "gpt_month")
+	seedSubWithGroup(t, subID, userID, planID, "gpt_month", 5_000_000, 0, "active", 86400)
+
+	c := newTestGinContext()
+	ri := makeRelayInfo(userID, tokenID, "sk-ratio-6", "gpt_month", "gpt_month", "wallet_only")
+	ri.PriceData.GroupRatioInfo = types.GroupRatioInfo{
+		GroupRatio:        1,
+		GroupSpecialRatio: 1,
+		HasSpecialRatio:   true,
+	}
+
+	session, apiErr := NewBillingSession(c, ri, 1000)
+	require.Nil(t, apiErr)
+	assert.Equal(t, BillingSourceWallet, session.funding.Source())
+	assert.Equal(t, 0.2, ri.PriceData.GroupRatioInfo.GroupRatio,
+		"仅钱包必须用常规分组倍率，不能把订阅 1x 带到钱包")
+	assert.False(t, ri.PriceData.GroupRatioInfo.HasSpecialRatio)
+	assert.Equal(t, 200, session.GetPreConsumedQuota())
+}
+
+// 订阅过期 / 无生效订阅：subscription_first 直达钱包，同样降回常规倍率。
+func TestSubscriptionFirst_NoActiveSub_UsesNormalGroupRatio(t *testing.T) {
+	ensureSubscriptionPlanMigrated(t)
+	truncateCross(t)
+	setRatios(t, "gpt_month", 0.2, 1)
+
+	const userID, tokenID = 2107, 2107
+	seedUser(t, userID, 10_000_000)
+	seedToken(t, tokenID, userID, "sk-ratio-7", 5_000_000)
+
+	c := newTestGinContext()
+	ri := makeRelayInfo(userID, tokenID, "sk-ratio-7", "gpt_month", "gpt_month", "subscription_first")
+	ri.PriceData.GroupRatioInfo = types.GroupRatioInfo{
+		GroupRatio:        1,
+		GroupSpecialRatio: 1,
+		HasSpecialRatio:   true,
+	}
+
+	session, apiErr := NewBillingSession(c, ri, 1000)
+	require.Nil(t, apiErr)
+	assert.Equal(t, BillingSourceWallet, session.funding.Source())
+	assert.Equal(t, 0.2, ri.PriceData.GroupRatioInfo.GroupRatio)
+	assert.False(t, ri.PriceData.GroupRatioInfo.HasSpecialRatio)
+	assert.Equal(t, 200, session.GetPreConsumedQuota())
+}
