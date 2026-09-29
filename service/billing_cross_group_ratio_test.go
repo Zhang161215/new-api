@@ -310,3 +310,87 @@ func TestHandleGroupRatio_NoGPTSub_OverwrittenGroup_Stays03(t *testing.T) {
 	assert.Equal(t, 0.3, got.GroupRatio)
 	assert.False(t, got.HasSpecialRatio)
 }
+
+const bpsGroup = "Codex_GPT_BPS[不降智]"
+
+func setWeeklyCardBpsAliasRatios(t *testing.T) {
+	t.Helper()
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(
+		`{"default":0,"Codex_GPT_PRO":0.3,"Claude_Aws":0.1,"Codex_GPT_BPS[不降智]":0.3}`))
+	require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(
+		`{"Codex_GPT_PRO":{"Codex_GPT_PRO":1,"Codex_GPT_BPS[不降智]":1},"Codex_GPT_BPS[不降智]":{"Codex_GPT_BPS[不降智]":1}}`))
+	t.Cleanup(func() {
+		_ = ratio_setting.UpdateGroupGroupRatioByJSONString(`{}`)
+	})
+}
+
+// 方案 1：现有周卡 upgrade_group=Codex_GPT_PRO，令牌切到不降智分组仍扣周卡、1x。
+func TestWeeklyCard_AliasBpsGroup_UsesSubscription(t *testing.T) {
+	ensureSubscriptionPlanMigrated(t)
+	truncateCross(t)
+	setWeeklyCardBpsAliasRatios(t)
+
+	const userID, tokenID, planID, subID = 3301, 3301, 501, 501
+	seedUser(t, userID, 10_000_000)
+	seedToken(t, tokenID, userID, "sk-bps-1", 5_000_000)
+	seedPlan(t, planID, "Codex_GPT_PRO")
+	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 5_000_000, 0, "active", 86400)
+
+	c := newTestGinContext()
+	ri := makeRelayInfo(userID, tokenID, "sk-bps-1", "Codex_GPT_PRO", bpsGroup, "subscription_first")
+	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	require.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio)
+	require.True(t, ri.PriceData.GroupRatioInfo.HasSpecialRatio)
+
+	session, apiErr := NewBillingSession(c, ri, 100)
+	require.Nil(t, apiErr)
+	assert.Equal(t, BillingSourceSubscription, session.funding.Source(),
+		"周卡别名分组必须扣订阅，不能被当成跨组打钱包")
+	sub, ok := session.funding.(*SubscriptionFunding)
+	require.True(t, ok)
+	assert.Equal(t, "Codex_GPT_PRO", sub.usingGroup,
+		"预扣应归到周卡 upgrade_group，避免和 Claude 卡抢扣费顺序")
+	assert.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio)
+}
+
+func TestWeeklyCard_AliasBpsGroup_ClaudeStillWallet(t *testing.T) {
+	ensureSubscriptionPlanMigrated(t)
+	truncateCross(t)
+	setWeeklyCardBpsAliasRatios(t)
+
+	const userID, tokenID, planID, subID = 3302, 3302, 502, 502
+	seedUser(t, userID, 10_000_000)
+	seedToken(t, tokenID, userID, "sk-bps-2", 5_000_000)
+	seedPlan(t, planID, "Codex_GPT_PRO")
+	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 5_000_000, 0, "active", 86400)
+
+	c := newTestGinContext()
+	ri := makeRelayInfo(userID, tokenID, "sk-bps-2", "Codex_GPT_PRO", "Claude_Aws", "subscription_first")
+	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	session, apiErr := NewBillingSession(c, ri, 100)
+	require.Nil(t, apiErr)
+	assert.Equal(t, BillingSourceWallet, session.funding.Source(),
+		"别名不能把 Claude_Aws 也算进周卡")
+	assert.Equal(t, 0.1, ri.PriceData.GroupRatioInfo.GroupRatio)
+}
+
+func TestWeeklyCard_AliasBpsGroup_StackedClaudeUser(t *testing.T) {
+	ensureSubscriptionPlanMigrated(t)
+	truncateCross(t)
+	setWeeklyCardBpsAliasRatios(t)
+
+	const userID, tokenID, planID, subID = 3303, 3303, 503, 503
+	seedUser(t, userID, 10_000_000)
+	seedToken(t, tokenID, userID, "sk-bps-3", 5_000_000)
+	seedPlan(t, planID, "Codex_GPT_PRO")
+	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 5_000_000, 0, "active", 86400)
+
+	c := newTestGinContext()
+	ri := makeRelayInfo(userID, tokenID, "sk-bps-3", "Claude_Aws", bpsGroup, "subscription_first")
+	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	assert.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio,
+		"账号被日卡改成 Claude_Aws 后，不降智令牌仍应按周卡 1x 扣")
+	session, apiErr := NewBillingSession(c, ri, 100)
+	require.Nil(t, apiErr)
+	assert.Equal(t, BillingSourceSubscription, session.funding.Source())
+}

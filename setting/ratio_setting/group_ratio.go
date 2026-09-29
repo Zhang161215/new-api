@@ -3,6 +3,7 @@ package ratio_setting
 import (
 	"encoding/json"
 	"errors"
+	"sort"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/config"
@@ -102,6 +103,40 @@ func GetGroupGroupRatio(userGroup, usingGroup string) (float64, bool) {
 	return ratio, true
 }
 
+// CoveringSubscriptionGroup 返回覆盖 usingGroup 的那张生效订阅分组。
+//
+// 先精确匹配 upgrade_group；否则看 GroupGroupRatio[upgradeGroup][usingGroup]
+// 是否已配置（管理端给周卡加的别名，例如 Codex_GPT_PRO → Codex_GPT_BPS[不降智]）。
+// 多个父分组同时命中时按名字排序取第一个，保证扣费顺序稳定。
+func CoveringSubscriptionGroup(usingGroup string, activeGroups map[string]bool) (string, bool) {
+	if usingGroup == "" || len(activeGroups) == 0 {
+		return "", false
+	}
+	if activeGroups[usingGroup] {
+		return usingGroup, true
+	}
+	parents := make([]string, 0, 2)
+	for g := range activeGroups {
+		if g == "" || g == usingGroup {
+			continue
+		}
+		if _, ok := GetGroupGroupRatio(g, usingGroup); ok {
+			parents = append(parents, g)
+		}
+	}
+	if len(parents) == 0 {
+		return "", false
+	}
+	sort.Strings(parents)
+	return parents[0], true
+}
+
+// UsingGroupCoveredByActiveSubs 当前令牌分组是否应由订阅额度支付。
+func UsingGroupCoveredByActiveSubs(usingGroup string, activeGroups map[string]bool) bool {
+	_, ok := CoveringSubscriptionGroup(usingGroup, activeGroups)
+	return ok
+}
+
 // ResolveSpecialGroupRatio 决定这次请求该不该套 GroupGroupRatio 里的专属倍率。
 //
 // 第一优先：配置里有 [userGroup][usingGroup]（用户当前就坐在该分组里）。
@@ -110,8 +145,8 @@ func GetGroupGroupRatio(userGroup, usingGroup string) (float64, bool) {
 // 但先买的那张订阅仍应按自己的专属倍率扣（线上 1688 Ethan：账号被日卡改成
 // Claude_Aws 后，GPT 月卡从 1x 错成 0.3x）。
 //
-// coveredByActiveSub 必须由调用方按「usingGroup 是否在 active 订阅的
-// upgrade_group 集合里」传入，本函数不查库。
+// coveredByActiveSub 必须由调用方按「usingGroup 是否被生效订阅覆盖」传入，
+// 本函数不查库。覆盖包含 upgrade_group 精确匹配，以及 GroupGroupRatio 别名。
 func ResolveSpecialGroupRatio(userGroup, usingGroup string, coveredByActiveSub bool) (float64, bool) {
 	if ratio, ok := GetGroupGroupRatio(userGroup, usingGroup); ok {
 		return ratio, true

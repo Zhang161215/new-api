@@ -33,7 +33,7 @@ func GetUserGroups(c *gin.Context) {
 	for groupName, _ := range ratio_setting.GetGroupRatioCopy() {
 		// UserUsableGroups contains the groups that the user can use
 		if desc, ok := userUsableGroups[groupName]; ok {
-			covered := activeGroups != nil && activeGroups[groupName]
+			covered := ratio_setting.UsingGroupCoveredByActiveSubs(groupName, activeGroups)
 			usableGroups[groupName] = map[string]interface{}{
 				"ratio": service.GetUserGroupRatioWithCoverage(userGroup, groupName, covered),
 				"desc":  desc,

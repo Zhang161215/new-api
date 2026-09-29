@@ -42,3 +42,33 @@ func TestResolveSpecialGroupRatio(t *testing.T) {
 		assert.Equal(t, float64(-1), r)
 	})
 }
+
+func TestCoveringSubscriptionGroup(t *testing.T) {
+	require.NoError(t, UpdateGroupGroupRatioByJSONString(
+		`{"Codex_GPT_PRO":{"Codex_GPT_PRO":1,"Codex_GPT_BPS[不降智]":1},"Codex_GPT_BPS[不降智]":{"Codex_GPT_BPS[不降智]":1}}`))
+	t.Cleanup(func() {
+		_ = UpdateGroupGroupRatioByJSONString(`{}`)
+	})
+	const bps = "Codex_GPT_BPS[不降智]"
+
+	t.Run("精确匹配 upgrade_group", func(t *testing.T) {
+		g, ok := CoveringSubscriptionGroup("Codex_GPT_PRO", map[string]bool{"Codex_GPT_PRO": true})
+		assert.True(t, ok)
+		assert.Equal(t, "Codex_GPT_PRO", g)
+	})
+	t.Run("周卡别名覆盖不降智分组", func(t *testing.T) {
+		g, ok := CoveringSubscriptionGroup(bps, map[string]bool{"Codex_GPT_PRO": true})
+		assert.True(t, ok)
+		assert.Equal(t, "Codex_GPT_PRO", g)
+		assert.True(t, UsingGroupCoveredByActiveSubs(bps, map[string]bool{"Codex_GPT_PRO": true}))
+	})
+	t.Run("未配置别名的跨组不覆盖", func(t *testing.T) {
+		_, ok := CoveringSubscriptionGroup("Claude_Aws", map[string]bool{"Codex_GPT_PRO": true})
+		assert.False(t, ok)
+		assert.False(t, UsingGroupCoveredByActiveSubs("Claude_Aws", map[string]bool{"Codex_GPT_PRO": true}))
+	})
+	t.Run("无订阅不覆盖", func(t *testing.T) {
+		_, ok := CoveringSubscriptionGroup(bps, nil)
+		assert.False(t, ok)
+	})
+}

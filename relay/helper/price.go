@@ -53,12 +53,18 @@ func EnsureActiveSubscriptionGroups(relayInfo *relaycommon.RelayInfo) map[string
 }
 
 // usingGroupCoveredByActiveSub 当前令牌分组是否被用户某张生效订阅覆盖。
+// 含 GroupGroupRatio 别名：周卡 upgrade_group=Codex_GPT_PRO 时，
+// 配置了 Codex_GPT_PRO→不降智 的专属倍率即可扣同一张卡。
 func usingGroupCoveredByActiveSub(relayInfo *relaycommon.RelayInfo) bool {
 	if relayInfo == nil || relayInfo.UsingGroup == "" {
 		return false
 	}
-	groups := EnsureActiveSubscriptionGroups(relayInfo)
-	return groups != nil && groups[relayInfo.UsingGroup]
+	return ratio_setting.UsingGroupCoveredByActiveSubs(relayInfo.UsingGroup, EnsureActiveSubscriptionGroups(relayInfo))
+}
+
+// UsingGroupCoveredByActiveSub 导出给计费会话使用。
+func UsingGroupCoveredByActiveSub(relayInfo *relaycommon.RelayInfo) bool {
+	return usingGroupCoveredByActiveSub(relayInfo)
 }
 
 // HandleGroupRatio checks for "auto_group" in the context and updates the group ratio and relayInfo.UsingGroup if present

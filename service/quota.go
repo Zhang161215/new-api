@@ -117,10 +117,7 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	}
 
 	actualGroupRatio := groupRatio
-	covered := false
-	if groups := helper.EnsureActiveSubscriptionGroups(relayInfo); groups != nil {
-		covered = groups[relayInfo.UsingGroup]
-	}
+	covered := helper.UsingGroupCoveredByActiveSub(relayInfo)
 	if special, ok := ratio_setting.ResolveSpecialGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup, covered); ok {
 		actualGroupRatio = special
 	}

@@ -292,10 +292,7 @@ func (s *BillingSession) syncRelayInfo() {
 func switchRatioForFundingFallback(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int, toWallet bool) int {
 	gri := &relayInfo.PriceData.GroupRatioInfo
 	normalRatio := ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
-	covered := false
-	if groups := helper.EnsureActiveSubscriptionGroups(relayInfo); groups != nil {
-		covered = groups[relayInfo.UsingGroup]
-	}
+	covered := helper.UsingGroupCoveredByActiveSub(relayInfo)
 	specialRatio, hasSpecial := ratio_setting.ResolveSpecialGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup, covered)
 	if !hasSpecial {
 		// 没有为该令牌组配特殊倍率，两个资金源用的是同一个倍率，无需切换
@@ -353,12 +350,13 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
 
-	// ---- 跨组计费：usingGroup 不在用户任一 active 订阅的 upgrade_group 集合内时强制走钱包 ----
-	// 统一规则，覆盖所有 BillingPreference（含 subscription_only），对 vip 等组也不做例外，
-	// 避免订阅额度被非包月分组消耗。无订阅用户 activeGroups 为空，直接跳过保持原 pref。
+	// ---- 跨组计费：令牌分组未被任一生效订阅覆盖时强制走钱包 ----
+	// 精确匹配 upgrade_group，或 GroupGroupRatio[upgrade_group][usingGroup] 已配置（周卡别名）。
+	// 统一规则，覆盖所有 BillingPreference（含 subscription_only），对 vip 等组也不做例外。
+	// 无订阅用户 activeGroups 为空，直接跳过保持原 pref。
 	if relayInfo.UsingGroup != "" {
 		activeGroups := helper.EnsureActiveSubscriptionGroups(relayInfo)
-		if len(activeGroups) > 0 && !activeGroups[relayInfo.UsingGroup] {
+		if len(activeGroups) > 0 && !helper.UsingGroupCoveredByActiveSub(relayInfo) {
 			pref = "wallet_only"
 			logger.LogInfo(c, fmt.Sprintf(
 				"用户 %d 跨组访问 (userGroup=%s, usingGroup=%s, activeSubGroups=%v), 强制使用钱包计费",
@@ -401,13 +399,17 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		if subConsume <= 0 {
 			subConsume = 1
 		}
+		usingForSub := relayInfo.UsingGroup
+		if g, ok := ratio_setting.CoveringSubscriptionGroup(relayInfo.UsingGroup, helper.EnsureActiveSubscriptionGroups(relayInfo)); ok {
+			usingForSub = g
+		}
 		session := &BillingSession{
 			relayInfo: relayInfo,
 			funding: &SubscriptionFunding{
 				requestId:  relayInfo.RequestId,
 				userId:     relayInfo.UserId,
 				modelName:  relayInfo.OriginModelName,
-				usingGroup: relayInfo.UsingGroup,
+				usingGroup: usingForSub,
 				amount:     subConsume,
 			},
 		}
