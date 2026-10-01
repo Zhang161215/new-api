@@ -58,13 +58,24 @@ func GetUserGroupRatio(userGroup, group string) float64 {
 	return GetUserGroupRatioWithCoverage(userGroup, group, false)
 }
 
-// GetUserGroupRatioWithCoverage 在叠卡场景下，令牌分组只要被生效订阅覆盖，
-// 就套该分组自己的专属倍率，不要求 users.group 与令牌分组相同。
+// GetUserGroupRatioWithCoverage 兼容旧调用。covered=true 时按「该组自己有订阅」处理。
 func GetUserGroupRatioWithCoverage(userGroup, group string, coveredByActiveSub bool) float64 {
-	if ratio, ok := ratio_setting.ResolveSpecialGroupRatio(userGroup, group, coveredByActiveSub); ok {
+	var active map[string]bool
+	if coveredByActiveSub {
+		active = map[string]bool{group: true}
+	}
+	return GetUserGroupRatioWithActiveSubs(userGroup, group, active)
+}
+
+// GetUserGroupRatioWithActiveSubs 展示用：有覆盖该令牌的周卡时给套餐倍率，
+// 否则给钱包倍率（含 VIP 折扣）。
+func GetUserGroupRatioWithActiveSubs(userGroup, group string, activeGroups map[string]bool) float64 {
+	if ratio_setting.UsingGroupCoveredByActiveSubs(group, activeGroups) {
+		ratio, _ := ratio_setting.ResolveSubscriptionGroupRatio(userGroup, group, activeGroups)
 		return ratio
 	}
-	return ratio_setting.GetGroupRatio(group)
+	ratio, _ := ratio_setting.ResolveWalletGroupRatio(userGroup, group, activeGroups)
+	return ratio
 }
 
 // IsSpeciallyGrantedGroup checks whether targetGroup was added to userGroup's

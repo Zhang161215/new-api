@@ -261,26 +261,31 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		return
 	}
 
-	// 获取用户和组的倍率信息
 	group := task.Group
-	if group == "" {
-		user, err := model.GetUserById(task.UserId, false)
-		if err == nil {
-			group = user.Group
-		}
-	}
-	if group == "" {
-		return
-	}
-
-	groupRatio := ratio_setting.GetGroupRatio(group)
-	userGroupRatio, hasUserGroupRatio := ratio_setting.GetGroupGroupRatio(group, group)
-
 	var finalGroupRatio float64
-	if hasUserGroupRatio {
-		finalGroupRatio = userGroupRatio
+	if bc := task.PrivateData.BillingContext; bc != nil && bc.GroupRatio > 0 {
+		// 提交时已经按资金源对齐过，重算必须沿用，不能再套 [group][group] 1x。
+		finalGroupRatio = bc.GroupRatio
 	} else {
-		finalGroupRatio = groupRatio
+		if group == "" {
+			user, err := model.GetUserById(task.UserId, false)
+			if err == nil {
+				group = user.Group
+			}
+		}
+		if group == "" {
+			return
+		}
+		userGroup := ""
+		if user, err := model.GetUserById(task.UserId, false); err == nil {
+			userGroup = user.Group
+		}
+		active, _ := model.GetActiveSubscriptionUpgradeGroups(task.UserId)
+		if taskIsSubscription(task) {
+			finalGroupRatio, _ = ratio_setting.ResolveSubscriptionGroupRatio(userGroup, group, active)
+		} else {
+			finalGroupRatio, _ = ratio_setting.ResolveWalletGroupRatio(userGroup, group, active)
+		}
 	}
 
 	// 计算 OtherRatios 乘积（视频折扣、时长等）

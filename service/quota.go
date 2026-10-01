@@ -117,9 +117,11 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	}
 
 	actualGroupRatio := groupRatio
-	covered := helper.UsingGroupCoveredByActiveSub(relayInfo)
-	if special, ok := ratio_setting.ResolveSpecialGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup, covered); ok {
-		actualGroupRatio = special
+	active := helper.EnsureActiveSubscriptionGroups(relayInfo)
+	if relayInfo.BillingSource == BillingSourceSubscription {
+		actualGroupRatio, _ = ratio_setting.ResolveSubscriptionGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup, active)
+	} else {
+		actualGroupRatio, _ = ratio_setting.ResolveWalletGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup, active)
 	}
 
 	quotaInfo := QuotaInfo{

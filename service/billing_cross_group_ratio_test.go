@@ -447,3 +447,148 @@ func TestWeeklyCard_AliasBpsGroup_WalletFirst_HasBalance_Uses03(t *testing.T) {
 	assert.False(t, ri.PriceData.GroupRatioInfo.HasSpecialRatio)
 	assert.Equal(t, 300, session.GetPreConsumedQuota())
 }
+
+func setVipAndWeeklyRatios(t *testing.T) {
+	t.Helper()
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(
+		`{"default":0,"vip":0.1,"Codex_GPT_PRO":0.3,"Claude_Aws":0.1,"Codex_GPT_BPS[不降智]":0.3}`))
+	require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(
+		`{"Codex_GPT_PRO":{"Codex_GPT_PRO":1,"Codex_GPT_BPS[不降智]":1},"Codex_GPT_BPS[不降智]":{"Codex_GPT_BPS[不降智]":1},"vip":{"Claude_Aws":0.15,"Codex_GPT_PRO":0.2}}`))
+	t.Cleanup(func() { _ = ratio_setting.UpdateGroupGroupRatioByJSONString(`{}`) })
+}
+
+func TestVip_WalletOnly_ProGroup_Keeps02(t *testing.T) {
+	ensureSubscriptionPlanMigrated(t)
+	truncateCross(t)
+	setVipAndWeeklyRatios(t)
+
+	const userID, tokenID = 3401, 3401
+	seedUser(t, userID, 10_000_000)
+	seedToken(t, tokenID, userID, "sk-vip-1", 5_000_000)
+
+	c := newTestGinContext()
+	ri := makeRelayInfo(userID, tokenID, "sk-vip-1", "vip", "Codex_GPT_PRO", "wallet_only")
+	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	require.Equal(t, 0.2, ri.PriceData.GroupRatioInfo.GroupRatio)
+
+	session, apiErr := NewBillingSession(c, ri, 1000)
+	require.Nil(t, apiErr)
+	assert.Equal(t, BillingSourceWallet, session.funding.Source())
+	assert.Equal(t, 0.2, ri.PriceData.GroupRatioInfo.GroupRatio,
+		"VIP 打 PRO 走钱包必须保留 0.2，不能被改成 GroupRatio 0.3")
+	assert.True(t, ri.PriceData.GroupRatioInfo.HasSpecialRatio)
+	assert.Equal(t, 1000, session.GetPreConsumedQuota())
+}
+
+func TestVip_WalletOnly_Claude_Keeps015(t *testing.T) {
+	ensureSubscriptionPlanMigrated(t)
+	truncateCross(t)
+	setVipAndWeeklyRatios(t)
+
+	const userID, tokenID = 3402, 3402
+	seedUser(t, userID, 10_000_000)
+	seedToken(t, tokenID, userID, "sk-vip-2", 5_000_000)
+
+	c := newTestGinContext()
+	ri := makeRelayInfo(userID, tokenID, "sk-vip-2", "vip", "Claude_Aws", "wallet_only")
+	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+
+	session, apiErr := NewBillingSession(c, ri, 100)
+	require.Nil(t, apiErr)
+	assert.Equal(t, BillingSourceWallet, session.funding.Source())
+	assert.Equal(t, 0.15, ri.PriceData.GroupRatioInfo.GroupRatio,
+		"VIP 打 Claude 走钱包必须保留 0.15，不能落到 GroupRatio 0.1")
+}
+
+func TestVip_WithWeeklyCard_SubscriptionUses1x(t *testing.T) {
+	ensureSubscriptionPlanMigrated(t)
+	truncateCross(t)
+	setVipAndWeeklyRatios(t)
+
+	const userID, tokenID, planID, subID = 3403, 3403, 601, 601
+	seedUser(t, userID, 10_000_000)
+	seedToken(t, tokenID, userID, "sk-vip-3", 5_000_000)
+	seedPlan(t, planID, "Codex_GPT_PRO")
+	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 5_000_000, 0, "active", 86400)
+
+	c := newTestGinContext()
+	ri := makeRelayInfo(userID, tokenID, "sk-vip-3", "vip", "Codex_GPT_PRO", "subscription_first")
+	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	require.Equal(t, 0.2, ri.PriceData.GroupRatioInfo.GroupRatio,
+		"前置：HandleGroupRatio 先套 VIP 0.2")
+
+	session, apiErr := NewBillingSession(c, ri, 200)
+	require.Nil(t, apiErr)
+	assert.Equal(t, BillingSourceSubscription, session.funding.Source())
+	assert.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio,
+		"VIP 有周卡时订阅必须按套餐 1x，不能用 0.2 慢耗卡")
+	assert.True(t, ri.PriceData.GroupRatioInfo.HasSpecialRatio)
+	assert.Equal(t, 1000, session.GetPreConsumedQuota(),
+		"预扣费应按 1/0.2 放大：200 → 1000")
+}
+
+func TestVip_WithWeeklyCard_WalletOnly_Keeps02(t *testing.T) {
+	ensureSubscriptionPlanMigrated(t)
+	truncateCross(t)
+	setVipAndWeeklyRatios(t)
+
+	const userID, tokenID, planID, subID = 3404, 3404, 602, 602
+	seedUser(t, userID, 10_000_000)
+	seedToken(t, tokenID, userID, "sk-vip-4", 5_000_000)
+	seedPlan(t, planID, "Codex_GPT_PRO")
+	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 5_000_000, 0, "active", 86400)
+
+	c := newTestGinContext()
+	ri := makeRelayInfo(userID, tokenID, "sk-vip-4", "vip", "Codex_GPT_PRO", "wallet_only")
+	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+
+	session, apiErr := NewBillingSession(c, ri, 1000)
+	require.Nil(t, apiErr)
+	assert.Equal(t, BillingSourceWallet, session.funding.Source())
+	assert.Equal(t, 0.2, ri.PriceData.GroupRatioInfo.GroupRatio)
+	assert.Equal(t, 1000, session.GetPreConsumedQuota())
+}
+
+func TestVip_WithWeeklyCard_Exhausted_FallsBackTo02(t *testing.T) {
+	ensureSubscriptionPlanMigrated(t)
+	truncateCross(t)
+	setVipAndWeeklyRatios(t)
+
+	const userID, tokenID, planID, subID = 3405, 3405, 603, 603
+	seedUser(t, userID, 10_000_000)
+	seedToken(t, tokenID, userID, "sk-vip-5", 5_000_000)
+	seedPlan(t, planID, "Codex_GPT_PRO")
+	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 1000, 1000, "active", 86400)
+
+	c := newTestGinContext()
+	ri := makeRelayInfo(userID, tokenID, "sk-vip-5", "vip", "Codex_GPT_PRO", "subscription_first")
+	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	require.Equal(t, 0.2, ri.PriceData.GroupRatioInfo.GroupRatio)
+
+	session, apiErr := NewBillingSession(c, ri, 200)
+	require.Nil(t, apiErr)
+	assert.Equal(t, BillingSourceWallet, session.funding.Source())
+	assert.Equal(t, 0.2, ri.PriceData.GroupRatioInfo.GroupRatio,
+		"周卡耗尽回落钱包必须保留 VIP 0.2，不能掉到 GroupRatio 0.3")
+	assert.Equal(t, 200, session.GetPreConsumedQuota())
+}
+
+func TestVip_WalletOnly_Bps_Inherits02(t *testing.T) {
+	ensureSubscriptionPlanMigrated(t)
+	truncateCross(t)
+	setVipAndWeeklyRatios(t)
+
+	const userID, tokenID = 3406, 3406
+	seedUser(t, userID, 10_000_000)
+	seedToken(t, tokenID, userID, "sk-vip-6", 5_000_000)
+
+	c := newTestGinContext()
+	ri := makeRelayInfo(userID, tokenID, "sk-vip-6", "vip", bpsGroup, "wallet_only")
+	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+
+	session, apiErr := NewBillingSession(c, ri, 1000)
+	require.Nil(t, apiErr)
+	assert.Equal(t, BillingSourceWallet, session.funding.Source())
+	assert.Equal(t, 0.2, ri.PriceData.GroupRatioInfo.GroupRatio,
+		"不降智是周卡别名，VIP 钱包应沿用 vip→PRO 的 0.2")
+}

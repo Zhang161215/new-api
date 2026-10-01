@@ -137,7 +137,83 @@ func UsingGroupCoveredByActiveSubs(usingGroup string, activeGroups map[string]bo
 	return ok
 }
 
-// ResolveSpecialGroupRatio 决定这次请求该不该套 GroupGroupRatio 里的专属倍率。
+// IsSittingDiscountGroup 账号组只配了「坐席折扣」（如 vip→PRO 0.2），
+// 没有 [group][group] 套餐价。买周卡时不应改写这个身份，否则钱包折扣会丢。
+func IsSittingDiscountGroup(group string) bool {
+	if group == "" {
+		return false
+	}
+	if _, selfPkg := GetGroupGroupRatio(group, group); selfPkg {
+		return false
+	}
+	_, hasRow := groupGroupRatioMap.Get(group)
+	return hasRow
+}
+
+// sittingRatioFromAlias 令牌组是某套餐的别名时（PRO→不降智），
+// 沿用账号组对该套餐的坐席折扣（vip→PRO 0.2 → 打不降智也是 0.2）。
+func sittingRatioFromAlias(userGroup, usingGroup string) (float64, bool) {
+	if userGroup == "" || usingGroup == "" || userGroup == usingGroup {
+		return -1, false
+	}
+	for pkg, inner := range groupGroupRatioMap.ReadAll() {
+		if pkg == "" || pkg == userGroup || inner == nil {
+			continue
+		}
+		if _, self := inner[pkg]; !self {
+			continue
+		}
+		if _, aliased := inner[usingGroup]; !aliased {
+			continue
+		}
+		if sitting, ok := GetGroupGroupRatio(userGroup, pkg); ok {
+			return sitting, true
+		}
+	}
+	return -1, false
+}
+
+// ResolveWalletGroupRatio 钱包应使用的分组倍率。
+//
+// 账号组对令牌组配了专属倍率时，默认用这档（vip→Codex_GPT_PRO 0.2）。
+// 若该账号组给自己配了 [userGroup][userGroup]（周卡/套餐 1x），
+// 则 [userGroup][*] 都是套餐价或别名，钱包一律回 GroupRatio。
+// 周卡过期后 users.group 仍是 Codex_GPT_PRO 时，也不能继续按 1x 扣钱包。
+func ResolveWalletGroupRatio(userGroup, usingGroup string, activeGroups map[string]bool) (float64, bool) {
+	_ = activeGroups
+	sitting, hasSitting := GetGroupGroupRatio(userGroup, usingGroup)
+	if hasSitting {
+		if _, selfPkg := GetGroupGroupRatio(userGroup, userGroup); selfPkg {
+			return GetGroupRatio(usingGroup), false
+		}
+		return sitting, true
+	}
+	if inherited, ok := sittingRatioFromAlias(userGroup, usingGroup); ok {
+		return inherited, true
+	}
+	return GetGroupRatio(usingGroup), false
+}
+
+// ResolveSubscriptionGroupRatio 订阅应使用的分组倍率。
+//
+// 以覆盖该令牌的 upgrade_group 为准取套餐专属（PRO→PRO / PRO→不降智 1x），
+// 不用账号当前组的 VIP 折扣。否则 vip 用户买了周卡仍按 0.2 扣订阅，套餐被少耗。
+func ResolveSubscriptionGroupRatio(userGroup, usingGroup string, activeGroups map[string]bool) (float64, bool) {
+	if covering, ok := CoveringSubscriptionGroup(usingGroup, activeGroups); ok {
+		if ratio, ok := GetGroupGroupRatio(covering, usingGroup); ok {
+			return ratio, true
+		}
+		if ratio, ok := GetGroupGroupRatio(usingGroup, usingGroup); ok {
+			return ratio, true
+		}
+	}
+	if ratio, ok := GetGroupGroupRatio(userGroup, usingGroup); ok {
+		return ratio, true
+	}
+	return GetGroupRatio(usingGroup), false
+}
+
+// ResolveSpecialGroupRatio 资金源未定时的初值（HandleGroupRatio）。
 //
 // 第一优先：配置里有 [userGroup][usingGroup]（用户当前就坐在该分组里）。
 // 第二优先：usingGroup 自己配了 [usingGroup][usingGroup]，且调用方确认用户
@@ -145,8 +221,7 @@ func UsingGroupCoveredByActiveSubs(usingGroup string, activeGroups map[string]bo
 // 但先买的那张订阅仍应按自己的专属倍率扣（线上 1688 Ethan：账号被日卡改成
 // Claude_Aws 后，GPT 月卡从 1x 错成 0.3x）。
 //
-// coveredByActiveSub 必须由调用方按「usingGroup 是否被生效订阅覆盖」传入，
-// 本函数不查库。覆盖包含 upgrade_group 精确匹配，以及 GroupGroupRatio 别名。
+// 最终倍率以 NewBillingSession 按资金源调用 ResolveWallet/Subscription 为准。
 func ResolveSpecialGroupRatio(userGroup, usingGroup string, coveredByActiveSub bool) (float64, bool) {
 	if ratio, ok := GetGroupGroupRatio(userGroup, usingGroup); ok {
 		return ratio, true

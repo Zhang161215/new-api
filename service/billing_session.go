@@ -268,14 +268,9 @@ func (s *BillingSession) syncRelayInfo() {
 // switchRatioForFundingFallback 把计价倍率切到与即将使用的资金源匹配的那一档，
 // 并按比例缩放预扣费额度，返回新的预扣费额度。
 //
-// 规则：钱包走 GroupRatio[usingGroup]（如不降智 0.3）；订阅走 GroupGroupRatio
-// 专属倍率（周卡 1x）。HandleGroupRatio 在资金源确定前就会套上专属 1x，
-// 所以 wallet_only / wallet_first 直达钱包、以及回落钱包时都必须在这里降回去，
-// 否则用户按订阅价扣钱包。
-//
-//	toWallet=true ：用常规分组倍率。含 wallet_only、wallet_first 成功、
-//	    订阅耗尽/无订阅回落钱包、跨组强制钱包。
-//	toWallet=false：用专属倍率。含走订阅、以及钱包不足回落订阅。
+// 钱包：vip→令牌组的折扣保留（PRO 0.2 / Claude 0.15）；账号组本身是周卡
+// upgrade_group 时，套餐 1x 降回 GroupRatio（PRO/不降智 0.3）。
+// 订阅：按覆盖该令牌的 upgrade_group 取套餐专属（1x），不用 VIP 0.2。
 //
 // 为什么不在 HandleGroupRatio 里按偏好预判：
 // PreConsumeUserSubscription 会先执行 maybeResetUserSubscriptionWithPlanTx
@@ -289,27 +284,26 @@ func (s *BillingSession) syncRelayInfo() {
 // 但那时请求已经被拒了。反方向同理，避免订阅额度被过量预占。
 func switchRatioForFundingFallback(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int, toWallet bool) int {
 	gri := &relayInfo.PriceData.GroupRatioInfo
-	normalRatio := ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
-	covered := helper.UsingGroupCoveredByActiveSub(relayInfo)
-	specialRatio, hasSpecial := ratio_setting.ResolveSpecialGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup, covered)
-	// 钱包：配置有专属倍率，或上游已经套上（含跨组残留的 1x），都降回 GroupRatio。
-	// 订阅：必须真有专属倍率可切，否则两个资金源同倍率，不动。
+	active := helper.EnsureActiveSubscriptionGroups(relayInfo)
+	var newRatio float64
+	var isSpecial bool
 	if toWallet {
-		if !hasSpecial && !gri.HasSpecialRatio {
-			return preConsumedQuota
-		}
-	} else if !hasSpecial {
-		return preConsumedQuota
+		newRatio, isSpecial = ratio_setting.ResolveWalletGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup, active)
+	} else {
+		newRatio, isSpecial = ratio_setting.ResolveSubscriptionGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup, active)
 	}
 
 	oldRatio := gri.GroupRatio
-	var newRatio float64
-	if toWallet {
-		newRatio = normalRatio
-	} else {
-		newRatio = specialRatio
+	if oldRatio <= 0 || newRatio <= 0 {
+		return preConsumedQuota
 	}
-	if oldRatio <= 0 || newRatio <= 0 || oldRatio == newRatio {
+	if oldRatio == newRatio {
+		gri.HasSpecialRatio = isSpecial
+		if isSpecial {
+			gri.GroupSpecialRatio = newRatio
+		} else {
+			gri.GroupSpecialRatio = -1
+		}
 		return preConsumedQuota
 	}
 
@@ -317,20 +311,17 @@ func switchRatioForFundingFallback(c *gin.Context, relayInfo *relaycommon.RelayI
 	if preConsumedQuota > 0 {
 		scaled := float64(preConsumedQuota) * newRatio / oldRatio
 		newPreConsumed = int(math.Round(scaled))
-		// 预扣费按 1 计费的最小单位兜底：原本要预扣费就不应缩放成 0，
-		// 否则 shouldTrust/差额结算的语义会与「按次计费」混淆。
 		if newPreConsumed < 1 {
 			newPreConsumed = 1
 		}
 	}
 
 	gri.GroupRatio = newRatio
-	if toWallet {
-		gri.GroupSpecialRatio = -1
-		gri.HasSpecialRatio = false
+	gri.HasSpecialRatio = isSpecial
+	if isSpecial {
+		gri.GroupSpecialRatio = newRatio
 	} else {
-		gri.GroupSpecialRatio = specialRatio
-		gri.HasSpecialRatio = true
+		gri.GroupSpecialRatio = -1
 	}
 
 	funding := "subscription"

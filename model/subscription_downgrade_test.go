@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/stretchr/testify/require"
 )
 
@@ -211,4 +212,48 @@ func TestExpireDueSubscriptions_StackedDayCard_ReturnsToMonthly(t *testing.T) {
 	var day UserSubscription
 	require.NoError(t, DB.Where("user_id = ? AND upgrade_group = ?", 12, "Claude_Aws").First(&day).Error)
 	require.Equal(t, "expired", day.Status)
+}
+
+func TestCreateUserSubscription_PreservesVipSittingGroup(t *testing.T) {
+	setupDowngradeTest(t)
+	require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(
+		`{"vip":{"Codex_GPT_PRO":0.2},"Codex_GPT_PRO":{"Codex_GPT_PRO":1}}`))
+	t.Cleanup(func() { _ = ratio_setting.UpdateGroupGroupRatioByJSONString(`{}`) })
+
+	mkUser(t, 80, "vip")
+	plan := &SubscriptionPlan{
+		Id:            801,
+		Title:         "week",
+		UpgradeGroup:  "Codex_GPT_PRO",
+		DurationUnit:  SubscriptionDurationDay,
+		DurationValue: 7,
+		TotalAmount:   1000,
+	}
+	_, err := CreateUserSubscriptionFromPlanTx(DB, 80, plan, "admin")
+	require.NoError(t, err)
+	require.Equal(t, "vip", currentUserGroup(t, 80), "VIP 坐席组买周卡后必须保持 vip")
+	var sub UserSubscription
+	require.NoError(t, DB.Where("user_id = ?", 80).First(&sub).Error)
+	require.Equal(t, "Codex_GPT_PRO", sub.UpgradeGroup)
+	require.Equal(t, "", sub.PrevUserGroup)
+}
+
+func TestCreateUserSubscription_UpgradesDefaultGroup(t *testing.T) {
+	setupDowngradeTest(t)
+	require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(
+		`{"vip":{"Codex_GPT_PRO":0.2},"Codex_GPT_PRO":{"Codex_GPT_PRO":1}}`))
+	t.Cleanup(func() { _ = ratio_setting.UpdateGroupGroupRatioByJSONString(`{}`) })
+
+	mkUser(t, 81, "default")
+	plan := &SubscriptionPlan{
+		Id:            802,
+		Title:         "week",
+		UpgradeGroup:  "Codex_GPT_PRO",
+		DurationUnit:  SubscriptionDurationDay,
+		DurationValue: 7,
+		TotalAmount:   1000,
+	}
+	_, err := CreateUserSubscriptionFromPlanTx(DB, 81, plan, "admin")
+	require.NoError(t, err)
+	require.Equal(t, "Codex_GPT_PRO", currentUserGroup(t, 81))
 }

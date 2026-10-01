@@ -11,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/cachex"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/samber/hot"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -576,7 +577,9 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		if err != nil {
 			return nil, err
 		}
-		if currentGroup != upgradeGroup {
+		// vip 这类坐席折扣组没有 [vip][vip] 套餐价。买周卡只加额度，
+		// 不改写 users.group，否则钱包从 0.2 掉进套餐组 GroupRatio 0.3。
+		if currentGroup != upgradeGroup && !ratio_setting.IsSittingDiscountGroup(currentGroup) {
 			prevGroup = currentGroup
 			if err := tx.Model(&User{}).Where("id = ?", userId).
 				Update("group", upgradeGroup).Error; err != nil {
@@ -663,8 +666,12 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 	if err != nil {
 		return err
 	}
-	if upgradeGroup != "" && logUserId > 0 {
-		_ = UpdateUserGroupCache(logUserId, upgradeGroup)
+	if logUserId > 0 {
+		if actualGroup, err := GetUserGroup(logUserId, true); err == nil && actualGroup != "" {
+			_ = UpdateUserGroupCache(logUserId, actualGroup)
+		} else if upgradeGroup != "" {
+			_ = UpdateUserGroupCache(logUserId, upgradeGroup)
+		}
 	}
 	if logUserId > 0 {
 		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, logMoney, logPaymentMethod)
@@ -750,8 +757,15 @@ func AdminBindSubscription(userId int, planId int, sourceNote string) (string, e
 		return "", err
 	}
 	if strings.TrimSpace(plan.UpgradeGroup) != "" {
-		_ = UpdateUserGroupCache(userId, plan.UpgradeGroup)
-		return fmt.Sprintf("用户分组将升级到 %s", plan.UpgradeGroup), nil
+		actualGroup, err := GetUserGroup(userId, true)
+		if err != nil || actualGroup == "" {
+			actualGroup = plan.UpgradeGroup
+		}
+		_ = UpdateUserGroupCache(userId, actualGroup)
+		if actualGroup == plan.UpgradeGroup {
+			return fmt.Sprintf("用户分组将升级到 %s", plan.UpgradeGroup), nil
+		}
+		return fmt.Sprintf("已绑定套餐，账号分组保持 %s", actualGroup), nil
 	}
 	return "", nil
 }
