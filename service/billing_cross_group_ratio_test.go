@@ -596,3 +596,62 @@ func TestVip_WalletOnly_Bps_Inherits02(t *testing.T) {
 	assert.Equal(t, 0.2, ri.PriceData.GroupRatioInfo.GroupRatio,
 		"不降智是周卡别名，VIP 钱包应沿用 vip→PRO 的 0.2")
 }
+
+func TestVipWeeklyCard_BusinessMatrix(t *testing.T) {
+	ensureSubscriptionPlanMigrated(t)
+
+	type row struct {
+		name       string
+		using      string
+		pref       string
+		wallet     int
+		wantSource string
+		wantRatio  float64
+	}
+	cases := []row{
+		{"订阅优先打PRO→订阅1x", "Codex_GPT_PRO", "subscription_first", 10_000_000, BillingSourceSubscription, 1},
+		{"订阅优先打不降智→订阅1x", bpsGroup, "subscription_first", 10_000_000, BillingSourceSubscription, 1},
+		{"订阅优先打Claude→强制钱包0.15", "Claude_Aws", "subscription_first", 10_000_000, BillingSourceWallet, 0.15},
+		{"仅订阅打PRO→订阅1x", "Codex_GPT_PRO", "subscription_only", 10_000_000, BillingSourceSubscription, 1},
+		{"仅钱包打PRO→钱包0.2", "Codex_GPT_PRO", "wallet_only", 10_000_000, BillingSourceWallet, 0.2},
+		{"仅钱包打不降智→钱包0.2", bpsGroup, "wallet_only", 10_000_000, BillingSourceWallet, 0.2},
+		{"钱包优先有余额打PRO→钱包0.2", "Codex_GPT_PRO", "wallet_first", 10_000_000, BillingSourceWallet, 0.2},
+		{"钱包优先余额为0打PRO→回落订阅1x", "Codex_GPT_PRO", "wallet_first", 0, BillingSourceSubscription, 1},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			truncateCross(t)
+			setVipAndWeeklyRatios(t)
+			const uid, tid, pid, sid = 3410, 3410, 610, 610
+			seedUser(t, uid, c.wallet)
+			seedToken(t, tid, uid, "sk-vip-mx", 5_000_000)
+			seedPlan(t, pid, "Codex_GPT_PRO")
+			seedSubWithGroup(t, sid, uid, pid, "Codex_GPT_PRO", 5_000_000, 0, "active", 86400)
+
+			ctx := newTestGinContext()
+			ri := makeRelayInfo(uid, tid, "sk-vip-mx", "vip", c.using, c.pref)
+			ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(ctx, ri)
+			session, apiErr := NewBillingSession(ctx, ri, 100)
+			require.Nil(t, apiErr, c.name)
+			assert.Equal(t, c.wantSource, session.funding.Source(), c.name)
+			assert.Equal(t, c.wantRatio, ri.PriceData.GroupRatioInfo.GroupRatio, c.name)
+		})
+	}
+}
+
+func TestDisplayRatio_VipWeeklyCard(t *testing.T) {
+	setVipAndWeeklyRatios(t)
+	proCard := map[string]bool{"Codex_GPT_PRO": true}
+
+	assert.Equal(t, float64(1), GetUserGroupRatioWithActiveSubs("vip", "Codex_GPT_PRO", proCard),
+		"有周卡时列表应展示套餐1x，不是VIP 0.2")
+	assert.Equal(t, float64(1), GetUserGroupRatioWithActiveSubs("vip", bpsGroup, proCard),
+		"有周卡时不降智也应展示1x")
+	assert.Equal(t, 0.15, GetUserGroupRatioWithActiveSubs("vip", "Claude_Aws", proCard),
+		"Claude不被周卡覆盖，列表仍是VIP钱包0.15")
+	assert.Equal(t, 0.2, GetUserGroupRatioWithActiveSubs("vip", "Codex_GPT_PRO", nil),
+		"没卡时列表才是VIP 0.2")
+	assert.Equal(t, 0.3, GetUserGroupRatioWithActiveSubs("Codex_GPT_PRO", "Codex_GPT_PRO", nil),
+		"账号已被改成PRO且没卡，列表是GroupRatio 0.3")
+}
