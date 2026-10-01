@@ -270,7 +270,7 @@ func (s *BillingSession) syncRelayInfo() {
 //
 // 钱包：vip→令牌组的折扣保留（PRO 0.2 / Claude 0.15）；账号组本身是周卡
 // upgrade_group 时，套餐 1x 降回 GroupRatio（PRO/不降智 0.3）。
-// 订阅：按覆盖该令牌的 upgrade_group 取套餐专属（1x），不用 VIP 0.2。
+// 订阅：一律套餐 1x，不用 VIP 坐席价。
 //
 // 为什么不在 HandleGroupRatio 里按偏好预判：
 // PreConsumeUserSubscription 会先执行 maybeResetUserSubscriptionWithPlanTx

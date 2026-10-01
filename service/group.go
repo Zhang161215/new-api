@@ -67,8 +67,8 @@ func GetUserGroupRatioWithCoverage(userGroup, group string, coveredByActiveSub b
 	return GetUserGroupRatioWithActiveSubs(userGroup, group, active)
 }
 
-// GetUserGroupRatioWithActiveSubs 展示用：有覆盖该令牌的周卡时给套餐倍率，
-// 否则给钱包倍率（含 VIP 折扣）。
+// GetUserGroupRatioWithActiveSubs 展示用：有覆盖该令牌的周卡时给套餐 1x，
+// 否则给钱包倍率（含 VIP 折扣）。订阅从不展示 VIP 坐席价。
 func GetUserGroupRatioWithActiveSubs(userGroup, group string, activeGroups map[string]bool) float64 {
 	if ratio_setting.UsingGroupCoveredByActiveSubs(group, activeGroups) {
 		ratio, _ := ratio_setting.ResolveSubscriptionGroupRatio(userGroup, group, activeGroups)

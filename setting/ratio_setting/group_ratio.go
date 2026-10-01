@@ -196,9 +196,10 @@ func ResolveWalletGroupRatio(userGroup, usingGroup string, activeGroups map[stri
 
 // ResolveSubscriptionGroupRatio 订阅应使用的分组倍率。
 //
-// 以覆盖该令牌的 upgrade_group 为准取套餐专属（PRO→PRO / PRO→不降智 1x），
-// 不用账号当前组的 VIP 折扣。否则 vip 用户买了周卡仍按 0.2 扣订阅，套餐被少耗。
+// 只认套餐价：覆盖该令牌的 upgrade_group → GroupGroupRatio（PRO→PRO / PRO→不降智 1x）。
+// 禁止回落到 vip→PRO 0.2 这类坐席折扣，否则周卡按 VIP 价慢耗。
 func ResolveSubscriptionGroupRatio(userGroup, usingGroup string, activeGroups map[string]bool) (float64, bool) {
+	_ = userGroup
 	if covering, ok := CoveringSubscriptionGroup(usingGroup, activeGroups); ok {
 		if ratio, ok := GetGroupGroupRatio(covering, usingGroup); ok {
 			return ratio, true
@@ -206,9 +207,6 @@ func ResolveSubscriptionGroupRatio(userGroup, usingGroup string, activeGroups ma
 		if ratio, ok := GetGroupGroupRatio(usingGroup, usingGroup); ok {
 			return ratio, true
 		}
-	}
-	if ratio, ok := GetGroupGroupRatio(userGroup, usingGroup); ok {
-		return ratio, true
 	}
 	return GetGroupRatio(usingGroup), false
 }

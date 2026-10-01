@@ -514,8 +514,8 @@ func TestVip_WithWeeklyCard_SubscriptionUses1x(t *testing.T) {
 	c := newTestGinContext()
 	ri := makeRelayInfo(userID, tokenID, "sk-vip-3", "vip", "Codex_GPT_PRO", "subscription_first")
 	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
-	require.Equal(t, 0.2, ri.PriceData.GroupRatioInfo.GroupRatio,
-		"前置：HandleGroupRatio 先套 VIP 0.2")
+	require.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio,
+		"有周卡时订阅初值就是套餐 1x，不能先套 VIP 0.2")
 
 	session, apiErr := NewBillingSession(c, ri, 200)
 	require.Nil(t, apiErr)
@@ -523,8 +523,7 @@ func TestVip_WithWeeklyCard_SubscriptionUses1x(t *testing.T) {
 	assert.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio,
 		"VIP 有周卡时订阅必须按套餐 1x，不能用 0.2 慢耗卡")
 	assert.True(t, ri.PriceData.GroupRatioInfo.HasSpecialRatio)
-	assert.Equal(t, 1000, session.GetPreConsumedQuota(),
-		"预扣费应按 1/0.2 放大：200 → 1000")
+	assert.Equal(t, 200, session.GetPreConsumedQuota())
 }
 
 func TestVip_WithWeeklyCard_WalletOnly_Keeps02(t *testing.T) {
@@ -541,12 +540,15 @@ func TestVip_WithWeeklyCard_WalletOnly_Keeps02(t *testing.T) {
 	c := newTestGinContext()
 	ri := makeRelayInfo(userID, tokenID, "sk-vip-4", "vip", "Codex_GPT_PRO", "wallet_only")
 	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	require.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio,
+		"有周卡时初值按套餐 1x，仅钱包再降回 VIP 折扣")
 
 	session, apiErr := NewBillingSession(c, ri, 1000)
 	require.Nil(t, apiErr)
 	assert.Equal(t, BillingSourceWallet, session.funding.Source())
 	assert.Equal(t, 0.2, ri.PriceData.GroupRatioInfo.GroupRatio)
-	assert.Equal(t, 1000, session.GetPreConsumedQuota())
+	assert.Equal(t, 200, session.GetPreConsumedQuota(),
+		"预扣费应按 0.2/1 缩放：1000 → 200")
 }
 
 func TestVip_WithWeeklyCard_Exhausted_FallsBackTo02(t *testing.T) {
@@ -563,14 +565,16 @@ func TestVip_WithWeeklyCard_Exhausted_FallsBackTo02(t *testing.T) {
 	c := newTestGinContext()
 	ri := makeRelayInfo(userID, tokenID, "sk-vip-5", "vip", "Codex_GPT_PRO", "subscription_first")
 	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
-	require.Equal(t, 0.2, ri.PriceData.GroupRatioInfo.GroupRatio)
+	require.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio,
+		"卡还在时初值仍是套餐 1x，额度耗尽后再回落钱包")
 
 	session, apiErr := NewBillingSession(c, ri, 200)
 	require.Nil(t, apiErr)
 	assert.Equal(t, BillingSourceWallet, session.funding.Source())
 	assert.Equal(t, 0.2, ri.PriceData.GroupRatioInfo.GroupRatio,
 		"周卡耗尽回落钱包必须保留 VIP 0.2，不能掉到 GroupRatio 0.3")
-	assert.Equal(t, 200, session.GetPreConsumedQuota())
+	assert.Equal(t, 40, session.GetPreConsumedQuota(),
+		"预扣费应按 0.2/1 缩放：200 → 40")
 }
 
 func TestVip_WalletOnly_Bps_Inherits02(t *testing.T) {

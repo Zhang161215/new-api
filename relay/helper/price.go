@@ -81,6 +81,20 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.
 		relayInfo.UsingGroup = autoGroup.(string)
 	}
 
+	active := EnsureActiveSubscriptionGroups(relayInfo)
+	// 令牌被周卡覆盖：初值就是套餐 1x，不能先套 vip 坐席价。
+	// 最终资金源在 NewBillingSession 确定后还会再对齐（钱包才回到 VIP 折扣）。
+	if ratio_setting.UsingGroupCoveredByActiveSubs(relayInfo.UsingGroup, active) {
+		if special, ok := ratio_setting.ResolveSubscriptionGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup, active); ok {
+			groupRatioInfo.GroupSpecialRatio = special
+			groupRatioInfo.GroupRatio = special
+			groupRatioInfo.HasSpecialRatio = true
+			return groupRatioInfo
+		}
+		groupRatioInfo.GroupRatio = ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
+		return groupRatioInfo
+	}
+
 	covered := false
 	// 仅在「(userGroup, usingGroup) 对不上，但 usingGroup 自己有专属倍率」时才查订阅。
 	// 同组用户（最常见）走第一优先、不增加 DB；无专属倍率的分组也不查。

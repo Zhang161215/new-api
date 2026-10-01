@@ -90,6 +90,11 @@ func TestResolveWalletAndSubscriptionRatio(t *testing.T) {
 		assert.Equal(t, float64(1), r)
 		assert.True(t, special)
 	})
+	t.Run("订阅路径没有覆盖时也不许回落VIP坐席", func(t *testing.T) {
+		r, special := ResolveSubscriptionGroupRatio("vip", "Codex_GPT_PRO", nil)
+		assert.Equal(t, 0.3, r)
+		assert.False(t, special)
+	})
 	t.Run("VIP钱包打不降智沿用PRO坐席0.2", func(t *testing.T) {
 		r, special := ResolveWalletGroupRatio("vip", bps, nil)
 		assert.Equal(t, 0.2, r)
