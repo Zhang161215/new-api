@@ -260,6 +260,17 @@ func CalcOpenRouterCacheCreateTokens(usage dto.Usage, priceData types.PriceData)
 }
 
 func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent string) {
+	if usage == nil {
+		usage = &dto.Usage{}
+	}
+	localEstimate := common.GetContextKeyBool(ctx, constant.ContextKeyLocalCountTokens)
+	if waived, waiveReason := ShouldWaiveFailedStreamBilling(relayInfo, usage, localEstimate); waived {
+		usage = &dto.Usage{}
+		if extraContent != "" {
+			extraContent += ", "
+		}
+		extraContent += waiveReason
+	}
 
 	useTimeSeconds := time.Now().Unix() - relayInfo.StartTime.Unix()
 	relayInfo.PerformanceOutputTokens = int64(usage.CompletionTokens)
