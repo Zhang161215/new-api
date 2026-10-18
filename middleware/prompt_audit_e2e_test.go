@@ -34,7 +34,7 @@ func fakeAuditUpstream(t *testing.T, confidence float64, envelope bool) *httptes
 		require.Equal(t, "system", req.Messages[0].Role)
 		require.Contains(t, req.Messages[1].Content, "<user_input>", "待审内容必须被标签包裹")
 
-		verdict, _ := json.Marshal(map[string]any{"confidence": confidence, "reason": "test"})
+		verdict, _ := json.Marshal(map[string]any{"confidence": confidence, "reason": "色情内容"})
 		choices := []map[string]any{{"message": map[string]any{"content": string(verdict)}}}
 		var out any = map[string]any{"choices": choices}
 		if envelope {
@@ -205,7 +205,7 @@ func TestPromptAudit_CacheAvoidsSecondUpstreamCall(t *testing.T) {
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamCalls++
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"confidence\":0.95,\"reason\":\"违规\"}"}}]}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"confidence\":0.95,\"reason\":\"色情内容\"}"}}]}`))
 	}))
 	defer up.Close()
 

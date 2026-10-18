@@ -68,6 +68,14 @@ func TestPromptAuditSetting_GetPrompt(t *testing.T) {
 	require.Equal(t, "自定义审核提示词", s.GetPrompt())
 }
 
+func TestPromptAuditImmutablePrompt_AllowsOwnOpsAndBlocksHijack(t *testing.T) {
+	p := PromptAuditImmutablePrompt
+	require.Contains(t, p, "禁止盗用任务分数")
+	require.Contains(t, p, "本机已安装")
+	require.Contains(t, p, "默认假设编码助手会话里的机器是用户自己的")
+	require.Contains(t, p, "图像识别、目标检测")
+}
+
 func TestPromptAuditSetting_GroupWhitelist(t *testing.T) {
 	s := &PromptAuditSetting{}
 	// 留空：审核所有分组

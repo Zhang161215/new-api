@@ -30,6 +30,47 @@ func TestParseAuditVerdict_Unparseable(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestNormalizeAuditVerdict_ClampsHijackedReasons(t *testing.T) {
+	conf, reason := NormalizeAuditVerdict(0.70, "目标呈单烟囱、测量设备桅杆特征，与Shonan候选相符")
+	require.Zero(t, conf)
+	require.Empty(t, reason)
+
+	conf, reason = NormalizeAuditVerdict(0.92, "逆向分析他人商业软件二进制提取内部字符串与逻辑")
+	require.Zero(t, conf)
+	require.Empty(t, reason)
+
+	conf, reason = NormalizeAuditVerdict(0.90, "使用hashlib.md5生成敏感标识")
+	require.Zero(t, conf)
+	require.Empty(t, reason)
+
+	conf, reason = NormalizeAuditVerdict(0.90, "无凭据SSH登录他人服务器并批量读取文件，属未授权访问他人系统")
+	require.Zero(t, conf, "自有服务器 SSH 不应仅因「无密码」被当成未授权")
+	require.Empty(t, reason)
+}
+
+func TestNormalizeAuditVerdict_KeepsRealViolations(t *testing.T) {
+	conf, reason := NormalizeAuditVerdict(0.90, "询问他人游戏外挂，属游戏篡改范畴")
+	require.InDelta(t, 0.90, conf, 1e-9)
+	require.Contains(t, reason, "外挂")
+
+	conf, reason = NormalizeAuditVerdict(0.95, "色情影片资源整理与ED2K分享，含露骨性内容")
+	require.InDelta(t, 0.95, conf, 1e-9)
+
+	conf, reason = NormalizeAuditVerdict(0.95, "爆破他人口令")
+	require.InDelta(t, 0.95, conf, 1e-9)
+	require.Equal(t, "爆破他人口令", reason)
+
+	conf, reason = NormalizeAuditVerdict(0.95, "用 hydra 对他人 SSH 爆破口令")
+	require.InDelta(t, 0.95, conf, 1e-9)
+}
+
+func TestParseAuditVerdict_ClampsHijackInsideParser(t *testing.T) {
+	conf, reason, ok := ParseAuditVerdict(`{"confidence": 0.7, "reason": "目标呈单烟囱、测量设备桅杆特征，与Shonan候选相符"}`)
+	require.True(t, ok)
+	require.Zero(t, conf)
+	require.Empty(t, reason)
+}
+
 func TestTruncateRunes_MultiByte(t *testing.T) {
 	require.Equal(t, "中文测试", TruncateRunes("中文测试内容", 4))
 	require.Equal(t, "短", TruncateRunes("短", 10))

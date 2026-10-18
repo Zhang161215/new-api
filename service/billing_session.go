@@ -371,17 +371,25 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
 				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 		}
-		if userQuota-preConsumedQuota < 0 {
-			return nil, types.NewErrorWithStatusCode(
-				fmt.Errorf("预扣费额度失败, 用户剩余额度: %s, 需要预扣费额度: %s", logger.FormatQuota(userQuota), logger.FormatQuota(preConsumedQuota)),
-				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
-				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
-		}
 		relayInfo.UserQuota = userQuota
 
 		session := &BillingSession{
 			relayInfo: relayInfo,
 			funding:   &WalletFunding{userId: relayInfo.UserId},
+		}
+		if userQuota < preConsumedQuota {
+			// 预扣按 prompt+max_tokens 估算，长上下文经常虚高。钱包高于信任阈值时
+			// preConsume 本就会跳过预扣、按实际结算；若这里先按估算拒掉，用户会 403，
+			// 即使实际只花几分钱。ForcePreConsume / 低于信任阈值仍按估算拦截。
+			if !session.shouldTrust(c) {
+				return nil, types.NewErrorWithStatusCode(
+					fmt.Errorf("预扣费额度失败, 用户剩余额度: %s, 需要预扣费额度: %s", logger.FormatQuota(userQuota), logger.FormatQuota(preConsumedQuota)),
+					types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
+					types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+			}
+			logger.LogInfo(c, fmt.Sprintf(
+				"用户 %d 预扣估算 %s 超过钱包 %s，信任额度放行，按实际消耗结算",
+				relayInfo.UserId, logger.FormatQuota(preConsumedQuota), logger.FormatQuota(userQuota)))
 		}
 		if apiErr := session.preConsume(c, preConsumedQuota); apiErr != nil {
 			return nil, apiErr

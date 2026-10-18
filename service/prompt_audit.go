@@ -291,8 +291,33 @@ func ParseAuditVerdict(content string) (float64, string, bool) {
 			Reason      string   `json:"reason"`
 		}
 		if err := json.Unmarshal([]byte(cand), &v); err == nil && v.Confidence != nil {
-			return *v.Confidence, v.Reason, true
+			conf, reason := NormalizeAuditVerdict(*v.Confidence, v.Reason)
+			return conf, reason, true
 		}
 	}
 	return 0, "", false
+}
+
+// policyReasonRe 拦截理由必须能对上本模块真正管的类型。
+// 审核模型常被待审任务劫持，把「像不像某某舰」「md5 算没算对」写成 confidence，
+// 这类理由一个都对不上，应视为合规而不是拦截。
+var policyReasonRe = regexp.MustCompile(`(?i)色情|性内容|NSFW|招嫖|未成年|幼女|萝莉|外挂|作弊器|刷枪|游戏篡改|keygen|注册机|\bDRM\b|未授权访问|爆破.{0,8}口令|木马|webshell|勒索|后门|免杀|人肉|\bdox\b|暴力威胁|钓鱼|盗号|窃取.{0,10}账号|索要.{0,16}密码|绕过.{0,16}验证码|绕过.{0,16}WAF|破解.{0,16}许可证|破解.{0,16}激活|批量养号|批量注册|刷单|控评|反弹shell|\bRCE\b|\bSQLi\b`)
+
+// ownOpsReasonRe 自有机器运维常被误写成「未授权访问」。出现这些工具名且没有实战攻击词，按自有运维放行。
+var ownOpsReasonRe = regexp.MustCompile(`(?i)SSH|SFTP|docker|k8s|kubernetes|nginx|systemd|authorized_keys`)
+var ownOpsAttackRe = regexp.MustCompile(`(?i)爆破|扫描网段|入侵.{0,8}公司|sqlmap|hydra|metasploit|cobalt`)
+
+// NormalizeAuditVerdict 把「对不上违规类型的高分」压回合规。
+// 不确定的 0 分保持原样；已经点名违规类型的高分也保持原样。
+func NormalizeAuditVerdict(confidence float64, reason string) (float64, string) {
+	if confidence <= 0 {
+		return confidence, reason
+	}
+	if ownOpsReasonRe.MatchString(reason) && !ownOpsAttackRe.MatchString(reason) {
+		return 0, ""
+	}
+	if policyReasonRe.MatchString(reason) {
+		return confidence, reason
+	}
+	return 0, ""
 }

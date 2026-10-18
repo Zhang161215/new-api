@@ -109,7 +109,7 @@ func TestParseAuditVerdictRequiresConfidenceField(t *testing.T) {
 	assert.Equal(t, 0.0, conf)
 
 	// 带 ```json 围栏
-	conf, _, ok = ParseAuditVerdict("```json\n{\"confidence\": 0.9, \"reason\": \"x\"}\n```")
+	conf, _, ok = ParseAuditVerdict("```json\n{\"confidence\": 0.9, \"reason\": \"色情内容\"}\n```")
 	assert.True(t, ok)
 	assert.Equal(t, 0.9, conf)
 
@@ -127,7 +127,7 @@ func TestParseAuditVerdictRequiresConfidenceField(t *testing.T) {
 	}
 
 	// Go 的 json 字段匹配大小写不敏感，模型偶尔首字母大写也应接受
-	conf, _, ok = ParseAuditVerdict(`{"Confidence": 0.9, "Reason": "x"}`)
+	conf, _, ok = ParseAuditVerdict(`{"Confidence": 0.9, "Reason": "色情内容"}`)
 	assert.True(t, ok, "大小写变体应正常解析")
 	assert.Equal(t, 0.9, conf)
 
