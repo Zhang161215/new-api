@@ -378,7 +378,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 			funding:   &WalletFunding{userId: relayInfo.UserId},
 		}
 		if userQuota < preConsumedQuota {
-			// 预扣按 prompt+max_tokens 估算，长上下文经常虚高。钱包高于信任阈值时
+			// 预扣按 prompt+max_tokens 估算，长上下文经常虚高。钱包高于信任阈值（$5）时
 			// preConsume 本就会跳过预扣、按实际结算；若这里先按估算拒掉，用户会 403，
 			// 即使实际只花几分钱。ForcePreConsume / 低于信任阈值仍按估算拦截。
 			if !session.shouldTrust(c) {

@@ -8,3 +8,8 @@ docs
 .eslintcache
 .gocache
 /web/node_modules
+logs
+data
+*.log
+one-api.db*
+new-api-local

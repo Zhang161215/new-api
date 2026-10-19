@@ -10,13 +10,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 钱包高于信任阈值（$10）时，预扣估算可以超过余额：跳过虚高预扣，按实际结算。
+// 钱包高于信任阈值（$5）时，预扣估算可以超过余额：跳过虚高预扣，按实际结算。
 func TestNewBillingSession_TrustAllowsPreconsumeOverage(t *testing.T) {
 	ensureSubscriptionPlanMigrated(t)
 	truncateCross(t)
 
 	const userID, tokenID = 5101, 5101
-	wallet := 20 * int(common.QuotaPerUnit)
+	wallet := 8 * int(common.QuotaPerUnit) // 刚过 $5 门槛，对得上线上 zcg 这类余额
 	seedUser(t, userID, wallet)
 	seedToken(t, tokenID, userID, "sk-trust-overage", 5_000_000)
 
@@ -34,13 +34,13 @@ func TestNewBillingSession_TrustAllowsPreconsumeOverage(t *testing.T) {
 	assert.Equal(t, wallet, getUserQuota(t, userID), "trust skip must not debit wallet up front")
 }
 
-// 低于信任阈值时，估算超过余额仍拦截。
+// 等于或低于信任阈值（$5）时，估算超过余额仍拦截。
 func TestNewBillingSession_BelowTrustStillBlocksOverage(t *testing.T) {
 	ensureSubscriptionPlanMigrated(t)
 	truncateCross(t)
 
 	const userID, tokenID = 5102, 5102
-	wallet := 5 * int(common.QuotaPerUnit)
+	wallet := 5 * int(common.QuotaPerUnit) // 需要大于 $5，等于不放行
 	seedUser(t, userID, wallet)
 	seedToken(t, tokenID, userID, "sk-trust-low", 5_000_000)
 
