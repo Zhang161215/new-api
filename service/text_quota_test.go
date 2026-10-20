@@ -316,3 +316,39 @@ func TestCalculateTextQuotaSummaryKeepsPrePRClaudeOpenRouterBilling(t *testing.T
 	require.Equal(t, 172, summary.PromptTokens)
 	require.Equal(t, 798, summary.Quota)
 }
+
+func TestCalculateTextQuotaSummaryClampsInflatedClaudeCacheWrite(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	relayInfo := &relaycommon.RelayInfo{
+		RelayFormat:     types.RelayFormatClaude,
+		OriginModelName: "claude-opus-5-5",
+		PriceData: types.PriceData{
+			ModelRatio:         2,
+			CompletionRatio:    5,
+			CacheRatio:         0.05,
+			CacheCreationRatio: 1.25,
+			GroupRatioInfo:     types.GroupRatioInfo{GroupRatio: 0.2},
+		},
+		StartTime: time.Now(),
+	}
+	relayInfo.SetEstimatePromptTokens(9_087_278)
+
+	usage := &dto.Usage{
+		PromptTokens:     255,
+		CompletionTokens: 32,
+		UsageSemantic:    "anthropic",
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedCreationTokens: 5_631_130,
+		},
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	require.True(t, summary.CacheClamped)
+	require.Equal(t, 1_000_000, summary.CacheClampCap)
+	require.Equal(t, 999_745, summary.CacheCreationTokens)
+	require.Equal(t, 5_631_130, summary.CacheCreationBeforeClamp)
+	require.InDelta(t, 500039, summary.Quota, 1)
+}

@@ -51,6 +51,10 @@ type textQuotaSummary struct {
 	FileSearchCallCount      int
 	AudioInputPrice          float64
 	ImageGenerationCallPrice float64
+	CacheClamped             bool
+	CacheClampCap            int
+	CacheCreationBeforeClamp int
+	CacheReadBeforeClamp     int
 }
 
 func cacheWriteTokensTotal(summary textQuotaSummary) int {
@@ -127,6 +131,17 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 			}
 		}
 		summary.PromptTokens -= summary.CacheCreationTokens
+	}
+
+	if summary.IsClaudeUsageSemantic {
+		capN := billedInputTokenCap(summary.ModelName, relayInfo.GetEstimatePromptTokens())
+		if clampClaudeCacheToInputCap(&summary, capN) {
+			logger.LogWarn(ctx, fmt.Sprintf(
+				"缓存用量超过上限已截断：写入 %d→%d，读取 %d→%d，上限 %d，模型 %s",
+				summary.CacheCreationBeforeClamp, summary.CacheCreationTokens,
+				summary.CacheReadBeforeClamp, summary.CacheTokens,
+				summary.CacheClampCap, summary.ModelName))
+		}
 	}
 
 	dPromptTokens := decimal.NewFromInt(int64(summary.PromptTokens))
@@ -309,6 +324,14 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 	relayInfo.PerformanceOutputTokens = int64(summary.CompletionTokens)
 
+	if summary.CacheClamped {
+		extraContent = append(extraContent, fmt.Sprintf(
+			"缓存用量超过上限已截断（写入 %d→%d，读取 %d→%d，上限 %d）",
+			summary.CacheCreationBeforeClamp, summary.CacheCreationTokens,
+			summary.CacheReadBeforeClamp, summary.CacheTokens,
+			summary.CacheClampCap))
+	}
+
 	if summary.WebSearchCallCount > 0 {
 		extraContent = append(extraContent, fmt.Sprintf("Web Search 调用 %d 次，调用花费 %s", summary.WebSearchCallCount, decimal.NewFromFloat(summary.WebSearchPrice).Mul(decimal.NewFromInt(int64(summary.WebSearchCallCount))).Div(decimal.NewFromInt(1000)).Mul(decimal.NewFromFloat(summary.GroupRatio)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).String()))
 	}
@@ -393,6 +416,12 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	if summary.ImageGenerationCallPrice > 0 {
 		other["image_generation_call"] = true
 		other["image_generation_call_price"] = summary.ImageGenerationCallPrice
+	}
+	if summary.CacheClamped {
+		other["cache_clamped"] = true
+		other["cache_clamp_cap"] = summary.CacheClampCap
+		other["cache_creation_tokens_before_clamp"] = summary.CacheCreationBeforeClamp
+		other["cache_tokens_before_clamp"] = summary.CacheReadBeforeClamp
 	}
 	if summary.CacheCreationTokens > 0 {
 		other["cache_creation_tokens"] = summary.CacheCreationTokens
