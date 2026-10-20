@@ -805,21 +805,19 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 }
 
 func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, claudeInfo *ClaudeResponseInfo) {
-	if claudeInfo.Usage.PromptTokens == 0 {
-		//上游出错
+	if claudeInfo.Usage == nil {
+		claudeInfo.Usage = &dto.Usage{}
 	}
 	if claudeInfo.Usage.CompletionTokens == 0 || !claudeInfo.Done {
 		if common.DebugEnabled {
 			common.SysLog("claude response usage is not complete, maybe upstream error")
 		}
-		// 只补缺失字段，不整份覆盖——保留 message_start 已拿到的 cache 字段
-		fallback := service.ResponseText2Usage(c, claudeInfo.ResponseText.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+		// 只补补全文本对应的 token。上游没给 input_tokens 时禁止用本地虚高 prompt
+		//（Claude CLI 请求体常被估到数百万）当成功单。cache 字段保留 message_start 已拿到的值。
+		completion := service.EstimateTokenByModel(info.UpstreamModelName, claudeInfo.ResponseText.String())
 		if claudeInfo.Usage.CompletionTokens == 0 ||
-			(!claudeInfo.Done && fallback.CompletionTokens > claudeInfo.Usage.CompletionTokens) {
-			claudeInfo.Usage.CompletionTokens = fallback.CompletionTokens
-		}
-		if claudeInfo.Usage.PromptTokens == 0 {
-			claudeInfo.Usage.PromptTokens = fallback.PromptTokens
+			(!claudeInfo.Done && completion > claudeInfo.Usage.CompletionTokens) {
+			claudeInfo.Usage.CompletionTokens = completion
 		}
 		claudeInfo.Usage.TotalTokens = claudeInfo.Usage.PromptTokens + claudeInfo.Usage.CompletionTokens
 	}

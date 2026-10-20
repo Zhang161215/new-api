@@ -13,8 +13,9 @@ const (
 // ShouldWaiveFailedStreamBilling 流未成功时是否整笔退预扣、禁止本地估算扣费。
 //
 // 规则：
-//   - 流完整结束（done/eof/handler_stop）：照常扣
 //   - 上游给了真实 usage（非本地估算）：照常扣
+//   - 本地估算且没有任何补全：不扣。Claude/Kiro 常以 eof 结束且没有 message_start usage，
+//     旧逻辑把 eof 当成功单，会按虚高 prompt（可到数百万）结算
 //   - scanner_error / timeout / panic / ping_fail 且没有上游 usage：退预扣
 //   - client_gone 且没有任何输出：不扣
 //   - client_gone 但已有补全 token：按已产出用量扣
@@ -23,9 +24,6 @@ func ShouldWaiveFailedStreamBilling(relayInfo *relaycommon.RelayInfo, usage *dto
 		return false, ""
 	}
 	ss := relayInfo.StreamStatus
-	if ss.IsNormalEnd() && !ss.HasErrors() {
-		return false, ""
-	}
 
 	hasOutput := usage != nil && usage.CompletionTokens > 0
 	hasUpstream := usage != nil && ValidUsage(usage) && !localEstimate
@@ -42,13 +40,16 @@ func ShouldWaiveFailedStreamBilling(relayInfo *relaycommon.RelayInfo, usage *dto
 			return false, ""
 		}
 		return true, failedStreamWaiverNoUsage
-	default:
-		if ss.IsNormalEnd() {
-			return false, ""
-		}
-		if hasUpstream || hasOutput {
-			return false, ""
-		}
+	}
+
+	if localEstimate && !hasOutput {
 		return true, failedStreamWaiverNoUsage
 	}
+	if ss.IsNormalEnd() && !ss.HasErrors() {
+		return false, ""
+	}
+	if hasUpstream || hasOutput {
+		return false, ""
+	}
+	return true, failedStreamWaiverNoUsage
 }

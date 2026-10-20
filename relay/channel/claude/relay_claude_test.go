@@ -2,10 +2,15 @@ package claude
 
 import (
 	"encoding/base64"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/dto"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/types"
+
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -379,4 +384,51 @@ func TestRequestOpenAI2ClaudeMessage_ConvertsTextFileContentToText(t *testing.T)
 	require.Equal(t, "text", content[0].Type)
 	require.NotNil(t, content[0].Text)
 	require.Equal(t, "alpha\nbeta", *content[0].Text)
+}
+
+func TestHandleStreamFinalResponse_DoesNotFillEstimatedPrompt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-opus-5-5"},
+		RelayFormat: types.RelayFormatClaude,
+	}
+	info.SetEstimatePromptTokens(9_087_278)
+	claudeInfo := &ClaudeResponseInfo{
+		Usage:        &dto.Usage{},
+		ResponseText: strings.Builder{},
+	}
+
+	HandleStreamFinalResponse(c, info, claudeInfo)
+
+	require.Equal(t, 0, claudeInfo.Usage.PromptTokens)
+	require.Equal(t, 0, claudeInfo.Usage.CompletionTokens)
+	require.Equal(t, 0, claudeInfo.Usage.TotalTokens)
+}
+
+func TestHandleStreamFinalResponse_KeepsUpstreamPrompt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-opus-5-5"},
+		RelayFormat: types.RelayFormatClaude,
+	}
+	info.SetEstimatePromptTokens(9_087_278)
+	claudeInfo := &ClaudeResponseInfo{
+		Usage: &dto.Usage{
+			PromptTokens: 334,
+			PromptTokensDetails: dto.InputTokenDetails{
+				CachedTokens: 100,
+			},
+		},
+		Done: true,
+	}
+
+	HandleStreamFinalResponse(c, info, claudeInfo)
+
+	require.Equal(t, 334, claudeInfo.Usage.PromptTokens)
+	require.Equal(t, 100, claudeInfo.Usage.PromptTokensDetails.CachedTokens)
+	require.Equal(t, 0, claudeInfo.Usage.CompletionTokens)
 }
