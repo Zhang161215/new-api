@@ -722,7 +722,33 @@ func FormatMatchingModelName(name string) string {
 	if strings.HasPrefix(name, "gpt-4o-gizmo") {
 		name = "gpt-4o-gizmo-*"
 	}
+
+	// Claude Code / Anthropic official IDs use dots in the version
+	// (claude-opus-5.5). Channels and token allowlists on this site use
+	// hyphens (claude-opus-5-5). Normalize before both lookups.
+	name = normalizeClaudeDottedVersion(name)
 	return name
+}
+
+func normalizeClaudeDottedVersion(name string) string {
+	if !strings.HasPrefix(name, "claude-") {
+		return name
+	}
+	var b strings.Builder
+	b.Grow(len(name))
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c == '.' && i > 0 && i+1 < len(name) && isASCIIDigit(name[i-1]) && isASCIIDigit(name[i+1]) {
+			b.WriteByte('-')
+			continue
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
+func isASCIIDigit(c byte) bool {
+	return c >= '0' && c <= '9'
 }
 
 // result: 倍率or价格， usePrice， exist
