@@ -317,7 +317,45 @@ func TestCalculateTextQuotaSummaryKeepsPrePRClaudeOpenRouterBilling(t *testing.T
 	require.Equal(t, 798, summary.Quota)
 }
 
-func TestCalculateTextQuotaSummaryClampsInflatedClaudeCacheWrite(t *testing.T) {
+func TestCalculateTextQuotaSummaryDoesNotClampOfficialCacheDrift(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	relayInfo := &relaycommon.RelayInfo{
+		RelayFormat:     types.RelayFormatClaude,
+		OriginModelName: "claude-opus-5-5",
+		PriceData: types.PriceData{
+			ModelRatio:         2,
+			CompletionRatio:    5,
+			CacheRatio:         0.05,
+			CacheCreationRatio: 1.25,
+			GroupRatioInfo:     types.GroupRatioInfo{GroupRatio: 1.2},
+		},
+		StartTime: time.Now(),
+	}
+	relayInfo.SetEstimatePromptTokens(122_564)
+
+	usage := &dto.Usage{
+		PromptTokens:     2,
+		CompletionTokens: 374,
+		UsageSemantic:    "anthropic",
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens:         154_271,
+			CachedCreationTokens: 3_588,
+		},
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	require.Equal(t, 2, summary.PromptTokens)
+	require.Equal(t, 154_271, summary.CacheTokens)
+	require.Equal(t, 3_588, summary.CacheCreationTokens)
+	require.Equal(t, 374, summary.CompletionTokens)
+	// $4/$20/$0.20/$5 × 1.2，与上游同量应对 $0.067538 → 33769 额度
+	require.InDelta(t, 33769, summary.Quota, 1)
+}
+
+func TestCalculateTextQuotaSummaryBillsUpstreamClaudeCacheWriteAsIs(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(w)
@@ -346,9 +384,5 @@ func TestCalculateTextQuotaSummaryClampsInflatedClaudeCacheWrite(t *testing.T) {
 	}
 
 	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
-	require.True(t, summary.CacheClamped)
-	require.Equal(t, 1_000_000, summary.CacheClampCap)
-	require.Equal(t, 999_745, summary.CacheCreationTokens)
-	require.Equal(t, 5_631_130, summary.CacheCreationBeforeClamp)
-	require.InDelta(t, 500039, summary.Quota, 1)
+	require.Equal(t, 5_631_130, summary.CacheCreationTokens)
 }

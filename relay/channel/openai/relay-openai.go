@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -574,6 +575,8 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
+	responseBody = rewriteUpstreamImageURLs(responseBody, publicImageProxyPrefix(c))
+
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
@@ -593,6 +596,82 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	}
 	applyUsagePostProcessing(info, &usageResp.Usage, responseBody)
 	return &usageResp.Usage, nil
+}
+
+const go2apiImageHost = "tu.go2api.cc"
+const go2imgPrefix = "/go2img"
+
+// 生图 JSON 里出现过的上游图床。go2api 仍走 /go2img/...；其它站走 /go2img/h/<host>/...
+var imageCDNHosts = []struct {
+	host       string
+	pathPrefix string
+}{
+	{go2apiImageHost, ""},
+	{"note0.17zz.xyz", "/h/note0.17zz.xyz"},
+	{"note1.17zz.xyz", "/h/note1.17zz.xyz"},
+	{"dnznrvs05pmza.cloudfront.net", "/h/dnznrvs05pmza.cloudfront.net"},
+}
+
+func publicImageProxyPrefix(c *gin.Context) string {
+	if c == nil || c.Request == nil {
+		return ""
+	}
+	host := c.GetHeader("X-Forwarded-Host")
+	if host == "" {
+		host = c.Request.Host
+	}
+	if host == "" {
+		return ""
+	}
+	proto := c.GetHeader("X-Forwarded-Proto")
+	if proto != "http" && proto != "https" {
+		proto = "https"
+	}
+	return proto + "://" + host + go2imgPrefix
+}
+
+// 把上游图链改到本域 /go2img，顺带去掉 http://。
+// 否则客户端会看到 tu.go2api.cc / note1.17zz.xyz，且 http 链接会被 301 / 混合内容拦掉。
+func rewriteUpstreamImageURLs(body []byte, publicPrefix string) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	if publicPrefix != "" {
+		changed := false
+		out := body
+		for _, cdn := range imageCDNHosts {
+			httpHost := "http://" + cdn.host
+			httpsHost := "https://" + cdn.host
+			if !bytes.Contains(out, []byte(cdn.host)) {
+				continue
+			}
+			dest := publicPrefix + cdn.pathPrefix
+			out = bytes.ReplaceAll(out, []byte(httpHost), []byte(dest))
+			out = bytes.ReplaceAll(out, []byte(httpsHost), []byte(dest))
+			changed = true
+		}
+		if changed {
+			out = unescapeJSONAmpersands(out)
+			return out
+		}
+	}
+	if bytes.Contains(body, []byte(`\u0026`)) {
+		body = unescapeJSONAmpersands(body)
+	}
+	if !bytes.Contains(body, []byte("http://")) {
+		return body
+	}
+	out := bytes.ReplaceAll(body, []byte(`"url":"http://`), []byte(`"url":"https://`))
+	out = bytes.ReplaceAll(out, []byte(`"url": "http://`), []byte(`"url": "https://`))
+	return unescapeJSONAmpersands(out)
+}
+
+// encoding/json HTML-escapes & as \u0026; regex URL scrapers then 401 on 17zz signed links.
+func unescapeJSONAmpersands(body []byte) []byte {
+	if !bytes.Contains(body, []byte(`\u0026`)) {
+		return body
+	}
+	return bytes.ReplaceAll(body, []byte(`\u0026`), []byte("&"))
 }
 
 func applyUsagePostProcessing(info *relaycommon.RelayInfo, usage *dto.Usage, responseBody []byte) {
