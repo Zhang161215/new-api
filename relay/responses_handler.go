@@ -73,7 +73,7 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 	}
 	// 本站：先按原始模型名（含后缀）记录思考强度来源，再交给上游的后缀处理
 	helper.CaptureResponsesReasoningEffort(info, request)
-	if err = helper.ApplyReasoningModelSuffix(info, request); err != nil {
+	if err := helper.ApplyReasoningModelSuffix(c, info, request); err != nil {
 		return newConvertRequestFailedError(c, info, err)
 	}
 

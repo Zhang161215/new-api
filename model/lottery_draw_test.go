@@ -576,6 +576,9 @@ func TestClaimMonthlyLotteryGift(t *testing.T) {
 func TestListAndGrantLotteryGifts(t *testing.T) {
 	setupLotteryTables(t)
 	require.NoError(t, DB.AutoMigrate(&TopUp{}, &Log{}))
+	// 统计是全表口径：同包其他测试留下的本月充值/消费记录会被算进来，先清空
+	require.NoError(t, DB.Exec("DELETE FROM top_ups").Error)
+	require.NoError(t, DB.Exec("DELETE FROM logs").Error)
 	require.NoError(t, EnsureLotteryDefaults())
 	now := time.Now()
 	start, _ := LotteryMonthRange(now)
