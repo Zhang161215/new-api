@@ -38,6 +38,13 @@ import {
   IconCopy,
 } from '@douyinfe/semi-icons';
 import React, { useEffect, useState } from 'react';
+import SecureVerificationModal from '../../../common/modals/SecureVerificationModal';
+import { useSecureVerification } from '../../../../hooks/common/useSecureVerification';
+import {
+  securityResult,
+  securityRequestConfig,
+  withProof,
+} from '../../../../services/secureVerification';
 
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -64,6 +71,10 @@ const TwoFASetting = ({ t }) => {
   const [confirmDisable, setConfirmDisable] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
 
+  // 上游 rc.36：开启（2fa.setup）、关闭（2fa.disable）、重新生成备用码（2fa.backup_codes.regenerate）
+  // 都要先做安全验证，拿 proof 放在 X-Security-Proof 头里
+  const security = useSecureVerification();
+
   // 获取2FA状态
   const fetchStatus = async () => {
     try {
@@ -80,26 +91,28 @@ const TwoFASetting = ({ t }) => {
     fetchStatus();
   }, []);
 
-  // 初始化2FA设置
+  // 初始化2FA设置：验证身份 → setup 返回密钥、二维码、备用码和 flow_token
   const handleSetup2FA = async () => {
-    setLoading(true);
-    try {
-      const res = await API.post('/api/user/2fa/setup');
-      if (res.data.success) {
-        setSetupData(res.data.data);
-        setSetupModalVisible(true);
+    await security.startVerification(
+      async (proof) => {
+        const data = await securityResult(
+          API.post('/api/user/2fa/setup', undefined, withProof(proof)),
+          t('设置2FA失败'),
+        );
+        setSetupData(data);
+        setVerificationCode('');
         setCurrentStep(0);
-      } else {
-        showError(res.data.message);
-      }
-    } catch (error) {
-      showError(t('设置2FA失败'));
-    } finally {
-      setLoading(false);
-    }
+        setSetupModalVisible(true);
+      },
+      {
+        scope: '2fa.setup',
+        title: t('安全验证'),
+        description: t('开启两步验证前需要验证身份。'),
+      },
+    );
   };
 
-  // 启用2FA
+  // 启用2FA：提交认证器验证码和 setup 返回的 flow_token
   const handleEnable2FA = async () => {
     if (!verificationCode) {
       showWarning(t('请输入验证码'));
@@ -108,21 +121,23 @@ const TwoFASetting = ({ t }) => {
 
     setLoading(true);
     try {
-      const res = await API.post('/api/user/2fa/enable', {
-        code: verificationCode,
-      });
-      if (res.data.success) {
-        showSuccess(t('两步验证启用成功！'));
-        setEnableModalVisible(false);
-        setSetupModalVisible(false);
-        setVerificationCode('');
-        setCurrentStep(0);
-        fetchStatus();
-      } else {
-        showError(res.data.message);
-      }
+      await securityResult(
+        API.post(
+          '/api/user/2fa/enable',
+          { code: verificationCode, flow_token: setupData?.flow_token },
+          securityRequestConfig,
+        ),
+        t('启用2FA失败'),
+      );
+      showSuccess(t('两步验证启用成功！'));
+      setEnableModalVisible(false);
+      setSetupModalVisible(false);
+      setSetupData(null);
+      setVerificationCode('');
+      setCurrentStep(0);
+      fetchStatus();
     } catch (error) {
-      showError(t('启用2FA失败'));
+      showError(error.message || t('启用2FA失败'));
     } finally {
       setLoading(false);
     }
@@ -130,62 +145,47 @@ const TwoFASetting = ({ t }) => {
 
   // 禁用2FA
   const handleDisable2FA = async () => {
-    if (!verificationCode) {
-      showWarning(t('请输入验证码或备用码'));
-      return;
-    }
-
     if (!confirmDisable) {
       showWarning(t('请确认您已了解禁用两步验证的后果'));
       return;
     }
-
-    setLoading(true);
-    try {
-      const res = await API.post('/api/user/2fa/disable', {
-        code: verificationCode,
-      });
-      if (res.data.success) {
+    await security.startVerification(
+      async (proof) => {
+        await securityResult(
+          API.post('/api/user/2fa/disable', undefined, withProof(proof)),
+          t('禁用2FA失败'),
+        );
         showSuccess(t('两步验证已禁用'));
         setDisableModalVisible(false);
-        setVerificationCode('');
         setConfirmDisable(false);
         fetchStatus();
-      } else {
-        showError(res.data.message);
-      }
-    } catch (error) {
-      showError(t('禁用2FA失败'));
-    } finally {
-      setLoading(false);
-    }
+      },
+      {
+        scope: '2fa.disable',
+        title: t('禁用两步验证'),
+        preferredMethod: '2fa',
+      },
+    );
   };
 
   // 重新生成备用码
   const handleRegenerateBackupCodes = async () => {
-    if (!verificationCode) {
-      showWarning(t('请输入验证码'));
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const res = await API.post('/api/user/2fa/backup_codes', {
-        code: verificationCode,
-      });
-      if (res.data.success) {
-        setBackupCodes(res.data.data.backup_codes);
+    await security.startVerification(
+      async (proof) => {
+        const data = await securityResult(
+          API.post('/api/user/2fa/backup_codes', undefined, withProof(proof)),
+          t('重新生成备用码失败'),
+        );
+        setBackupCodes(data?.backup_codes || []);
         showSuccess(t('备用码重新生成成功'));
-        setVerificationCode('');
         fetchStatus();
-      } else {
-        showError(res.data.message);
-      }
-    } catch (error) {
-      showError(t('重新生成备用码失败'));
-    } finally {
-      setLoading(false);
-    }
+      },
+      {
+        scope: '2fa.backup_codes.regenerate',
+        title: t('重新生成备用码'),
+        preferredMethod: '2fa',
+      },
+    );
   };
 
   // 通用复制函数
@@ -309,7 +309,7 @@ const TwoFASetting = ({ t }) => {
           type='danger'
           theme='solid'
           loading={loading}
-          disabled={!confirmDisable || !verificationCode}
+          disabled={!confirmDisable}
           onClick={handleDisable2FA}
           className='!rounded-lg !bg-slate-500 hover:!bg-slate-600'
         >
@@ -354,7 +354,6 @@ const TwoFASetting = ({ t }) => {
           type='primary'
           theme='solid'
           loading={loading}
-          disabled={!verificationCode}
           onClick={handleRegenerateBackupCodes}
           className='!rounded-lg !bg-slate-600 hover:!bg-slate-700'
         >
@@ -606,22 +605,6 @@ const TwoFASetting = ({ t }) => {
 
             <div className='space-y-4'>
               <div>
-                <Text
-                  strong
-                  className='block mb-2 text-slate-700 dark:text-slate-200'
-                >
-                  {t('验证身份')}
-                </Text>
-                <Input
-                  placeholder={t('请输入认证器验证码或备用码')}
-                  value={verificationCode}
-                  onChange={setVerificationCode}
-                  size='large'
-                  className='!rounded-lg'
-                />
-              </div>
-
-              <div>
                 <Checkbox
                   checked={confirmDisable}
                   onChange={(e) => setConfirmDisable(e.target.checked)}
@@ -669,24 +652,9 @@ const TwoFASetting = ({ t }) => {
                 />
               </div>
 
-              {/* 验证区域 */}
-              <div className='space-y-4'>
-                <div>
-                  <Text
-                    strong
-                    className='block mb-2 text-slate-700 dark:text-slate-200'
-                  >
-                    {t('验证身份')}
-                  </Text>
-                  <Input
-                    placeholder={t('请输入认证器验证码')}
-                    value={verificationCode}
-                    onChange={setVerificationCode}
-                    size='large'
-                    className='!rounded-lg'
-                  />
-                </div>
-              </div>
+              <Text className='text-slate-500 dark:text-slate-400 text-sm'>
+                {t('点击下方按钮后需要先验证身份')}
+              </Text>
             </>
           ) : (
             <>
@@ -716,6 +684,18 @@ const TwoFASetting = ({ t }) => {
           )}
         </div>
       </Modal>
+
+      <SecureVerificationModal
+        visible={security.isModalVisible}
+        requirements={security.requirements}
+        verificationState={security.verificationState}
+        onVerify={security.executeVerification}
+        onCancel={security.cancelVerification}
+        onCodeChange={security.setVerificationCode}
+        onMethodSwitch={security.switchVerificationMethod}
+        title={security.verificationState.title}
+        description={security.verificationState.description}
+      />
     </>
   );
 };

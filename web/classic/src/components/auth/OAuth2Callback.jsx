@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext, useEffect, useRef } from 'react';
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -27,9 +27,15 @@ import {
   updateAPI,
   setUserData,
   authUserFromData,
+  isLoginChallenge,
+  saveLoginChallenge,
 } from '../../helpers';
 import { UserContext } from '../../context/User';
 import Loading from '../common/ui/Loading';
+import {
+  OAUTH_POPUP_CALLBACK_MESSAGE,
+  getOAuthPopupMark,
+} from '../../services/secureVerification';
 
 const OAuth2Callback = (props) => {
   const { t } = useTranslation();
@@ -39,6 +45,8 @@ const OAuth2Callback = (props) => {
   
   // 防止 React 18 Strict Mode 下重复执行
   const hasExecuted = useRef(false);
+  // OAuth 安全验证弹窗：把 code/state 交回原页面后显示的提示
+  const [popupMessage, setPopupMessage] = useState('');
 
   // 最大重试次数
   const MAX_RETRIES = 3;
@@ -60,6 +68,10 @@ const OAuth2Callback = (props) => {
       if (data?.action === 'bind') {
         showSuccess(t('绑定成功！'));
         navigate('/console/personal');
+      } else if (isLoginChallenge(data)) {
+        // 上游 rc.36：开了 2FA / Passkey 的账户还要完成登录验证，回登录页继续
+        saveLoginChallenge(data);
+        navigate('/login');
       } else {
         const user = authUserFromData(data);
         userDispatch({ type: 'login', payload: user });
@@ -105,6 +117,29 @@ const OAuth2Callback = (props) => {
     const code = searchParams.get('code');
     const state = searchParams.get('state');
 
+    // OAuth 安全验证弹窗（上游 rc.36 intent=verify）：不在这里调接口，
+    // 把 code/state 交给打开弹窗的页面，由它带着当前会话换 proof
+    if (getOAuthPopupMark(state)) {
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage(
+          {
+            type: OAUTH_POPUP_CALLBACK_MESSAGE,
+            provider: props.type,
+            state,
+            code: code || undefined,
+            error: searchParams.get('error') || undefined,
+            error_description:
+              searchParams.get('error_description') || undefined,
+          },
+          window.location.origin,
+        );
+        setPopupMessage(t('授权完成，正在返回原页面验证…'));
+      } else {
+        setPopupMessage(t('原页面已关闭，请关闭此窗口后重新操作'));
+      }
+      return;
+    }
+
     // 参数缺失直接返回
     if (!code) {
       showError(t('未获取到授权码'));
@@ -115,6 +150,13 @@ const OAuth2Callback = (props) => {
     sendCode(code, state);
   }, []);
 
+  if (popupMessage) {
+    return (
+      <div className='flex items-center justify-center min-h-[60vh] text-gray-600'>
+        {popupMessage}
+      </div>
+    );
+  }
   return <Loading />;
 };
 

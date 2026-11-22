@@ -36,10 +36,13 @@ import {
   onOIDCClicked,
   onLinuxDOOAuthClicked,
   onCustomOAuthClicked,
+  onTelegramOAuthClicked,
   prepareCredentialRequestOptions,
   buildAssertionResult,
   isPasskeySupported,
   authUserFromData,
+  isLoginChallenge,
+  takeLoginChallenge,
 } from '../../helpers';
 import Turnstile from 'react-turnstile';
 import {
@@ -53,7 +56,6 @@ import {
 } from '@douyinfe/semi-ui';
 import Title from '@douyinfe/semi-ui/lib/es/typography/title';
 import Text from '@douyinfe/semi-ui/lib/es/typography/text';
-import TelegramLoginButton from 'react-telegram-login';
 
 import {
   IconGithubLogo,
@@ -66,7 +68,7 @@ import WeChatIcon from '../common/logo/WeChatIcon';
 import LinuxDoIcon from '../common/logo/LinuxDoIcon';
 import TwoFAVerification from './TwoFAVerification';
 import { useTranslation } from 'react-i18next';
-import { SiDiscord } from 'react-icons/si';
+import { SiDiscord, SiTelegram } from 'react-icons/si';
 
 const LoginForm = () => {
   let navigate = useNavigate();
@@ -111,6 +113,7 @@ const LoginForm = () => {
   const [showTwoFA, setShowTwoFA] = useState(false);
   // 上游 7-20：密码校验通过后返回一次性 flow_token，2FA 验证时提交
   const [twoFAFlowToken, setTwoFAFlowToken] = useState('');
+  const [twoFAMethods, setTwoFAMethods] = useState([]);
   const [passkeySupported, setPasskeySupported] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -179,7 +182,19 @@ const LoginForm = () => {
     if (searchParams.get('expired')) {
       showError(t('未登录或登录已过期，请重新登录'));
     }
+    // OAuth 回调页带回来的登录挑战（开了 2FA / Passkey 的账户）
+    const challenge = takeLoginChallenge();
+    if (challenge) {
+      startLoginVerification(challenge);
+    }
   }, []);
+
+  // 上游 rc.36：主认证通过后，开了 2FA / Passkey 的账户还要完成登录验证
+  const startLoginVerification = (challenge) => {
+    setTwoFAFlowToken(challenge.flow_token);
+    setTwoFAMethods(challenge.methods || []);
+    setShowTwoFA(true);
+  };
 
   const onWeChatLoginClicked = () => {
     if ((hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms) {
@@ -204,6 +219,11 @@ const LoginForm = () => {
       );
       const { success, message, data } = res.data;
       if (success) {
+        setShowWeChatLoginModal(false);
+        if (isLoginChallenge(data)) {
+          startLoginVerification(data);
+          return;
+        }
         const user = authUserFromData(data);
         userDispatch({ type: 'login', payload: user });
         localStorage.setItem('user', JSON.stringify(user));
@@ -211,7 +231,6 @@ const LoginForm = () => {
         updateAPI();
         navigate('/');
         showSuccess('登录成功！');
-        setShowWeChatLoginModal(false);
       } else {
         showError(message);
       }
@@ -249,10 +268,9 @@ const LoginForm = () => {
         );
         const { success, message, data } = res.data;
         if (success) {
-          // 检查是否需要2FA验证
-          if (data && data.require_2fa) {
-            setTwoFAFlowToken(data.flow_token || '');
-            setShowTwoFA(true);
+          // 开了 2FA / Passkey：还要完成登录验证
+          if (isLoginChallenge(data)) {
+            startLoginVerification(data);
             setLoginLoading(false);
             return;
           }
@@ -284,48 +302,13 @@ const LoginForm = () => {
     }
   }
 
-  // 添加Telegram登录处理函数
-  const onTelegramLoginClicked = async (response) => {
+  // 上游 rc.36：Telegram 改走标准 OAuth（跳转 Telegram 授权页，回调 /oauth/telegram）
+  const onTelegramLoginClicked = async () => {
     if ((hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms) {
       showInfo(t('请先阅读并同意用户协议和隐私政策'));
       return;
     }
-    const fields = [
-      'id',
-      'first_name',
-      'last_name',
-      'username',
-      'photo_url',
-      'auth_date',
-      'hash',
-      'lang',
-    ];
-    const params = {};
-    fields.forEach((field) => {
-      if (response[field]) {
-        params[field] = response[field];
-      }
-    });
-    try {
-      const res = await API.get(`/api/oauth/telegram/login`, {
-        params,
-        skipAuthRefresh: true,
-      });
-      const { success, message, data } = res.data;
-      if (success) {
-        const user = authUserFromData(data);
-        userDispatch({ type: 'login', payload: user });
-        localStorage.setItem('user', JSON.stringify(user));
-        showSuccess('登录成功！');
-        setUserData(user);
-        updateAPI();
-        navigate('/');
-      } else {
-        showError(message);
-      }
-    } catch (error) {
-      showError('登录失败，请重试');
-    }
+    await onTelegramOAuthClicked({ shouldLogout: true });
   };
 
   // 包装的GitHub登录点击处理
@@ -512,6 +495,8 @@ const LoginForm = () => {
   const handle2FASuccess = (data) => {
     const user = authUserFromData(data);
     setTwoFAFlowToken('');
+    setTwoFAMethods([]);
+    setShowTwoFA(false);
     userDispatch({ type: 'login', payload: user });
     setUserData(user);
     updateAPI();
@@ -523,6 +508,7 @@ const LoginForm = () => {
   const handleBackToLogin = () => {
     setShowTwoFA(false);
     setTwoFAFlowToken('');
+    setTwoFAMethods([]);
     setInputs({ username: '', password: '', wechat_verification_code: '' });
   };
 
@@ -647,12 +633,15 @@ const LoginForm = () => {
                   ))}
 
                 {status.telegram_oauth && (
-                  <div className='flex justify-center my-2'>
-                    <TelegramLoginButton
-                      dataOnauth={onTelegramLoginClicked}
-                      botName={status.telegram_bot_name}
-                    />
-                  </div>
+                  <Button
+                    theme='outline'
+                    className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
+                    type='tertiary'
+                    icon={<SiTelegram style={{ color: '#26A5E4', width: '20px', height: '20px' }} />}
+                    onClick={onTelegramLoginClicked}
+                  >
+                    <span className='ml-3'>{t('使用 Telegram 继续')}</span>
+                  </Button>
                 )}
 
                 {status.passkey_login && passkeySupported && (
@@ -965,6 +954,7 @@ const LoginForm = () => {
       >
         <TwoFAVerification
           flowToken={twoFAFlowToken}
+          methods={twoFAMethods}
           onSuccess={handle2FASuccess}
           onBack={handleBackToLogin}
           isModal={true}

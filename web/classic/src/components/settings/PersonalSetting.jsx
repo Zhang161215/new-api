@@ -48,6 +48,11 @@ import AccountDeleteModal from './personal/modals/AccountDeleteModal';
 import ChangePasswordModal from './personal/modals/ChangePasswordModal';
 import SecureVerificationModal from '../common/modals/SecureVerificationModal';
 import { useSecureVerification } from '../../hooks/common/useSecureVerification';
+import {
+  securityResult,
+  securityRequestConfig,
+  withProof,
+} from '../../services/secureVerification';
 
 const PersonalSetting = () => {
   const [userState, userDispatch] = useContext(UserContext);
@@ -57,6 +62,7 @@ const PersonalSetting = () => {
   const [inputs, setInputs] = useState({
     wechat_verification_code: '',
     email_verification_code: '',
+    email_old_code: '',
     email: '',
     self_account_deletion_confirmation: '',
     original_password: '',
@@ -81,14 +87,13 @@ const PersonalSetting = () => {
   const [disableButton, setDisableButton] = useState(false);
   const [countdown, setCountdown] = useState(30);
   const [systemToken, setSystemToken] = useState('');
+  const [accessTokenStatus, setAccessTokenStatus] = useState(null);
+  // 上游 rc.36 邮箱绑定：start 返回 flow_token，换绑时还要原邮箱的验证码
+  const [emailBindFlow, setEmailBindFlow] = useState(null);
   const [passkeyStatus, setPasskeyStatus] = useState({ enabled: false });
   const [passkeyRegisterLoading, setPasskeyRegisterLoading] = useState(false);
   const [passkeyDeleteLoading, setPasskeyDeleteLoading] = useState(false);
   const [passkeySupported, setPasskeySupported] = useState(false);
-  const [
-    passkeyRequiredVerificationMethod,
-    setPasskeyRequiredVerificationMethod,
-  ] = useState(null);
   const [notificationSettings, setNotificationSettings] = useState({
     warningType: 'email',
     warningThreshold: 100000,
@@ -104,33 +109,11 @@ const PersonalSetting = () => {
     recordIpLog: false,
   });
 
-  const {
-    isModalVisible: isPasskeyVerificationModalVisible,
-    verificationMethods: passkeyVerificationMethods,
-    verificationState: passkeyVerificationState,
-    startVerification: startPasskeyVerification,
-    executeVerification: executePasskeyVerification,
-    cancelVerification: cancelPasskeyVerification,
-    setVerificationCode: setPasskeyVerificationCode,
-    switchVerificationMethod: switchPasskeyVerificationMethod,
-    checkVerificationMethods: checkPasskeyVerificationMethods,
-  } = useSecureVerification({
-    onSuccess: () => {
-      setPasskeyRequiredVerificationMethod(null);
-    },
-  });
-
-  const visiblePasskeyVerificationMethods = passkeyRequiredVerificationMethod
-    ? {
-        ...passkeyVerificationMethods,
-        has2FA:
-          passkeyRequiredVerificationMethod === '2fa' &&
-          passkeyVerificationMethods.has2FA,
-        hasPasskey:
-          passkeyRequiredVerificationMethod === 'passkey' &&
-          passkeyVerificationMethods.hasPasskey,
-      }
-    : passkeyVerificationMethods;
+  // 上游 rc.36：所有敏感操作都要先做安全验证（按 scope 取可用方式，验证后拿一次性 proof）
+  const security = useSecureVerification();
+  const startSecurity = (apiCall, options) =>
+    security.startVerification(apiCall, { title: t('安全验证'), ...options });
+  const hasPassword = userState?.user?.has_password !== false;
 
   useEffect(() => {
     let saved = localStorage.getItem('status');
@@ -167,6 +150,7 @@ const PersonalSetting = () => {
     })();
 
     getUserData();
+    loadAccessTokenStatus();
 
     isPasskeySupported()
       .then(setPasskeySupported)
@@ -213,17 +197,49 @@ const PersonalSetting = () => {
     setInputs((inputs) => ({ ...inputs, [name]: value }));
   };
 
-  const generateAccessToken = async () => {
-    const res = await API.get('/api/user/token');
-    const { success, message, data } = res.data;
-    if (success) {
-      setSystemToken(data);
-      await copy(data);
-      showSuccess(t('令牌已重置并已复制到剪贴板'));
-    } else {
-      showError(message);
+  const loadAccessTokenStatus = async () => {
+    try {
+      const res = await API.get('/api/user/token/status', securityRequestConfig);
+      if (res.data?.success) setAccessTokenStatus(res.data.data);
+    } catch (e) {
+      // 忽略，不影响生成
     }
   };
+
+  const generateAccessToken = () =>
+    startSecurity(
+      async (proof) => {
+        const data = await securityResult(
+          API.post('/api/user/token', undefined, withProof(proof)),
+          t('生成令牌失败'),
+        );
+        setSystemToken(data);
+        await copy(data);
+        showSuccess(t('令牌已重置并已复制到剪贴板'));
+        loadAccessTokenStatus();
+      },
+      {
+        scope: 'access_token.generate',
+        description: t('生成新的系统访问令牌会让旧令牌立即失效，请先验证身份。'),
+      },
+    );
+
+  const revokeAccessToken = () =>
+    startSecurity(
+      async (proof) => {
+        await securityResult(
+          API.delete('/api/user/token', withProof(proof)),
+          t('撤销令牌失败'),
+        );
+        setSystemToken('');
+        showSuccess(t('系统访问令牌已撤销'));
+        loadAccessTokenStatus();
+      },
+      {
+        scope: 'access_token.revoke',
+        description: t('撤销后使用该令牌的程序将无法再调用管理接口。'),
+      },
+    );
 
   const loadPasskeyStatus = async () => {
     try {
@@ -244,97 +260,45 @@ const PersonalSetting = () => {
     }
   };
 
-  const startPasskeyManagementVerification = async (apiCall, options = {}) => {
-    const methods = await checkPasskeyVerificationMethods();
-    const requiredMethod = methods.has2FA
-      ? '2fa'
-      : methods.hasPasskey
-        ? 'passkey'
-        : null;
-
-    if (!requiredMethod) {
-      showError(t('您需要先启用两步验证或 Passkey 才能执行此操作'));
-      return;
-    }
-
-    if (requiredMethod === 'passkey' && !methods.passkeySupported) {
-      showInfo(t('当前设备不支持 Passkey'));
-      return;
-    }
-
-    setPasskeyRequiredVerificationMethod(requiredMethod);
-    await startPasskeyVerification(apiCall, {
-      preferredMethod: requiredMethod,
-      title: t('安全验证'),
-      ...options,
-    });
-  };
-
-  const startPasskeyRegistration = async () => {
-    const methods = await checkPasskeyVerificationMethods();
-    if (!methods.has2FA) {
-      try {
-        await registerPasskey();
-      } catch (error) {
-        showError(error.message || t('Passkey 注册失败，请重试'));
-      }
-      return;
-    }
-
-    setPasskeyRequiredVerificationMethod('2fa');
-    await startPasskeyVerification(registerPasskey, {
-      preferredMethod: '2fa',
-      title: t('安全验证'),
-      scope: 'passkey.register',
-    });
-  };
-
-  // proof：已开 2FA 的用户注册 Passkey 时，begin 和 finish 都要带 passkey.register 的 X-Security-Proof
+  // 注册 Passkey：begin 带 passkey.register 的 X-Security-Proof，finish 只认 begin 返回的 flow_token
   const registerPasskey = async (proof) => {
     setPasskeyRegisterLoading(true);
-    const proofConfig = proof
-      ? { headers: { 'X-Security-Proof': proof } }
-      : undefined;
     try {
-      const beginRes = await API.post(
-        '/api/user/passkey/register/begin',
-        null,
-        proofConfig,
+      const data = await securityResult(
+        API.post('/api/user/passkey/register/begin', null, withProof(proof)),
+        t('无法发起 Passkey 注册'),
       );
-      const { success, message, data } = beginRes.data;
-      if (!success) {
-        throw new Error(message || t('无法发起 Passkey 注册'));
-      }
 
       const publicKey = prepareCredentialCreationOptions(
         data?.options || data?.publicKey || data,
       );
-      const credential = await navigator.credentials.create({ publicKey });
+      let credential;
+      try {
+        credential = await navigator.credentials.create({ publicKey });
+      } catch (error) {
+        if (error?.name === 'NotAllowedError' || error?.name === 'AbortError') {
+          showInfo(t('已取消 Passkey 注册'));
+          return { cancelled: true };
+        }
+        throw error;
+      }
       const payload = buildRegistrationResult(credential);
       if (!payload) {
         throw new Error(t('Passkey 注册失败，请重试'));
       }
 
-      const finishRes = await API.post(
-        '/api/user/passkey/register/finish',
-        { flow_token: data?.flow_token, credential: payload },
-        proofConfig,
+      const finish = await securityResult(
+        API.post(
+          '/api/user/passkey/register/finish',
+          { flow_token: data?.flow_token, credential: payload },
+          securityRequestConfig,
+        ),
+        t('Passkey 注册失败，请重试'),
       );
-      if (!finishRes.data.success) {
-        throw new Error(
-          finishRes.data.message || t('Passkey 注册失败，请重试'),
-        );
-      }
 
       showSuccess(t('Passkey 注册成功'));
       await loadPasskeyStatus();
-      return finishRes.data;
-    } catch (error) {
-      if (error?.name === 'AbortError') {
-        showInfo(t('已取消 Passkey 注册'));
-        return { cancelled: true };
-      }
-      throw new Error(error?.message || t('Passkey 注册失败，请重试'));
+      return finish;
     } finally {
       setPasskeyRegisterLoading(false);
     }
@@ -345,41 +309,58 @@ const PersonalSetting = () => {
       showInfo(t('当前设备不支持 Passkey'));
       return;
     }
-    await startPasskeyRegistration();
+    await startSecurity(registerPasskey, { scope: 'passkey.register' });
   };
 
   const removePasskey = async (proof) => {
     setPasskeyDeleteLoading(true);
     try {
-      const res = await API.delete(
-        '/api/user/passkey',
-        proof ? { headers: { 'X-Security-Proof': proof } } : undefined,
+      await securityResult(
+        API.delete('/api/user/passkey', withProof(proof)),
+        t('操作失败，请重试'),
       );
-      const { success, message } = res.data;
-      if (!success) {
-        throw new Error(message || t('操作失败，请重试'));
-      }
-
       showSuccess(t('Passkey 已解绑'));
       await loadPasskeyStatus();
-      return res.data;
-    } catch (error) {
-      throw new Error(error?.message || t('操作失败，请重试'));
     } finally {
       setPasskeyDeleteLoading(false);
     }
   };
 
   const handleRemovePasskey = async () => {
-    await startPasskeyManagementVerification(removePasskey, {
-      scope: 'passkey.delete',
-    });
+    await startSecurity(removePasskey, { scope: 'passkey.delete' });
   };
 
-  const handlePasskeyVerificationCancel = () => {
-    setPasskeyRequiredVerificationMethod(null);
-    cancelPasskeyVerification();
-  };
+  // 绑定第三方账号：先验证（account.binding.bind {provider}），再带 proof 申请 OAuth state 并跳转授权
+  const startOAuthBind = (provider, launch) =>
+    startSecurity(
+      async (proof) => {
+        const ok = await launch(proof);
+        if (ok === false) throw new Error(t('发起绑定失败'));
+      },
+      {
+        scope: 'account.binding.bind',
+        context: { provider },
+        description: t('绑定新的登录方式前需要验证身份，验证后会跳转到授权页面。'),
+      },
+    );
+
+  // 解绑自定义 OAuth：account.binding.unbind {provider_id}
+  const startCustomOAuthUnbind = (providerId, onDone) =>
+    startSecurity(
+      async (proof) => {
+        await securityResult(
+          API.delete(`/api/user/oauth/bindings/${providerId}`, withProof(proof)),
+          t('操作失败'),
+        );
+        showSuccess(t('解绑成功'));
+        await onDone?.();
+      },
+      {
+        scope: 'account.binding.unbind',
+        context: { provider_id: Number(providerId) },
+        description: t('解绑后将不能再用这个账号登录，请先验证身份。'),
+      },
+    );
 
   const getUserData = async () => {
     let res = await API.get(`/api/user/self`);
@@ -404,40 +385,49 @@ const PersonalSetting = () => {
       showError(t('请输入你的账户名以确认删除！'));
       return;
     }
-
-    const res = await API.delete('/api/user/self');
-    const { success, message } = res.data;
-
-    if (success) {
-      showSuccess(t('账户已删除！'));
-      await logoutSession();
-      userDispatch({ type: 'logout' });
-      localStorage.removeItem('user');
-      navigate('/login');
-    } else {
-      showError(message);
-    }
+    await startSecurity(
+      async (proof) => {
+        await securityResult(
+          API.delete('/api/user/self', withProof(proof)),
+          t('删除账户失败'),
+        );
+        showSuccess(t('账户已删除！'));
+        setShowAccountDeleteModal(false);
+        await logoutSession();
+        userDispatch({ type: 'logout' });
+        localStorage.removeItem('user');
+        navigate('/login');
+      },
+      {
+        scope: 'account.delete',
+        title: t('确认删除账户'),
+        description: t('删除后账户数据无法恢复，请验证身份。'),
+      },
+    );
   };
 
   const bindWeChat = async () => {
-    if (inputs.wechat_verification_code === '') return;
-    const res = await API.post('/api/oauth/wechat/bind', {
-      code: inputs.wechat_verification_code,
-    });
-    const { success, message } = res.data;
-    if (success) {
-      showSuccess(t('微信账户绑定成功！'));
-      setShowWeChatBindModal(false);
-    } else {
-      showError(message);
-    }
+    const code = inputs.wechat_verification_code.trim();
+    if (code === '') return;
+    await startSecurity(
+      async (proof) => {
+        await securityResult(
+          API.post('/api/oauth/wechat/bind', { code }, withProof(proof)),
+          t('微信绑定失败'),
+        );
+        showSuccess(t('微信账户绑定成功！'));
+        setShowWeChatBindModal(false);
+        getUserData();
+      },
+      { scope: 'account.binding.bind', context: { provider: 'wechat', code } },
+    );
   };
 
   const changePassword = async () => {
-    // if (inputs.original_password === '') {
-    //   showError(t('请输入原密码！'));
-    //   return;
-    // }
+    if (hasPassword && inputs.original_password === '') {
+      showError(t('请输入原密码！'));
+      return;
+    }
     if (inputs.set_new_password === '') {
       showError(t('请输入新密码！'));
       return;
@@ -450,63 +440,151 @@ const PersonalSetting = () => {
       showError(t('两次输入的密码不一致！'));
       return;
     }
-    const res = await API.put(`/api/user/self`, {
-      original_password: inputs.original_password,
-      password: inputs.set_new_password,
-    });
-    const { success, message } = res.data;
-    if (success) {
-      showSuccess(t('密码修改成功！'));
-      setShowWeChatBindModal(false);
-    } else {
-      showError(message);
-    }
-    setShowChangePasswordModal(false);
+    // 上游 rc.36：改密码（account.password.change）/ 首次设置密码（account.password.set）都要先验证；
+    // 成功后返回当前会话的 token 轮换，其他登录会话全部失效
+    await startSecurity(
+      async (proof) => {
+        await securityResult(
+          API.put(
+            '/api/user/self',
+            {
+              ...(hasPassword
+                ? { original_password: inputs.original_password }
+                : {}),
+              password: inputs.set_new_password,
+            },
+            withProof(proof),
+          ),
+          t('密码修改失败'),
+        );
+        showSuccess(
+          hasPassword ? t('密码修改成功！') : t('密码设置成功！'),
+        );
+        setShowChangePasswordModal(false);
+        setInputs((prev) => ({
+          ...prev,
+          original_password: '',
+          set_new_password: '',
+          set_new_password_confirmation: '',
+        }));
+        getUserData();
+      },
+      {
+        scope: hasPassword ? 'account.password.change' : 'account.password.set',
+        description: t('修改密码后，其他设备上的登录会全部退出。'),
+      },
+    );
   };
 
+  const startResendCountdown = (resendAt) => {
+    const wait = resendAt
+      ? Math.max(1, Math.ceil(resendAt - Date.now() / 1000))
+      : 30;
+    setCountdown(wait);
+    setDisableButton(true);
+  };
+
+  const resetEmailBind = () => {
+    setEmailBindFlow(null);
+    setInputs((prev) => ({
+      ...prev,
+      email_verification_code: '',
+      email_old_code: '',
+    }));
+  };
+
+  // 上游 rc.36 邮箱绑定：验证身份（account.binding.bind {provider: email, email}）→ start 发验证码 →
+  // 输入新邮箱（换绑时还有原邮箱）的验证码 → bind
   const sendVerificationCode = async () => {
-    if (inputs.email === '') {
+    const email = inputs.email.trim();
+    if (email === '') {
       showError(t('请输入邮箱！'));
       return;
     }
-    setDisableButton(true);
-    if (turnstileEnabled && turnstileToken === '') {
-      showInfo(t('请稍后几秒重试，Turnstile 正在检查用户环境！'));
+    if (emailBindFlow?.flow_token && emailBindFlow.email === email) {
+      setLoading(true);
+      try {
+        const data = await securityResult(
+          API.post(
+            '/api/oauth/email/bind/resend',
+            { flow_token: emailBindFlow.flow_token },
+            securityRequestConfig,
+          ),
+          t('发送验证码失败'),
+        );
+        setEmailBindFlow((prev) => ({ ...prev, ...data }));
+        showSuccess(t('验证码发送成功，请检查邮箱！'));
+        startResendCountdown(data?.resend_at);
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        setLoading(false);
+      }
       return;
     }
-    setLoading(true);
-    const res = await API.get(
-      `/api/verification?email=${inputs.email}&turnstile=${turnstileToken}`,
+    await startSecurity(
+      async (proof) => {
+        const data = await securityResult(
+          API.post('/api/oauth/email/bind/start', { email }, withProof(proof)),
+          t('发送验证码失败'),
+        );
+        setEmailBindFlow(data);
+        showSuccess(
+          data?.old_email_required
+            ? t('验证码已发送到新邮箱和原邮箱，请检查邮箱！')
+            : t('验证码发送成功，请检查邮箱！'),
+        );
+        if (data?.notification_warning) {
+          showInfo(t('部分安全通知邮件发送失败'));
+        }
+        startResendCountdown(data?.resend_at);
+      },
+      {
+        scope: 'account.binding.bind',
+        context: { provider: 'email', email },
+        description: t('绑定或更换邮箱前需要验证身份。'),
+      },
     );
-    const { success, message } = res.data;
-    if (success) {
-      showSuccess(t('验证码发送成功，请检查邮箱！'));
-    } else {
-      showError(message);
-    }
-    setLoading(false);
-    if (turnstileEnabled) resetTurnstile();
   };
 
   const bindEmail = async () => {
-    if (inputs.email_verification_code === '') {
+    if (!emailBindFlow?.flow_token) {
+      showError(t('请先获取邮箱验证码！'));
+      return;
+    }
+    if (inputs.email_verification_code.trim() === '') {
       showError(t('请输入邮箱验证码！'));
       return;
     }
+    if (emailBindFlow.old_email_required && inputs.email_old_code.trim() === '') {
+      showError(t('请输入原邮箱收到的验证码！'));
+      return;
+    }
     setLoading(true);
-    const res = await API.post('/api/oauth/email/bind', {
-      email: inputs.email,
-      code: inputs.email_verification_code,
-    });
-    const { success, message } = res.data;
-    if (success) {
+    try {
+      await securityResult(
+        API.post(
+          '/api/oauth/email/bind',
+          {
+            flow_token: emailBindFlow.flow_token,
+            new_code: inputs.email_verification_code.trim(),
+            ...(emailBindFlow.old_email_required
+              ? { old_code: inputs.email_old_code.trim() }
+              : {}),
+          },
+          securityRequestConfig,
+        ),
+        t('邮箱绑定失败'),
+      );
       showSuccess(t('邮箱账户绑定成功！'));
       setShowEmailBindModal(false);
-      userState.user.email = inputs.email;
-    } else {
-      showError(message);
+      resetEmailBind();
+      getUserData();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const copyText = async (text) => {
@@ -595,7 +673,12 @@ const PersonalSetting = () => {
                 setShowEmailBindModal={setShowEmailBindModal}
                 setShowWeChatBindModal={setShowWeChatBindModal}
                 generateAccessToken={generateAccessToken}
+                revokeAccessToken={revokeAccessToken}
+                accessTokenStatus={accessTokenStatus}
                 handleSystemTokenClick={handleSystemTokenClick}
+                hasPassword={hasPassword}
+                onOAuthBind={startOAuthBind}
+                onCustomOAuthUnbind={startCustomOAuthUnbind}
                 setShowChangePasswordModal={setShowChangePasswordModal}
                 setShowAccountDeleteModal={setShowAccountDeleteModal}
                 passkeyStatus={passkeyStatus}
@@ -625,18 +708,18 @@ const PersonalSetting = () => {
       <EmailBindModal
         t={t}
         showEmailBindModal={showEmailBindModal}
-        setShowEmailBindModal={setShowEmailBindModal}
+        setShowEmailBindModal={(visible) => {
+          setShowEmailBindModal(visible);
+          if (!visible) resetEmailBind();
+        }}
         inputs={inputs}
         handleInputChange={handleInputChange}
         sendVerificationCode={sendVerificationCode}
         bindEmail={bindEmail}
+        emailBindFlow={emailBindFlow}
         disableButton={disableButton}
         loading={loading}
         countdown={countdown}
-        turnstileEnabled={turnstileEnabled}
-        turnstileSiteKey={turnstileSiteKey}
-        turnstileWidgetKey={turnstileWidgetKey}
-        setTurnstileToken={setTurnstileToken}
       />
 
       <WeChatBindModal
@@ -669,21 +752,22 @@ const PersonalSetting = () => {
         inputs={inputs}
         handleInputChange={handleInputChange}
         changePassword={changePassword}
+        hasPassword={hasPassword}
         turnstileEnabled={turnstileEnabled}
         turnstileSiteKey={turnstileSiteKey}
         setTurnstileToken={setTurnstileToken}
       />
 
       <SecureVerificationModal
-        visible={isPasskeyVerificationModalVisible}
-        verificationMethods={visiblePasskeyVerificationMethods}
-        verificationState={passkeyVerificationState}
-        onVerify={executePasskeyVerification}
-        onCancel={handlePasskeyVerificationCancel}
-        onCodeChange={setPasskeyVerificationCode}
-        onMethodSwitch={switchPasskeyVerificationMethod}
-        title={passkeyVerificationState.title}
-        description={passkeyVerificationState.description}
+        visible={security.isModalVisible}
+        requirements={security.requirements}
+        verificationState={security.verificationState}
+        onVerify={security.executeVerification}
+        onCancel={security.cancelVerification}
+        onCodeChange={security.setVerificationCode}
+        onMethodSwitch={security.switchVerificationMethod}
+        title={security.verificationState.title}
+        description={security.verificationState.description}
       />
     </div>
   );

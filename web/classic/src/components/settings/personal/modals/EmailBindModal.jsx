@@ -18,10 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Button, Input, Modal } from '@douyinfe/semi-ui';
+import { Button, Input, Modal, Typography } from '@douyinfe/semi-ui';
 import { IconMail, IconKey } from '@douyinfe/semi-icons';
-import Turnstile from 'react-turnstile';
 
+// 上游 rc.36 邮箱绑定：先验证身份并发送验证码（start），再提交新邮箱验证码；
+// 已有邮箱时是换绑，还要原邮箱收到的验证码。
 const EmailBindModal = ({
   t,
   showEmailBindModal,
@@ -30,14 +31,13 @@ const EmailBindModal = ({
   handleInputChange,
   sendVerificationCode,
   bindEmail,
+  emailBindFlow,
   disableButton,
   loading,
   countdown,
-  turnstileEnabled,
-  turnstileSiteKey,
-  turnstileWidgetKey,
-  setTurnstileToken,
 }) => {
+  const started = Boolean(emailBindFlow?.flow_token);
+  const sameEmail = started && emailBindFlow.email === inputs.email.trim();
   return (
     <Modal
       title={
@@ -49,6 +49,7 @@ const EmailBindModal = ({
       visible={showEmailBindModal}
       onCancel={() => setShowEmailBindModal(false)}
       onOk={bindEmail}
+      okButtonProps={{ disabled: !sameEmail, loading }}
       size={'small'}
       centered={true}
       maskClosable={false}
@@ -58,6 +59,7 @@ const EmailBindModal = ({
         <div className='flex gap-3'>
           <Input
             placeholder={t('输入邮箱地址')}
+            value={inputs.email}
             onChange={(value) => handleInputChange('email', value)}
             name='email'
             type='email'
@@ -67,40 +69,50 @@ const EmailBindModal = ({
           />
           <Button
             onClick={sendVerificationCode}
-            disabled={disableButton || loading}
+            disabled={(sameEmail && disableButton) || loading}
             className='!rounded-lg'
             type='primary'
             theme='outline'
             size='large'
           >
-            {disableButton
+            {sameEmail && disableButton
               ? `${t('重新发送')} (${countdown})`
-              : t('获取验证码')}
+              : sameEmail
+                ? t('重新发送')
+                : t('获取验证码')}
           </Button>
         </div>
 
-        <Input
-          placeholder={t('验证码')}
-          name='email_verification_code'
-          value={inputs.email_verification_code}
-          onChange={(value) =>
-            handleInputChange('email_verification_code', value)
-          }
-          size='large'
-          className='!rounded-lg'
-          prefix={<IconKey />}
-        />
-
-        {turnstileEnabled && (
-          <div className='flex justify-center'>
-            <Turnstile
-              key={turnstileWidgetKey}
-              sitekey={turnstileSiteKey}
-              onVerify={(token) => {
-                setTurnstileToken(token);
-              }}
+        {sameEmail && (
+          <>
+            <Typography.Text type='tertiary' size='small' className='block'>
+              {t('验证码已发送到 {{email}}', { email: emailBindFlow.email })}
+            </Typography.Text>
+            <Input
+              placeholder={t('新邮箱收到的验证码')}
+              name='email_verification_code'
+              value={inputs.email_verification_code}
+              onChange={(value) =>
+                handleInputChange('email_verification_code', value)
+              }
+              size='large'
+              className='!rounded-lg'
+              prefix={<IconKey />}
             />
-          </div>
+            {emailBindFlow.old_email_required && (
+              <Input
+                placeholder={t('原邮箱 {{email}} 收到的验证码', {
+                  email: emailBindFlow.current_email || '',
+                })}
+                name='email_old_code'
+                value={inputs.email_old_code}
+                onChange={(value) => handleInputChange('email_old_code', value)}
+                size='large'
+                className='!rounded-lg'
+                prefix={<IconKey />}
+              />
+            )}
+          </>
         )}
       </div>
     </Modal>

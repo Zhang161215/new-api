@@ -40,7 +40,6 @@ import {
 } from '@douyinfe/semi-icons';
 import { SiTelegram, SiWechat, SiLinux, SiDiscord } from 'react-icons/si';
 import { UserPlus, ShieldCheck } from 'lucide-react';
-import TelegramLoginButton from 'react-telegram-login';
 import {
   API,
   showError,
@@ -49,6 +48,7 @@ import {
   onOIDCClicked,
   onLinuxDOOAuthClicked,
   onDiscordOAuthClicked,
+  onTelegramOAuthClicked,
   onCustomOAuthClicked,
   getOAuthProviderIcon,
 } from '../../../../helpers';
@@ -62,7 +62,12 @@ const AccountManagement = ({
   setShowEmailBindModal,
   setShowWeChatBindModal,
   generateAccessToken,
+  revokeAccessToken,
+  accessTokenStatus,
   handleSystemTokenClick,
+  hasPassword = true,
+  onOAuthBind,
+  onCustomOAuthUnbind,
   setShowChangePasswordModal,
   setShowAccountDeleteModal,
   passkeyStatus,
@@ -97,26 +102,9 @@ const AccountManagement = ({
     );
   };
   const isBound = (accountId) => Boolean(accountId);
-  const [showTelegramBindModal, setShowTelegramBindModal] =
-    React.useState(false);
-  // 上游 7-20：Telegram 绑定先创建一次性 AuthFlow，widget 回调到 /api/oauth/telegram/bind/<flow_token>
-  const [telegramBindCallbackUrl, setTelegramBindCallbackUrl] =
-    React.useState('');
-  const openTelegramBindModal = async () => {
-    setTelegramBindCallbackUrl('');
-    try {
-      const res = await API.post('/api/oauth/telegram/bind/start');
-      const { success, message, data } = res.data;
-      if (!success || !data?.callback_url) {
-        showError(message || t('操作失败，请重试'));
-        return;
-      }
-      setTelegramBindCallbackUrl(data.callback_url);
-      setShowTelegramBindModal(true);
-    } catch (error) {
-      // 错误提示已由 API 拦截器处理
-    }
-  };
+  // 上游 rc.36：Telegram 改走标准 OAuth（和 GitHub 等一样先验证身份再跳转授权）
+  const openTelegramBindModal = () =>
+    onOAuthBind('telegram', (proof) => onTelegramOAuthClicked({ bindProof: proof }));
   const [customOAuthBindings, setCustomOAuthBindings] = React.useState([]);
   const [customOAuthLoading, setCustomOAuthLoading] = React.useState({});
 
@@ -134,36 +122,22 @@ const AccountManagement = ({
     }
   };
 
-  // Unbind custom OAuth provider
+  // Unbind custom OAuth provider（上游 rc.36：解绑要先验证身份）
   const handleUnbindCustomOAuth = async (providerId, providerName) => {
     Modal.confirm({
       title: t('确认解绑'),
       content: t('确定要解绑 {{name}} 吗？', { name: providerName }),
       okText: t('确认'),
       cancelText: t('取消'),
-      onOk: async () => {
-        setCustomOAuthLoading((prev) => ({ ...prev, [providerId]: true }));
-        try {
-          const res = await API.delete(`/api/user/oauth/bindings/${providerId}`);
-          if (res.data.success) {
-            showSuccess(t('解绑成功'));
-            await loadCustomOAuthBindings();
-          } else {
-            showError(res.data.message);
-          }
-        } catch (error) {
-          showError(error.response?.data?.message || error.message || t('操作失败'));
-        } finally {
-          setCustomOAuthLoading((prev) => ({ ...prev, [providerId]: false }));
-        }
-      },
+      onOk: () => onCustomOAuthUnbind(providerId, loadCustomOAuthBindings),
     });
   };
 
   // Handle bind custom OAuth
-  const handleBindCustomOAuth = (provider) => {
-    onCustomOAuthClicked(provider);
-  };
+  const handleBindCustomOAuth = (provider) =>
+    onOAuthBind(provider.slug, (proof) =>
+      onCustomOAuthClicked(provider, { bindProof: proof }),
+    );
 
   // Check if custom OAuth provider is bound
   const isCustomOAuthBound = (providerId) => {
@@ -322,7 +296,11 @@ const AccountManagement = ({
                       theme='outline'
                       size='small'
                       onClick={() =>
-                        onGitHubOAuthClicked(status.github_client_id)
+                        onOAuthBind('github', (proof) =>
+                          onGitHubOAuthClicked(status.github_client_id, {
+                            bindProof: proof,
+                          }),
+                        )
                       }
                       disabled={
                         isBound(userState.user?.github_id) ||
@@ -363,7 +341,11 @@ const AccountManagement = ({
                       theme='outline'
                       size='small'
                       onClick={() =>
-                        onDiscordOAuthClicked(status.discord_client_id)
+                        onOAuthBind('discord', (proof) =>
+                          onDiscordOAuthClicked(status.discord_client_id, {
+                            bindProof: proof,
+                          }),
+                        )
                       }
                       disabled={
                         isBound(userState.user?.discord_id) ||
@@ -404,9 +386,13 @@ const AccountManagement = ({
                       theme='outline'
                       size='small'
                       onClick={() =>
-                        onOIDCClicked(
-                          status.oidc_authorization_endpoint,
-                          status.oidc_client_id,
+                        onOAuthBind('oidc', (proof) =>
+                          onOIDCClicked(
+                            status.oidc_authorization_endpoint,
+                            status.oidc_client_id,
+                            false,
+                            { bindProof: proof },
+                          ),
                         )
                       }
                       disabled={
@@ -475,27 +461,6 @@ const AccountManagement = ({
                   </div>
                 </div>
               </Card>
-              <Modal
-                title={t('绑定 Telegram')}
-                visible={showTelegramBindModal}
-                onCancel={() => setShowTelegramBindModal(false)}
-                footer={null}
-              >
-                <div className='my-3 text-sm text-gray-600'>
-                  {t('点击下方按钮通过 Telegram 完成绑定')}
-                </div>
-                <div className='flex justify-center'>
-                  <div className='scale-90'>
-                    {telegramBindCallbackUrl ? (
-                      <TelegramLoginButton
-                        key={telegramBindCallbackUrl}
-                        dataAuthUrl={telegramBindCallbackUrl}
-                        botName={status.telegram_bot_name}
-                      />
-                    ) : null}
-                  </div>
-                </div>
-              </Modal>
 
               {/* LinuxDO绑定 */}
               <Card className='!rounded-xl'>
@@ -525,7 +490,11 @@ const AccountManagement = ({
                       theme='outline'
                       size='small'
                       onClick={() =>
-                        onLinuxDOOAuthClicked(status.linuxdo_client_id)
+                        onOAuthBind('linuxdo', (proof) =>
+                          onLinuxDOOAuthClicked(status.linuxdo_client_id, {
+                            bindProof: proof,
+                          }),
+                        )
                       }
                       disabled={
                         isBound(userState.user?.linux_do_id) ||
@@ -626,6 +595,25 @@ const AccountManagement = ({
                         <Typography.Text type='tertiary' className='text-sm'>
                           {t('用于API调用的身份验证令牌，请妥善保管')}
                         </Typography.Text>
+                        {accessTokenStatus?.exists && (
+                          <div className='mt-2 text-xs text-gray-500 space-y-1'>
+                            <div>
+                              {t('当前令牌')}：
+                              {accessTokenStatus.token_ref
+                                ? `${accessTokenStatus.token_ref.slice(0, 12)}…`
+                                : '-'}
+                              {accessTokenStatus.created_at
+                                ? `，${t('生成于')} ${new Date(accessTokenStatus.created_at * 1000).toLocaleString()}`
+                                : ''}
+                            </div>
+                            <div>
+                              {t('最近使用')}：
+                              {accessTokenStatus.last_used_at
+                                ? `${new Date(accessTokenStatus.last_used_at * 1000).toLocaleString()}${accessTokenStatus.last_used_ip ? `（${accessTokenStatus.last_used_ip}）` : ''}`
+                                : t('尚未使用')}
+                            </div>
+                          </div>
+                        )}
                         {systemToken && (
                           <div className='mt-3'>
                             <Input
@@ -635,19 +623,35 @@ const AccountManagement = ({
                               size='large'
                               prefix={<IconKey />}
                             />
+                            <div className='mt-1 text-xs text-gray-500'>
+                              {t('令牌只显示这一次，请立即复制保存')}
+                            </div>
                           </div>
                         )}
                       </div>
                     </div>
-                    <Button
-                      type='primary'
-                      theme='solid'
-                      onClick={generateAccessToken}
-                      className='!bg-slate-600 hover:!bg-slate-700 w-full sm:w-auto'
-                      icon={<IconKey />}
-                    >
-                      {systemToken ? t('重新生成') : t('生成令牌')}
-                    </Button>
+                    <Space className='w-full sm:w-auto'>
+                      {accessTokenStatus?.exists && (
+                        <Button
+                          type='danger'
+                          theme='outline'
+                          onClick={revokeAccessToken}
+                        >
+                          {t('撤销')}
+                        </Button>
+                      )}
+                      <Button
+                        type='primary'
+                        theme='solid'
+                        onClick={generateAccessToken}
+                        className='!bg-slate-600 hover:!bg-slate-700 w-full sm:w-auto'
+                        icon={<IconKey />}
+                      >
+                        {systemToken || accessTokenStatus?.exists
+                          ? t('重新生成')
+                          : t('生成令牌')}
+                      </Button>
+                    </Space>
                   </div>
                 </Card>
 
@@ -674,7 +678,7 @@ const AccountManagement = ({
                       className='!bg-slate-600 hover:!bg-slate-700 w-full sm:w-auto'
                       icon={<IconLock />}
                     >
-                      {t('修改密码')}
+                      {hasPassword ? t('修改密码') : t('设置密码')}
                     </Button>
                   </div>
                 </Card>

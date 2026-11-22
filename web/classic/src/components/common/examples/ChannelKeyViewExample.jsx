@@ -37,7 +37,7 @@ const ChannelKeyViewExample = ({ channelId }) => {
   // 使用通用安全验证 Hook
   const {
     isModalVisible,
-    verificationMethods,
+    requirements,
     verificationState,
     startVerification,
     executeVerification,
@@ -60,6 +60,8 @@ const ChannelKeyViewExample = ({ channelId }) => {
     const apiCall = createApiCalls.viewChannelKey(channelId);
 
     await startVerification(apiCall, {
+      scope: 'channel.key.read',
+      context: { channel_id: Number(channelId) },
       title: t('查看渠道密钥'),
       description: t('为了保护账户安全，请验证您的身份。'),
       preferredMethod: 'passkey', // 可以指定首选验证方式
@@ -76,7 +78,7 @@ const ChannelKeyViewExample = ({ channelId }) => {
       {/* 安全验证模态框 */}
       <SecureVerificationModal
         visible={isModalVisible}
-        verificationMethods={verificationMethods}
+        requirements={requirements}
         verificationState={verificationState}
         onVerify={executeVerification}
         onCancel={cancelVerification}

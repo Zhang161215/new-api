@@ -178,13 +178,20 @@ func generateEmailBindingCodes(requireOld bool) (emailBindingCodes, error) {
 }
 
 func sendEmailBindingCodes(state model.EmailBindingState, codes emailBindingCodes) error {
-	subject := common.SystemName + " — Confirm your email address"
-	content := fmt.Sprintf("<p>Confirm linking this email address to your account.</p><p>Verification code: <strong>%s</strong></p><p>This code expires in 10 minutes. If you did not request this change, do not share this code.</p>", html.EscapeString(codes.New))
+	// 本站：上游是英文模板，改成和注册验证邮件一致的中文
+	subject := fmt.Sprintf("%s邮箱验证邮件", common.SystemName)
+	content := fmt.Sprintf("<p>您好，你正在把此邮箱绑定到%s账户。</p>"+
+		"<p>您的验证码为: <strong>%s</strong></p>"+
+		"<p>验证码 10 分钟内有效。如果不是本人操作，请勿把验证码告诉任何人。</p>",
+		common.SystemName, html.EscapeString(codes.New))
 	if err := common.SendEmail(subject, state.Email, content); err != nil {
 		return err
 	}
 	if codes.Old != "" {
-		content = fmt.Sprintf("<p>A change to your account email address was requested. Confirm replacing your current address.</p><p>Verification code: <strong>%s</strong></p><p>This code expires in 10 minutes. If you did not request this change, do not share this code and contact your administrator.</p>", html.EscapeString(codes.Old))
+		content = fmt.Sprintf("<p>您好，有人申请把%s账户的邮箱从当前地址更换为新地址。</p>"+
+			"<p>确认更换的验证码为: <strong>%s</strong></p>"+
+			"<p>验证码 10 分钟内有效。如果不是本人操作，请勿把验证码告诉任何人，并尽快修改密码、联系管理员。</p>",
+			common.SystemName, html.EscapeString(codes.Old))
 		return common.SendEmail(subject, state.CurrentEmail, content)
 	}
 	return nil

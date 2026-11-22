@@ -23,6 +23,7 @@ export * from './utils';
 export * from './base64';
 export * from './api';
 export * from './authSession';
+export * from './loginChallenge';
 export * from './render';
 export * from './log';
 export * from './data';

@@ -294,8 +294,13 @@ export const processGroupsData = (data, userGroup) => {
 // 原来components中的utils.js
 
 // 上游 7-20：OAuth state 改为 POST 创建一次性 AuthFlow（flow_token），区分登录与绑定。
-// 绑定要带当前登录会话的 Bearer，回调页也要带同一会话的 Bearer 才能完成绑定。
-export async function getOAuthState(provider, intent = 'login') {
+// 上游 rc.36：
+//   - 绑定（intent=bind）要先做安全验证，拿 account.binding.bind 的 proof 放在 X-Security-Proof 头里；
+//   - 安全验证也可以走 OAuth（intent=verify，带 scope/context），回调换到的是 proof 而不是登录；
+//   - Telegram 改成标准 OAuth，授权地址由后端在 authorization_url 里给出。
+// 绑定/验证的回调页要带发起时同一个登录会话的 Bearer。
+export async function getOAuthAuthorization(provider, intent = 'login', options = {}) {
+  const { proof, operation } = options;
   const body = { provider, intent };
   if (intent === 'login') {
     const affCode = localStorage.getItem('aff');
@@ -303,40 +308,120 @@ export async function getOAuthState(provider, intent = 'login') {
       body.aff = affCode;
     }
   }
-  const res = await API.post('/api/oauth/state', body, {
-    skipAuthRefresh: intent === 'login',
-  });
+  if (intent === 'verify' && operation) {
+    body.scope = operation.scope;
+    if (operation.context) body.context = operation.context;
+  }
+  const config = { skipAuthRefresh: intent === 'login' };
+  if (proof) config.headers = { 'X-Security-Proof': proof };
+  if (options.skipErrorHandler) config.skipErrorHandler = true;
+  const res = await API.post('/api/oauth/state', body, config);
   const { success, message, data } = res.data;
-  if (success) {
-    if (typeof data === 'string') return data;
-    return data?.flow_token || '';
-  } else {
-    showError(message);
+  if (!success) {
+    const error = new Error(message || 'OAuth 初始化失败');
+    error.code = res.data?.code;
+    throw error;
+  }
+  if (typeof data === 'string') return { state: data };
+  return { state: data?.flow_token || '', authorizationUrl: data?.authorization_url };
+}
+
+export async function getOAuthState(provider, intent = 'login', options = {}) {
+  try {
+    return (await getOAuthAuthorization(provider, intent, options)).state;
+  } catch (error) {
+    if (error?.message && !error?.response) showError(error.message);
     return '';
   }
 }
 
-async function prepareOAuthState(provider, options = {}) {
-  const { shouldLogout = false } = options;
-  // 登录/注册页发起的是登录流程（先退出当前账号）；个人设置里发起的是绑定流程
-  if (shouldLogout) {
-    try {
-      await logoutAuth();
-    } catch (err) {}
-    return await getOAuthState(provider, 'login');
+// 各家 OAuth 的授权地址。登录、绑定、OAuth 安全验证共用（回调地址都是 /oauth/<provider>）。
+export function buildOAuthAuthorizeUrl(provider, state, status = {}) {
+  const origin = window.location.origin;
+  switch (provider) {
+    case 'github':
+      if (!status.github_client_id) return '';
+      return `https://github.com/login/oauth/authorize?client_id=${status.github_client_id}&state=${state}&scope=user:email`;
+    case 'linuxdo':
+      if (!status.linuxdo_client_id) return '';
+      return `https://connect.linux.do/oauth2/authorize?response_type=code&client_id=${status.linuxdo_client_id}&state=${state}`;
+    case 'discord':
+      if (!status.discord_client_id) return '';
+      return `https://discord.com/oauth2/authorize?client_id=${status.discord_client_id}&redirect_uri=${origin}/oauth/discord&response_type=code&scope=identify+openid&state=${state}`;
+    case 'oidc': {
+      if (!status.oidc_authorization_endpoint || !status.oidc_client_id) return '';
+      const url = new URL(status.oidc_authorization_endpoint);
+      url.searchParams.set('client_id', status.oidc_client_id);
+      url.searchParams.set('redirect_uri', `${origin}/oauth/oidc`);
+      url.searchParams.set('response_type', 'code');
+      url.searchParams.set('scope', 'openid profile email');
+      url.searchParams.set('state', state);
+      return url.toString();
+    }
+    default: {
+      const custom = (status.custom_oauth_providers || []).find(
+        (p) => p.slug === provider,
+      );
+      if (!custom) return '';
+      const endpoint = custom.authorization_endpoint || '';
+      if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
+        // 相对路径属于配置错误
+        console.error(
+          'Custom OAuth authorization_endpoint must be a full URL:',
+          endpoint,
+        );
+        return '';
+      }
+      const url = new URL(endpoint);
+      url.searchParams.set('client_id', custom.client_id);
+      url.searchParams.set('redirect_uri', `${origin}/oauth/${custom.slug}`);
+      url.searchParams.set('response_type', 'code');
+      url.searchParams.set('scope', custom.scopes || 'openid profile email');
+      url.searchParams.set('state', state);
+      return url.toString();
+    }
   }
-  return await getOAuthState(provider, hasLocalUser() ? 'bind' : 'login');
+}
+
+// options.shouldLogout：登录/注册页发起的登录流程（先退出当前账号）
+// options.bindProof：个人设置里发起的绑定流程（安全验证后拿到的 account.binding.bind proof）
+async function prepareOAuthAuthorization(provider, options = {}) {
+  const { shouldLogout = false, bindProof } = options;
+  try {
+    if (shouldLogout) {
+      try {
+        await logoutAuth();
+      } catch (err) {}
+      return await getOAuthAuthorization(provider, 'login');
+    }
+    if (bindProof) {
+      return await getOAuthAuthorization(provider, 'bind', { proof: bindProof });
+    }
+    return await getOAuthAuthorization(
+      provider,
+      hasLocalUser() ? 'bind' : 'login',
+    );
+  } catch (error) {
+    if (error?.message && !error?.response) showError(error.message);
+    return null;
+  }
+}
+
+async function startOAuthRedirect(provider, status, options = {}) {
+  const auth = await prepareOAuthAuthorization(provider, options);
+  if (!auth?.state) return false;
+  const url =
+    auth.authorizationUrl || buildOAuthAuthorizeUrl(provider, auth.state, status);
+  if (!url) {
+    showError('OAuth 配置错误，无法生成授权地址');
+    return false;
+  }
+  redirectToOAuthUrl(url, { openInNewTab: options.openInNewTab });
+  return true;
 }
 
 export async function onDiscordOAuthClicked(client_id, options = {}) {
-  const state = await prepareOAuthState('discord', options);
-  if (!state) return;
-  const redirect_uri = `${window.location.origin}/oauth/discord`;
-  const response_type = 'code';
-  const scope = 'identify+openid';
-  redirectToOAuthUrl(
-    `https://discord.com/oauth2/authorize?client_id=${client_id}&redirect_uri=${redirect_uri}&response_type=${response_type}&scope=${scope}&state=${state}`,
-  );
+  return startOAuthRedirect('discord', { discord_client_id: client_id }, options);
 }
 
 export async function onOIDCClicked(
@@ -345,86 +430,47 @@ export async function onOIDCClicked(
   openInNewTab = false,
   options = {},
 ) {
-  const state = await prepareOAuthState('oidc', options);
-  if (!state) return;
-  const url = new URL(auth_url);
-  url.searchParams.set('client_id', client_id);
-  url.searchParams.set('redirect_uri', `${window.location.origin}/oauth/oidc`);
-  url.searchParams.set('response_type', 'code');
-  url.searchParams.set('scope', 'openid profile email');
-  url.searchParams.set('state', state);
-  redirectToOAuthUrl(url, { openInNewTab });
+  return startOAuthRedirect(
+    'oidc',
+    { oidc_authorization_endpoint: auth_url, oidc_client_id: client_id },
+    { ...options, openInNewTab },
+  );
 }
 
 export async function onGitHubOAuthClicked(github_client_id, options = {}) {
-  const state = await prepareOAuthState('github', options);
-  if (!state) return;
-  redirectToOAuthUrl(
-    `https://github.com/login/oauth/authorize?client_id=${github_client_id}&state=${state}&scope=user:email`,
-  );
+  return startOAuthRedirect('github', { github_client_id }, options);
 }
 
 export async function onLinuxDOOAuthClicked(
   linuxdo_client_id,
   options = { shouldLogout: false },
 ) {
-  const state = await prepareOAuthState('linuxdo', options);
-  if (!state) return;
-  redirectToOAuthUrl(
-    `https://connect.linux.do/oauth2/authorize?response_type=code&client_id=${linuxdo_client_id}&state=${state}`,
-  );
+  return startOAuthRedirect('linuxdo', { linuxdo_client_id }, options);
+}
+
+// 上游 rc.36：Telegram 改走标准 OAuth（授权地址由后端给出），旧的 widget 接口已停用
+export async function onTelegramOAuthClicked(options = {}) {
+  return startOAuthRedirect('telegram', {}, options);
 }
 
 /**
- * Initiate custom OAuth login
+ * Initiate custom OAuth login / bind
  * @param {Object} provider - Custom OAuth provider config from status API
- * @param {string} provider.slug - Provider slug (used for callback URL)
- * @param {string} provider.client_id - OAuth client ID
- * @param {string} provider.authorization_endpoint - Authorization URL
- * @param {string} provider.scopes - OAuth scopes (space-separated)
- * @param {Object} options - Options
- * @param {boolean} options.shouldLogout - Whether to logout first
+ * @param {Object} options - { shouldLogout, bindProof }
  */
 export async function onCustomOAuthClicked(provider, options = {}) {
-  const state = await prepareOAuthState(provider.slug, options);
-  if (!state) return;
-
-  try {
-    const redirect_uri = `${window.location.origin}/oauth/${provider.slug}`;
-
-    // Check if authorization_endpoint is a full URL or relative path
-    let authUrl;
-    if (
-      provider.authorization_endpoint.startsWith('http://') ||
-      provider.authorization_endpoint.startsWith('https://')
-    ) {
-      authUrl = new URL(provider.authorization_endpoint);
-    } else {
-      // Relative path - this is a configuration error, show error message
-      console.error(
-        'Custom OAuth authorization_endpoint must be a full URL:',
-        provider.authorization_endpoint,
-      );
-      showError(
-        'OAuth 配置错误：授权端点必须是完整的 URL（以 http:// 或 https:// 开头）',
-      );
-      return;
-    }
-
-    authUrl.searchParams.set('client_id', provider.client_id);
-    authUrl.searchParams.set('redirect_uri', redirect_uri);
-    authUrl.searchParams.set('response_type', 'code');
-    authUrl.searchParams.set(
-      'scope',
-      provider.scopes || 'openid profile email',
+  const endpoint = provider?.authorization_endpoint || '';
+  if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
+    showError(
+      'OAuth 配置错误：授权端点必须是完整的 URL（以 http:// 或 https:// 开头）',
     );
-    authUrl.searchParams.set('state', state);
-
-    redirectToOAuthUrl(authUrl);
-  } catch (error) {
-    console.error('Failed to initiate custom OAuth:', error);
-    showError('OAuth 登录失败：' + (error.message || '未知错误'));
+    return false;
   }
+  return startOAuthRedirect(
+    provider.slug,
+    { custom_oauth_providers: [provider] },
+    options,
+  );
 }
 
 let channelModels = undefined;

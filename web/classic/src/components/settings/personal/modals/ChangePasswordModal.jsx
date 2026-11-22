@@ -29,6 +29,7 @@ const ChangePasswordModal = ({
   inputs,
   handleInputChange,
   changePassword,
+  hasPassword = true,
   turnstileEnabled,
   turnstileSiteKey,
   setTurnstileToken,
@@ -38,7 +39,7 @@ const ChangePasswordModal = ({
       title={
         <div className='flex items-center'>
           <IconLock className='mr-2 text-orange-500' />
-          {t('修改密码')}
+          {hasPassword ? t('修改密码') : t('设置密码')}
         </div>
       }
       visible={showChangePasswordModal}
@@ -49,6 +50,12 @@ const ChangePasswordModal = ({
       className='modern-modal'
     >
       <div className='space-y-4 py-4'>
+        {!hasPassword && (
+          <Typography.Text type='tertiary' className='block'>
+            {t('你的账户是通过第三方账号注册的，还没有密码。设置后也可以用用户名和密码登录。')}
+          </Typography.Text>
+        )}
+        {hasPassword && (
         <div>
           <Typography.Text strong className='block mb-2'>
             {t('原密码')}
@@ -64,6 +71,7 @@ const ChangePasswordModal = ({
             prefix={<IconLock />}
           />
         </div>
+        )}
 
         <div>
           <Typography.Text strong className='block mb-2'>

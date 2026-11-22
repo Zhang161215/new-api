@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Modal,
@@ -26,27 +26,64 @@ import {
   Typography,
   Tabs,
   TabPane,
-  Space,
-  Spin,
 } from '@douyinfe/semi-ui';
+import { IconGithubLogo, IconLock } from '@douyinfe/semi-icons';
+import { getOAuthProviderIcon } from '../../../helpers';
+
+const KeyIcon = ({ size = 16, style }) => (
+  <svg
+    style={{ width: size, height: size, flexShrink: 0, ...style }}
+    fill='currentColor'
+    viewBox='0 0 20 20'
+  >
+    <path
+      fillRule='evenodd'
+      d='M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v2H2v-4l4.257-4.257A6 6 0 1118 8zm-6-4a1 1 0 100 2 2 2 0 012 2 1 1 0 102 0 4 4 0 00-4-4z'
+      clipRule='evenodd'
+    />
+  </svg>
+);
+
+const footerStyle = {
+  display: 'flex',
+  justifyContent: 'flex-end',
+  gap: '8px',
+  flexWrap: 'wrap',
+};
+
+const hintStyle = {
+  display: 'block',
+  marginBottom: '20px',
+  fontSize: '13px',
+  lineHeight: '1.5',
+};
+
+function providerIcon(slug) {
+  if (slug === 'github') return <IconGithubLogo />;
+  try {
+    const icon = getOAuthProviderIcon?.(slug, 16);
+    if (icon) return icon;
+  } catch (e) {}
+  return null;
+}
 
 /**
- * 通用安全验证模态框组件
- * 配合 useSecureVerification Hook 使用
+ * 通用安全验证模态框组件（配合 useSecureVerification Hook 使用）
+ * 标签页由服务端返回的可用验证方式决定：两步验证 / Passkey / 密码 / 已绑定的第三方账号
  * @param {Object} props
  * @param {boolean} props.visible - 是否显示模态框
- * @param {Object} props.verificationMethods - 可用的验证方式
+ * @param {Object} props.requirements - useSecureVerification 返回的 requirements
  * @param {Object} props.verificationState - 当前验证状态
- * @param {Function} props.onVerify - 验证回调
+ * @param {Function} props.onVerify - (method, codeOrPassword, extra) 验证回调
  * @param {Function} props.onCancel - 取消回调
- * @param {Function} props.onCodeChange - 验证码变化回调
+ * @param {Function} props.onCodeChange - 验证码/密码输入回调
  * @param {Function} props.onMethodSwitch - 验证方式切换回调
  * @param {string} props.title - 模态框标题
  * @param {string} props.description - 验证描述文本
  */
 const SecureVerificationModal = ({
   visible,
-  verificationMethods,
+  requirements,
   verificationState,
   onVerify,
   onCancel,
@@ -56,23 +93,35 @@ const SecureVerificationModal = ({
   description,
 }) => {
   const { t } = useTranslation();
-  const [isAnimating, setIsAnimating] = useState(false);
-  const [verifySuccess, setVerifySuccess] = useState(false);
-
-  const { has2FA, hasPasskey, passkeySupported } = verificationMethods;
   const { method, loading, code } = verificationState;
+  const methods = requirements?.methods || [];
+  const oauthProviders = requirements?.oauth_providers || [];
 
-  useEffect(() => {
-    if (visible) {
-      setIsAnimating(true);
-      setVerifySuccess(false);
-    } else {
-      setIsAnimating(false);
-    }
-  }, [visible]);
+  const find = (name) => methods.find((m) => m.method === name);
+  const enabled = (name) => Boolean(find(name)?.available);
+  const show2FA = Boolean(find('2fa'));
+  const showPasskey = Boolean(find('passkey'));
+  const showPassword = Boolean(find('password'));
+  const showOAuth = Boolean(find('oauth'));
+
+  const unavailableHint = (name) => {
+    const option = find(name);
+    if (!option || option.available) return null;
+    return (
+      <Typography.Text type='warning' style={hintStyle}>
+        {option.reason ? t(option.reason) : t('该验证方式当前不可用')}
+      </Typography.Text>
+    );
+  };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && code.trim() && !loading && method === '2fa') {
+    if (
+      e.key === 'Enter' &&
+      code &&
+      !loading &&
+      (method === '2fa' || method === 'password') &&
+      enabled(method)
+    ) {
       onVerify(method, code);
     }
     if (e.key === 'Escape' && !loading) {
@@ -80,45 +129,11 @@ const SecureVerificationModal = ({
     }
   };
 
-  // 如果用户没有启用任何验证方式
-  if (visible && !has2FA && !hasPasskey) {
-    return (
-      <Modal
-        title={title || t('安全验证')}
-        visible={visible}
-        onCancel={onCancel}
-        footer={<Button onClick={onCancel}>{t('确定')}</Button>}
-        width={500}
-        style={{ maxWidth: '90vw' }}
-      >
-        <div className='text-center py-6'>
-          <div className='mb-4'>
-            <svg
-              className='w-16 h-16 text-yellow-500 mx-auto mb-4'
-              fill='currentColor'
-              viewBox='0 0 20 20'
-            >
-              <path
-                fillRule='evenodd'
-                d='M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z'
-                clipRule='evenodd'
-              />
-            </svg>
-          </div>
-          <Typography.Title heading={4} className='mb-2'>
-            {t('需要安全验证')}
-          </Typography.Title>
-          <Typography.Text type='tertiary'>
-            {t('您需要先启用两步验证或 Passkey 才能查看敏感信息。')}
-          </Typography.Text>
-          <br />
-          <Typography.Text type='tertiary'>
-            {t('请前往个人设置 → 安全设置进行配置。')}
-          </Typography.Text>
-        </div>
-      </Modal>
-    );
-  }
+  const cancelButton = (
+    <Button onClick={onCancel} disabled={loading}>
+      {t('取消')}
+    </Button>
+  );
 
   return (
     <Modal
@@ -129,29 +144,19 @@ const SecureVerificationModal = ({
       footer={null}
       width={460}
       centered
-      style={{
-        maxWidth: 'calc(100vw - 32px)',
-      }}
-      bodyStyle={{
-        padding: '20px 24px',
-      }}
+      style={{ maxWidth: 'calc(100vw - 32px)' }}
+      bodyStyle={{ padding: '20px 24px' }}
     >
       <div style={{ width: '100%' }}>
-        {/* 描述信息 */}
         {description && (
           <Typography.Paragraph
             type='tertiary'
-            style={{
-              margin: '0 0 20px 0',
-              fontSize: '14px',
-              lineHeight: '1.6',
-            }}
+            style={{ margin: '0 0 20px 0', fontSize: '14px', lineHeight: '1.6' }}
           >
             {description}
           </Typography.Paragraph>
         )}
 
-        {/* 验证方式选择 */}
         <Tabs
           activeKey={method}
           onChange={onMethodSwitch}
@@ -159,71 +164,35 @@ const SecureVerificationModal = ({
           size='default'
           style={{ margin: 0 }}
         >
-          {has2FA && (
+          {show2FA && (
             <TabPane tab={t('两步验证')} itemKey='2fa'>
               <div style={{ paddingTop: '20px' }}>
+                {unavailableHint('2fa')}
                 <div style={{ marginBottom: '12px' }}>
                   <Input
                     placeholder={t('请输入6位验证码或8位备用码')}
-                    value={code}
+                    value={method === '2fa' ? code : ''}
                     onChange={onCodeChange}
                     size='large'
-                    maxLength={8}
+                    maxLength={10}
                     onKeyDown={handleKeyDown}
                     autoFocus={method === '2fa'}
-                    disabled={loading}
-                    prefix={
-                      <svg
-                        style={{
-                          width: 16,
-                          height: 16,
-                          marginRight: 8,
-                          flexShrink: 0,
-                        }}
-                        fill='currentColor'
-                        viewBox='0 0 20 20'
-                      >
-                        <path
-                          fillRule='evenodd'
-                          d='M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v2H2v-4l4.257-4.257A6 6 0 1118 8zm-6-4a1 1 0 100 2 2 2 0 012 2 1 1 0 102 0 4 4 0 00-4-4z'
-                          clipRule='evenodd'
-                        />
-                      </svg>
-                    }
+                    disabled={loading || !enabled('2fa')}
+                    prefix={<KeyIcon style={{ marginRight: 8 }} />}
                     style={{ width: '100%' }}
                   />
                 </div>
-
-                <Typography.Text
-                  type='tertiary'
-                  size='small'
-                  style={{
-                    display: 'block',
-                    marginBottom: '20px',
-                    fontSize: '13px',
-                    lineHeight: '1.5',
-                  }}
-                >
+                <Typography.Text type='tertiary' size='small' style={hintStyle}>
                   {t('从认证器应用中获取验证码，或使用备用码')}
                 </Typography.Text>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'flex-end',
-                    gap: '8px',
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <Button onClick={onCancel} disabled={loading}>
-                    {t('取消')}
-                  </Button>
+                <div style={footerStyle}>
+                  {cancelButton}
                   <Button
                     theme='solid'
                     type='primary'
                     loading={loading}
-                    disabled={!code.trim() || loading}
-                    onClick={() => onVerify(method, code)}
+                    disabled={!code?.trim() || loading || !enabled('2fa')}
+                    onClick={() => onVerify('2fa', code)}
                   >
                     {t('验证')}
                   </Button>
@@ -232,9 +201,10 @@ const SecureVerificationModal = ({
             </TabPane>
           )}
 
-          {hasPasskey && passkeySupported && (
+          {showPasskey && (
             <TabPane tab={t('Passkey')} itemKey='passkey'>
               <div style={{ paddingTop: '20px' }}>
+                {unavailableHint('passkey')}
                 <div
                   style={{
                     textAlign: 'center',
@@ -254,21 +224,7 @@ const SecureVerificationModal = ({
                       background: 'var(--semi-color-primary-light-default)',
                     }}
                   >
-                    <svg
-                      style={{
-                        width: 28,
-                        height: 28,
-                        color: 'var(--semi-color-primary)',
-                      }}
-                      fill='currentColor'
-                      viewBox='0 0 20 20'
-                    >
-                      <path
-                        fillRule='evenodd'
-                        d='M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v2H2v-4l4.257-4.257A6 6 0 1118 8zm-6-4a1 1 0 100 2 2 2 0 012 2 1 1 0 102 0 4 4 0 00-4-4z'
-                        clipRule='evenodd'
-                      />
-                    </svg>
+                    <KeyIcon size={28} style={{ color: 'var(--semi-color-primary)' }} />
                   </div>
                   <Typography.Title
                     heading={5}
@@ -278,38 +234,95 @@ const SecureVerificationModal = ({
                   </Typography.Title>
                   <Typography.Text
                     type='tertiary'
-                    style={{
-                      display: 'block',
-                      margin: 0,
-                      fontSize: '13px',
-                      lineHeight: '1.5',
-                    }}
+                    style={{ display: 'block', margin: 0, fontSize: '13px', lineHeight: '1.5' }}
                   >
                     {t('点击验证按钮，使用您的生物特征或安全密钥')}
                   </Typography.Text>
                 </div>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'flex-end',
-                    gap: '8px',
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <Button onClick={onCancel} disabled={loading}>
-                    {t('取消')}
-                  </Button>
+                <div style={footerStyle}>
+                  {cancelButton}
                   <Button
                     theme='solid'
                     type='primary'
                     loading={loading}
-                    disabled={loading}
-                    onClick={() => onVerify(method)}
+                    disabled={loading || !enabled('passkey')}
+                    onClick={() => onVerify('passkey')}
                   >
                     {t('验证 Passkey')}
                   </Button>
                 </div>
+              </div>
+            </TabPane>
+          )}
+
+          {showPassword && (
+            <TabPane tab={t('密码')} itemKey='password'>
+              <div style={{ paddingTop: '20px' }}>
+                {unavailableHint('password')}
+                <div style={{ marginBottom: '12px' }}>
+                  <Input
+                    mode='password'
+                    placeholder={t('请输入当前登录密码')}
+                    value={method === 'password' ? code : ''}
+                    onChange={onCodeChange}
+                    size='large'
+                    onKeyDown={handleKeyDown}
+                    autoFocus={method === 'password'}
+                    disabled={loading || !enabled('password')}
+                    prefix={<IconLock />}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <Typography.Text type='tertiary' size='small' style={hintStyle}>
+                  {t('为了账户安全，请输入当前登录密码确认是本人操作')}
+                </Typography.Text>
+                <div style={footerStyle}>
+                  {cancelButton}
+                  <Button
+                    theme='solid'
+                    type='primary'
+                    loading={loading}
+                    disabled={!code || loading || !enabled('password')}
+                    onClick={() => onVerify('password', code)}
+                  >
+                    {t('验证')}
+                  </Button>
+                </div>
+              </div>
+            </TabPane>
+          )}
+
+          {showOAuth && (
+            <TabPane tab={t('第三方账号')} itemKey='oauth'>
+              <div style={{ paddingTop: '20px' }}>
+                {unavailableHint('oauth')}
+                <Typography.Text type='tertiary' size='small' style={hintStyle}>
+                  {t('使用已绑定的第三方账号重新授权，确认是本人操作（会打开一个授权窗口）')}
+                </Typography.Text>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    marginBottom: '20px',
+                  }}
+                >
+                  {oauthProviders.map((provider) => (
+                    <Button
+                      key={provider.slug}
+                      size='large'
+                      icon={providerIcon(provider.slug)}
+                      loading={loading}
+                      disabled={loading || !enabled('oauth')}
+                      onClick={() =>
+                        onVerify('oauth', '', { provider: provider.slug })
+                      }
+                    >
+                      {t('使用 {{name}} 验证', { name: provider.name })}
+                    </Button>
+                  ))}
+                </div>
+                <div style={footerStyle}>{cancelButton}</div>
               </div>
             </TabPane>
           )}

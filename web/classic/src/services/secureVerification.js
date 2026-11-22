@@ -17,7 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { API, showError } from '../helpers';
+import { API } from '../helpers';
+import {
+  buildOAuthAuthorizeUrl,
+  getOAuthAuthorization,
+} from '../helpers/api';
 import {
   prepareCredentialRequestOptions,
   buildAssertionResult,
@@ -25,157 +29,371 @@ import {
 } from '../helpers/passkey';
 
 /**
- * 通用安全验证服务
- * 上游 7-20 起：验证成功后后端返回 5 分钟有效的 proof_token（绑定用户、登录会话和 scope），
- * 调用敏感接口时放在 X-Security-Proof 请求头里。scope 取值：
- *   channel.key.read（查看渠道密钥）、passkey.register（注册 Passkey）、passkey.delete（解绑 Passkey）
+ * 通用安全验证服务（对应上游 rc.36 的统一安全验证）
+ *
+ * 敏感操作按「scope + context」授权：
+ *   1. GET /api/verify/methods?scope=... 取当前用户可用的验证方式（2fa / passkey / password / oauth）；
+ *   2. 用其中一种方式验证，换到 5 分钟有效、只能用一次的 proof_token（绑定登录会话、scope 和 context）；
+ *   3. 调业务接口时放在 X-Security-Proof 请求头里。
+ *
+ * scope 与 context：
+ *   channel.key.read {channel_id}、passkey.register、passkey.delete、2fa.setup、2fa.disable、
+ *   2fa.backup_codes.regenerate、access_token.generate、access_token.revoke、
+ *   account.binding.bind {provider[, email | code]}、account.binding.unbind {provider_id}、
+ *   account.password.set、account.password.change、account.delete
+ *
+ * 没开 2FA / Passkey 的用户：有密码的用密码验证，纯 OAuth 注册的用户用已绑定的 OAuth 账号验证（弹窗）。
  */
+
+const ERROR_MESSAGES = {
+  SECURITY_VERIFICATION_FAILED: '验证失败，请重试',
+  SECURITY_VERIFICATION_LOCKED: '两步验证已临时锁定，请稍后再试',
+  SECURITY_METHOD_UNAVAILABLE: '该验证方式当前不可用',
+  SECURITY_VERIFICATION_FLOW_REQUIRED: '该验证方式需要走专门的验证流程',
+  SECURITY_PROOF_REQUIRED: '需要安全验证',
+  SECURITY_PROOF_EXPIRED: '安全验证已过期，请重新验证',
+  SECURITY_PROOF_INVALID: '安全验证状态无效，请重新验证',
+  SECURITY_PROOF_CONSUMED: '这次验证已经用过了，请重新验证',
+  SECURITY_PROOF_SCOPE_MISMATCH: '安全验证与当前操作不匹配',
+  SECURITY_PROOF_CONTEXT_MISMATCH: '安全验证与当前操作的内容不匹配，请重新验证',
+  SECURITY_PROOF_METHOD_MISMATCH: '该验证方式不能用于当前操作',
+  SECURITY_ACTION_FORBIDDEN: '没有权限执行此操作',
+  SECURITY_CONTEXT_INVALID: '操作参数无效',
+  AUTH_FLOW_INVALID: '验证流程已过期，请重新开始',
+  TWOFA_CODE_INVALID: '验证码错误',
+  TWOFA_SETUP_INVALID: '两步验证设置已失效，请重新开始',
+  TWOFA_ALREADY_ENABLED: '两步验证已经启用',
+  TWOFA_NOT_ENABLED: '尚未启用两步验证',
+  PASSKEY_NOT_FOUND: '尚未绑定 Passkey',
+  CURRENT_PASSWORD_INVALID: '原密码错误',
+  PASSWORD_POLICY_REJECTED: '新密码不符合要求（8-128 位，且不能与原密码相同）',
+  ACCOUNT_SECURITY_STATE_CHANGED: '账户安全状态已变化，请刷新页面后重试',
+  LAST_LOGIN_METHOD: '这是你唯一的登录方式，不能解绑',
+  OAUTH_ACCOUNT_MISMATCH: '授权的第三方账号与当前账户绑定的不一致',
+  ACCOUNT_ALREADY_BOUND: '该第三方账号已绑定其他账户',
+  EMAIL_ADDRESS_REJECTED: '邮箱地址不可用',
+  EMAIL_ALREADY_TAKEN: '该邮箱已被占用',
+  EMAIL_BINDING_DELIVERY_FAILED: '验证邮件发送失败，请稍后重试',
+  EMAIL_BINDING_CODE_INVALID: '邮箱验证码错误',
+  EMAIL_BINDING_LOCKED: '验证码错误次数过多，请重新获取',
+  EMAIL_BINDING_RESEND_WAIT: '发送太频繁，请稍后再试',
+  TELEGRAM_OAUTH_NOT_CONFIGURED: 'Telegram 登录未配置',
+  AUTH_CANCELLED: '已取消验证',
+};
+
+export class SecurityError extends Error {
+  constructor(message, code) {
+    super(message);
+    this.name = 'SecurityError';
+    this.code = code;
+  }
+}
+
+// 把后端返回（或 axios 错误）转成中文提示
+export function securityErrorMessage(source, fallback = '操作失败，请重试') {
+  const body = source?.response?.data ?? source;
+  const code = body?.code;
+  if (code && ERROR_MESSAGES[code]) return ERROR_MESSAGES[code];
+  if (body?.message) return body.message;
+  if (source?.response?.status === 429) return '操作太频繁，请稍后再试';
+  if (source instanceof Error && source.message) return source.message;
+  return fallback;
+}
+
+// 统一解析：success=false 或 HTTP 错误都抛 SecurityError（不走全局错误弹窗，由调用方提示）
+export async function securityResult(request, fallback) {
+  try {
+    const res = await request;
+    const body = res?.data;
+    if (!body?.success) {
+      throw new SecurityError(securityErrorMessage(body, fallback), body?.code);
+    }
+    return body.data;
+  } catch (error) {
+    if (error instanceof SecurityError) throw error;
+    throw new SecurityError(
+      securityErrorMessage(error, fallback),
+      error?.response?.data?.code,
+    );
+  }
+}
+
+export const securityRequestConfig = { skipErrorHandler: true };
+
+// 带 proof 调业务接口时用的请求配置
+export function withProof(proof, config = {}) {
+  return {
+    ...securityRequestConfig,
+    ...config,
+    headers: { ...(config.headers || {}), 'X-Security-Proof': proof },
+  };
+}
+
+function operationFields(operation) {
+  return {
+    scope: operation.scope,
+    ...(operation.context ? { context: operation.context } : {}),
+  };
+}
+
+// ---------------- OAuth 验证弹窗 ----------------
+// 弹窗走完第三方授权后会回到本站 /oauth/<provider>（OAuth2Callback），
+// 回调页看到 localStorage 里有这个 state 的标记，就把 code/state 通过 postMessage 交回本页面，
+// 由本页面带着当前会话的 Bearer 去换 proof（回调页自己不调接口）。
+export const OAUTH_POPUP_CALLBACK_MESSAGE = 'newapi:oauth-popup-callback';
+const OAUTH_POPUP_MARK_PREFIX = 'oauth_popup:';
+const OAUTH_POPUP_TIMEOUT_MS = 10 * 60 * 1000;
+
+export function getOAuthPopupMark(state) {
+  if (!state) return null;
+  try {
+    return JSON.parse(
+      localStorage.getItem(OAUTH_POPUP_MARK_PREFIX + state) || 'null',
+    );
+  } catch (e) {
+    return null;
+  }
+}
+
+function setOAuthPopupMark(state, provider) {
+  localStorage.setItem(
+    OAUTH_POPUP_MARK_PREFIX + state,
+    JSON.stringify({ provider, at: Date.now() }),
+  );
+}
+
+function clearOAuthPopupMark(state) {
+  if (state) localStorage.removeItem(OAUTH_POPUP_MARK_PREFIX + state);
+}
+
+// 必须在点击事件里同步调用（任何 await 之前），否则会被浏览器拦截
+export function openOAuthPopupWindow() {
+  const width = 520;
+  const height = 680;
+  const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+  const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+  return window.open(
+    '',
+    'newapi_oauth_verify',
+    `width=${width},height=${height},left=${left},top=${top}`,
+  );
+}
+
+function waitForOAuthPopupCallback(popup, provider, state) {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const finish = (fn, value) => {
+      if (done) return;
+      done = true;
+      window.removeEventListener('message', onMessage);
+      clearInterval(closedTimer);
+      clearTimeout(deadline);
+      fn(value);
+    };
+    const onMessage = (event) => {
+      if (event.origin !== window.location.origin) return;
+      const msg = event.data;
+      if (
+        !msg ||
+        msg.type !== OAUTH_POPUP_CALLBACK_MESSAGE ||
+        msg.provider !== provider ||
+        msg.state !== state
+      ) {
+        return;
+      }
+      finish(resolve, msg);
+    };
+    window.addEventListener('message', onMessage);
+    const closedTimer = setInterval(() => {
+      if (popup.closed) {
+        finish(reject, new SecurityError('已取消授权', 'AUTH_CANCELLED'));
+      }
+    }, 500);
+    const deadline = setTimeout(() => {
+      finish(reject, new SecurityError('授权超时，请重试'));
+    }, OAUTH_POPUP_TIMEOUT_MS);
+  });
+}
+
+async function verifyOAuth(provider, operation, popup) {
+  if (!popup || popup.closed) {
+    throw new SecurityError('授权弹窗被浏览器拦截了，请允许弹窗后重试');
+  }
+  let state = '';
+  try {
+    const auth = await getOAuthAuthorization(provider, 'verify', {
+      operation,
+      skipErrorHandler: true,
+    }).catch((error) => {
+      throw new SecurityError(securityErrorMessage(error, 'OAuth 初始化失败'));
+    });
+    state = auth.state;
+    let status = {};
+    try {
+      status = JSON.parse(localStorage.getItem('status') || '{}');
+    } catch (e) {}
+    const url =
+      auth.authorizationUrl || buildOAuthAuthorizeUrl(provider, state, status);
+    if (!state || !url) {
+      throw new SecurityError('OAuth 配置错误，无法发起授权');
+    }
+    setOAuthPopupMark(state, provider);
+    popup.location.replace(url);
+    const callback = await waitForOAuthPopupCallback(popup, provider, state);
+    const proof = await securityResult(
+      API.get(`/api/oauth/${provider}`, {
+        ...securityRequestConfig,
+        disableDuplicate: true,
+        params: {
+          state,
+          code: callback.code,
+          error: callback.error,
+          error_description: callback.error_description,
+        },
+      }),
+      '授权验证失败',
+    );
+    return proof;
+  } finally {
+    clearOAuthPopupMark(state);
+    if (popup && !popup.closed) popup.close();
+  }
+}
+
+// ---------------- Passkey ----------------
+async function requestPasskeyAssertion(options) {
+  const publicKey = prepareCredentialRequestOptions(options);
+  let credential;
+  try {
+    credential = await navigator.credentials.get({ publicKey });
+  } catch (error) {
+    if (error?.name === 'NotAllowedError') {
+      throw new SecurityError('Passkey 验证被取消或超时', 'AUTH_CANCELLED');
+    }
+    if (error?.name === 'InvalidStateError') {
+      throw new SecurityError('Passkey 验证状态无效');
+    }
+    throw error;
+  }
+  if (!credential) {
+    throw new SecurityError('Passkey 验证被取消', 'AUTH_CANCELLED');
+  }
+  const assertion = buildAssertionResult(credential);
+  if (!assertion) {
+    throw new SecurityError('无法生成 Passkey 验证数据');
+  }
+  return assertion;
+}
+
+async function verifyPasskey(operation) {
+  const begin = await securityResult(
+    API.post(
+      '/api/user/passkey/verify/begin',
+      operationFields(operation),
+      securityRequestConfig,
+    ),
+    '开始验证失败',
+  );
+  if (!begin?.flow_token) {
+    throw new SecurityError('验证流程已过期，请重试');
+  }
+  const assertion = await requestPasskeyAssertion(begin.options ?? begin);
+  return securityResult(
+    API.post(
+      '/api/user/passkey/verify/finish',
+      { flow_token: begin.flow_token, credential: assertion },
+      securityRequestConfig,
+    ),
+    '验证失败',
+  );
+}
+
 export class SecureVerificationService {
   /**
-   * 检查用户可用的验证方式
-   * @returns {Promise<{has2FA: boolean, hasPasskey: boolean, passkeySupported: boolean}>}
+   * 取某个操作可用的验证方式（服务端按用户已开启的 2FA/Passkey、是否有密码、绑定的 OAuth 决定）
+   * @returns {Promise<{scope, methods: Array<{method, available, reason}>, oauth_providers: Array<{slug, name}>, password_encryption_enabled: boolean}>}
    */
-  static async checkAvailableVerificationMethods() {
-    try {
-      const [twoFAResponse, passkeyResponse, passkeySupported] =
-        await Promise.all([
-          API.get('/api/user/2fa/status'),
-          API.get('/api/user/passkey'),
-          isPasskeySupported(),
-        ]);
-
-      // console.log('=== DEBUGGING VERIFICATION METHODS ===');
-      // console.log('2FA Response:', JSON.stringify(twoFAResponse, null, 2));
-      // console.log(
-      //   'Passkey Response:',
-      //   JSON.stringify(passkeyResponse, null, 2),
-      // );
-
-      const has2FA =
-        twoFAResponse.data?.success &&
-        twoFAResponse.data?.data?.enabled === true;
-      const hasPasskey =
-        passkeyResponse.data?.success &&
-        passkeyResponse.data?.data?.enabled === true;
-
-      console.log('has2FA calculation:', {
-        success: twoFAResponse.data?.success,
-        dataExists: !!twoFAResponse.data?.data,
-        enabled: twoFAResponse.data?.data?.enabled,
-        result: has2FA,
-      });
-
-      console.log('hasPasskey calculation:', {
-        success: passkeyResponse.data?.success,
-        dataExists: !!passkeyResponse.data?.data,
-        enabled: passkeyResponse.data?.data?.enabled,
-        result: hasPasskey,
-      });
-
-      const result = {
-        has2FA,
-        hasPasskey,
-        passkeySupported,
-      };
-
-      return result;
-    } catch (error) {
-      console.error('Failed to check verification methods:', error);
-      return {
-        has2FA: false,
-        hasPasskey: false,
-        passkeySupported: false,
-      };
-    }
-  }
-
-  /**
-   * 执行2FA验证
-   * @param {string} code - 验证码
-   * @returns {Promise<void>}
-   */
-  static async verify2FA(code, scope) {
-    if (!code?.trim()) {
-      throw new Error('请输入验证码或备用码');
-    }
-
-    const verifyResponse = await API.post('/api/verify', {
-      method: '2fa',
-      code: code.trim(),
-      scope,
+  static async getRequirements(scope) {
+    const [requirements, passkeySupported] = await Promise.all([
+      securityResult(
+        API.get('/api/verify/methods', {
+          ...securityRequestConfig,
+          params: { scope },
+          disableDuplicate: true,
+        }),
+        '获取验证方式失败',
+      ),
+      isPasskeySupported().catch(() => false),
+    ]);
+    const methods = (requirements?.methods || []).map((option) => {
+      if (option.method === 'passkey' && option.available && !passkeySupported) {
+        return {
+          ...option,
+          available: false,
+          reason: '当前设备不支持 Passkey',
+        };
+      }
+      return option;
     });
-
-    if (!verifyResponse.data?.success) {
-      throw new Error(verifyResponse.data?.message || '验证失败');
-    }
-
-    return verifyResponse.data?.data?.proof_token || '';
+    return {
+      ...requirements,
+      methods,
+      oauth_providers: requirements?.oauth_providers || [],
+      passkeySupported,
+    };
   }
 
   /**
-   * 执行Passkey验证
-   * @returns {Promise<void>}
+   * 执行验证，返回 proof_token
+   * @param {string} method - '2fa' | 'passkey' | 'password' | 'oauth'
+   * @param {Object} input - { code } | { password } | { provider, popup }
+   * @param {Object} operation - { scope, context }
    */
-  static async verifyPasskey(scope) {
-    try {
-      // 开始Passkey验证
-      const beginResponse = await API.post('/api/user/passkey/verify/begin', {
-        scope,
-      });
-      if (!beginResponse.data?.success) {
-        throw new Error(beginResponse.data?.message || '开始验证失败');
-      }
-
-      // 准备WebAuthn选项
-      const publicKey = prepareCredentialRequestOptions(
-        beginResponse.data.data.options,
-      );
-
-      // 执行WebAuthn验证
-      const credential = await navigator.credentials.get({ publicKey });
-      if (!credential) {
-        throw new Error('Passkey 验证被取消');
-      }
-
-      // 构建验证结果
-      const assertionResult = buildAssertionResult(credential);
-
-      // 完成验证，换取 proof_token
-      const finishResponse = await API.post('/api/user/passkey/verify/finish', {
-        flow_token: beginResponse.data?.data?.flow_token,
-        credential: assertionResult,
-      });
-      if (!finishResponse.data?.success) {
-        throw new Error(finishResponse.data?.message || '验证失败');
-      }
-
-      return finishResponse.data?.data?.proof_token || '';
-    } catch (error) {
-      if (error.name === 'NotAllowedError') {
-        throw new Error('Passkey 验证被取消或超时');
-      } else if (error.name === 'InvalidStateError') {
-        throw new Error('Passkey 验证状态无效');
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  /**
-   * 通用验证方法，根据验证类型执行相应的验证流程
-   * @param {string} method - 验证方式: '2fa' | 'passkey'
-   * @param {string} code - 2FA验证码（当method为'2fa'时必需）
-   * @returns {Promise<void>}
-   */
-  static async verify(method, code = '', scope = 'channel.key.read') {
+  static async verify(method, input = {}, operation, options = {}) {
+    let proof;
     switch (method) {
-      case '2fa':
-        return await this.verify2FA(code, scope);
+      case '2fa': {
+        const code = (input.code || '').trim();
+        if (!code) throw new SecurityError('请输入验证码或备用码');
+        proof = await securityResult(
+          API.post(
+            '/api/verify',
+            { method, ...operationFields(operation), code },
+            securityRequestConfig,
+          ),
+          '验证失败',
+        );
+        break;
+      }
+      case 'password': {
+        if (!input.password) throw new SecurityError('请输入当前密码');
+        if (options.passwordEncryptionEnabled) {
+          // 本站没开密码传输加密（PASSWORD_LOGIN_ENCRYPTION_ENABLED），classic 也没实现加密
+          throw new SecurityError('站点开启了密码加密传输，classic 界面暂不支持密码验证');
+        }
+        proof = await securityResult(
+          API.post(
+            '/api/verify',
+            { method, ...operationFields(operation), password: input.password },
+            securityRequestConfig,
+          ),
+          '验证失败',
+        );
+        break;
+      }
       case 'passkey':
-        return await this.verifyPasskey(scope);
+        proof = await verifyPasskey(operation);
+        break;
+      case 'oauth':
+        proof = await verifyOAuth(input.provider, operation, input.popup);
+        break;
       default:
-        throw new Error(`不支持的验证方式: ${method}`);
+        throw new SecurityError(`不支持的验证方式: ${method}`);
     }
+    if (!proof?.proof_token || proof.scope !== operation.scope) {
+      throw new SecurityError('没有拿到有效的验证凭证，请重试');
+    }
+    return proof.proof_token;
   }
 }
 
@@ -184,50 +402,14 @@ export class SecureVerificationService {
  */
 export const createApiCalls = {
   /**
-   * 创建查看渠道密钥的API调用
+   * 查看渠道密钥（scope channel.key.read，context {channel_id}）
    * @param {number} channelId - 渠道ID
    */
   viewChannelKey: (channelId) => async (proof) => {
-    // 先不带 proof 试一次：后端返回 403 SECURITY_PROOF_REQUIRED 时由 useSecureVerification 弹出验证
-    const response = await API.post(
-      `/api/channel/${channelId}/key`,
-      {},
-      proof
-        ? { headers: { 'X-Security-Proof': proof } }
-        : { skipErrorHandler: true },
+    const data = await securityResult(
+      API.post(`/api/channel/${channelId}/key`, {}, withProof(proof)),
+      '获取密钥失败',
     );
-    return response.data;
+    return { success: true, data };
   },
-
-  /**
-   * 创建自定义API调用
-   * @param {string} url - API URL
-   * @param {string} method - HTTP方法，默认为 'POST'
-   * @param {Object} extraData - 额外的请求数据
-   */
-  custom:
-    (url, method = 'POST', extraData = {}) =>
-    async () => {
-      // 新系统中，验证已通过中间件处理
-      const data = extraData;
-
-      let response;
-      switch (method.toUpperCase()) {
-        case 'GET':
-          response = await API.get(url, { params: data });
-          break;
-        case 'POST':
-          response = await API.post(url, data);
-          break;
-        case 'PUT':
-          response = await API.put(url, data);
-          break;
-        case 'DELETE':
-          response = await API.delete(url, { data });
-          break;
-        default:
-          throw new Error(`不支持的HTTP方法: ${method}`);
-      }
-      return response.data;
-    },
 };

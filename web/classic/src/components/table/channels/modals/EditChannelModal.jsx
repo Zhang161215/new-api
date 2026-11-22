@@ -451,17 +451,16 @@ const EditChannelModal = (props) => {
   // 使用通用安全验证 Hook
   const {
     isModalVisible,
-    verificationMethods,
+    requirements: verificationRequirements,
     verificationState,
-    withVerification,
+    startVerification,
     executeVerification,
     cancelVerification,
     setVerificationCode,
     switchVerificationMethod,
   } = useSecureVerification({
     onSuccess: (result) => {
-      // 验证成功后显示密钥
-      console.log('Verification success, result:', result);
+      // 验证成功后显示密钥（别再 console.log result，里面是渠道明文密钥）
       if (result && result.success && result.data?.key) {
         showSuccess(t('密钥获取成功'));
         setKeyDisplayState({
@@ -1198,31 +1197,15 @@ const EditChannelModal = (props) => {
     }
   };
 
-  // 查看渠道密钥（透明验证）
+  // 查看渠道密钥：上游 rc.36 起必须先做安全验证，proof 绑定 channel.key.read + {channel_id}
   const handleShow2FAModal = async () => {
-    try {
-      // 使用 withVerification 包装，会自动处理需要验证的情况
-      const result = await withVerification(
-        createApiCalls.viewChannelKey(channelId),
-        {
-          title: t('查看渠道密钥'),
-          description: t('为了保护账户安全，请验证您的身份。'),
-          preferredMethod: 'passkey', // 优先使用 Passkey
-        },
-      );
-
-      // 如果直接返回了结果（已验证），显示密钥
-      if (result && result.success && result.data?.key) {
-        showSuccess(t('密钥获取成功'));
-        setKeyDisplayState({
-          showModal: true,
-          keyData: result.data.key,
-        });
-      }
-    } catch (error) {
-      console.error('Failed to view channel key:', error);
-      showError(error.message || t('获取密钥失败'));
-    }
+    await startVerification(createApiCalls.viewChannelKey(channelId), {
+      scope: 'channel.key.read',
+      context: { channel_id: Number(channelId) },
+      title: t('查看渠道密钥'),
+      description: t('为了保护账户安全，请验证您的身份。'),
+      preferredMethod: 'passkey', // 优先使用 Passkey
+    });
   };
 
   const handleRefreshCodexCredential = async () => {
@@ -3774,7 +3757,7 @@ const EditChannelModal = (props) => {
       {/* 使用通用安全验证模态框 */}
       <SecureVerificationModal
         visible={isModalVisible}
-        verificationMethods={verificationMethods}
+        requirements={verificationRequirements}
         verificationState={verificationState}
         onVerify={executeVerification}
         onCancel={cancelVerification}

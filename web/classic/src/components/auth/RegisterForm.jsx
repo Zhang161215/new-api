@@ -31,6 +31,7 @@ import {
   setUserData,
   onDiscordOAuthClicked,
   onCustomOAuthClicked,
+  onTelegramOAuthClicked,
   authUserFromData,
 } from '../../helpers';
 import Turnstile from 'react-turnstile';
@@ -60,11 +61,10 @@ import {
 import OIDCIcon from '../common/logo/OIDCIcon';
 import LinuxDoIcon from '../common/logo/LinuxDoIcon';
 import WeChatIcon from '../common/logo/WeChatIcon';
-import TelegramLoginButton from 'react-telegram-login/src';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 import { useTranslation } from 'react-i18next';
-import { SiDiscord } from 'react-icons/si';
+import { SiDiscord, SiTelegram } from 'react-icons/si';
 
 const RegisterForm = () => {
   let navigate = useNavigate();
@@ -368,43 +368,9 @@ const RegisterForm = () => {
     setOtherRegisterOptionsLoading(false);
   };
 
-  const onTelegramLoginClicked = async (response) => {
-    const fields = [
-      'id',
-      'first_name',
-      'last_name',
-      'username',
-      'photo_url',
-      'auth_date',
-      'hash',
-      'lang',
-    ];
-    const params = {};
-    fields.forEach((field) => {
-      if (response[field]) {
-        params[field] = response[field];
-      }
-    });
-    try {
-      const res = await API.get(`/api/oauth/telegram/login`, {
-        params,
-        skipAuthRefresh: true,
-      });
-      const { success, message, data } = res.data;
-      if (success) {
-        const user = authUserFromData(data);
-        userDispatch({ type: 'login', payload: user });
-        localStorage.setItem('user', JSON.stringify(user));
-        showSuccess('登录成功！');
-        setUserData(user);
-        updateAPI();
-        navigate('/');
-      } else {
-        showError(message);
-      }
-    } catch (error) {
-      showError('登录失败，请重试');
-    }
+  // 上游 rc.36：Telegram 改走标准 OAuth（跳转 Telegram 授权页，回调 /oauth/telegram）
+  const onTelegramLoginClicked = async () => {
+    await onTelegramOAuthClicked({ shouldLogout: true });
   };
 
   const renderOAuthOptions = () => {
@@ -528,12 +494,15 @@ const RegisterForm = () => {
                   ))}
 
                 {status.telegram_oauth && (
-                  <div className='flex justify-center my-2'>
-                    <TelegramLoginButton
-                      dataOnauth={onTelegramLoginClicked}
-                      botName={status.telegram_bot_name}
-                    />
-                  </div>
+                  <Button
+                    theme='outline'
+                    className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
+                    type='tertiary'
+                    icon={<SiTelegram style={{ color: '#26A5E4', width: '20px', height: '20px' }} />}
+                    onClick={onTelegramLoginClicked}
+                  >
+                    <span className='ml-3'>{t('使用 Telegram 继续')}</span>
+                  </Button>
                 )}
 
                 <Divider margin='12px' align='center'>
