@@ -42,6 +42,11 @@ import {
   writeLotteryGrantSeen,
 } from '../../constants/lottery.constants';
 
+// 常规轮询只在页面可见时进行；切回页面会立即补查一次，但两次补查至少间隔 MIN_GAP_MS。
+// 付款回跳（?pay=success）时另开 30 秒的 2 秒快轮询，保证抽奖券到账提醒不延迟。
+const POLL_MS = 5 * 60 * 1000;
+const MIN_GAP_MS = 15 * 1000;
+
 const latestPaymentGrant = (logs) => {
   const rows = Array.isArray(logs) ? logs : [];
   return rows.find((row) => row?.reason === 'payment_grant' && Number(row.delta) > 0);
@@ -56,11 +61,16 @@ const LotteryGrantWatcher = () => {
   const [gift, setGift] = useState(null);
   const [muteLater, setMuteLater] = useState(false);
   const busyRef = useRef(false);
+  const lastCheckRef = useRef(0);
 
-  const check = useCallback(async () => {
+  const check = useCallback(async (force = false) => {
     if (!userId || busyRef.current) {
       return;
     }
+    if (!force && Date.now() - lastCheckRef.current < MIN_GAP_MS) {
+      return;
+    }
+    lastCheckRef.current = Date.now();
     busyRef.current = true;
     try {
       const res = await API.get('/api/lottery', { skipErrorHandler: true });
@@ -110,15 +120,20 @@ const LotteryGrantWatcher = () => {
     if (!userId) {
       return undefined;
     }
-    check();
+    check(true);
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         check();
       }
     };
-    const timer = window.setInterval(check, 30000);
+    const onFocus = () => check();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        check(true);
+      }
+    }, POLL_MS);
     document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('focus', check);
+    window.addEventListener('focus', onFocus);
 
     const q = new URLSearchParams(window.location.search);
     const justPaid =
@@ -126,7 +141,7 @@ const LotteryGrantWatcher = () => {
     let fast;
     let stop;
     if (justPaid) {
-      fast = window.setInterval(check, 2000);
+      fast = window.setInterval(() => check(true), 2000);
       stop = window.setTimeout(() => window.clearInterval(fast), 30000);
     }
 
@@ -135,7 +150,7 @@ const LotteryGrantWatcher = () => {
       if (fast) window.clearInterval(fast);
       if (stop) window.clearTimeout(stop);
       document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('focus', check);
+      window.removeEventListener('focus', onFocus);
     };
   }, [userId, check]);
 
