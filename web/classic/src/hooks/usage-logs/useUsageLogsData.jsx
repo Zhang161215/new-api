@@ -444,10 +444,13 @@ export const useLogsData = () => {
             value: logs[i].content,
           });
         }
-        if (isAdminUser && other?.reject_reason) {
+        // 上游 rc.31 起拦截原因写在 admin_info 里（旧日志的顶层字段也会被后端挪进去），顶层只做兜底
+        const rejectReason =
+          other?.admin_info?.reject_reason || other?.reject_reason;
+        if (isAdminUser && rejectReason) {
           expandDataLocal.push({
             key: t('拦截原因'),
-            value: other.reject_reason,
+            value: rejectReason,
           });
         }
       }
