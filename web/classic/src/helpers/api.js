@@ -17,22 +17,28 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import {
-  getUserIdFromLocalStorage,
-  showError,
-  formatMessageForAPI,
-  isValidMessage,
-} from './utils';
+import { showError, formatMessageForAPI, isValidMessage } from './utils';
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
+import {
+  applyAuthBundle,
+  applyAuthRotation,
+  ensureAccessToken,
+  getAccessToken,
+  hasLocalUser,
+  isAuthBundle,
+  logoutAuth,
+  refreshAuth,
+} from './authSession';
 
+// 上游 7-20 起面板鉴权改为 Bearer access token，New-Api-User 头不再参与鉴权。
+// token 由下面的请求拦截器按需补上，见 ./authSession.js。
 export let API = axios.create({
   baseURL: import.meta.env.VITE_REACT_APP_SERVER_URL
     ? import.meta.env.VITE_REACT_APP_SERVER_URL
     : '',
   withCredentials: true,
   headers: {
-    'New-API-User': getUserIdFromLocalStorage(),
     'Cache-Control': 'no-store',
   },
 });
@@ -79,34 +85,79 @@ function patchAPIInstance(instance) {
   };
 }
 
-patchAPIInstance(API);
-
-export function updateAPI() {
-  API = axios.create({
-    baseURL: import.meta.env.VITE_REACT_APP_SERVER_URL
-      ? import.meta.env.VITE_REACT_APP_SERVER_URL
-      : '',
-    withCredentials: true,
-    headers: {
-      'New-API-User': getUserIdFromLocalStorage(),
-      'Cache-Control': 'no-store',
-    },
-  });
-
-  patchAPIInstance(API);
+function hasAuthorizationHeader(headers) {
+  if (!headers) return false;
+  if (typeof headers.has === 'function') return headers.has('Authorization');
+  return Boolean(headers.Authorization || headers.authorization);
 }
 
-API.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // 如果请求配置中显式要求跳过全局错误处理，则不弹出默认错误提示
-    if (error.config && error.config.skipErrorHandler) {
-      return Promise.reject(error);
+function installAuthInterceptors(instance) {
+  // 自带 Authorization（如用令牌 key 调接口）的请求不覆盖；
+  // skipAuth：完全不带面板 token；skipAuthRefresh：不为这次请求触发 refresh（登录类接口）。
+  instance.interceptors.request.use(async (config) => {
+    if (config.skipAuth || hasAuthorizationHeader(config.headers)) {
+      return config;
     }
-    showError(error);
-    return Promise.reject(error);
-  },
-);
+    const token = config.skipAuthRefresh
+      ? getAccessToken()
+      : await ensureAccessToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  });
+
+  instance.interceptors.response.use(
+    (response) => {
+      // 登录类接口返回 AuthBundle，安全设置类接口返回 token 轮换：统一在这里接管
+      const body = response.data;
+      if (body?.success === true && body.data && typeof body.data === 'object') {
+        if (isAuthBundle(body.data)) {
+          applyAuthBundle(body.data);
+        } else {
+          applyAuthRotation(body.data);
+        }
+      }
+      return response;
+    },
+    async (error) => {
+      const config = error?.config;
+      if (
+        error?.response?.status === 401 &&
+        config &&
+        !config.skipAuth &&
+        !config.skipAuthRefresh &&
+        !config._authRetry &&
+        hasLocalUser()
+      ) {
+        // access token 过期或被轮换：refresh 一次后重放原请求
+        config._authRetry = true;
+        const outcome = await refreshAuth();
+        if (outcome.kind === 'authenticated') {
+          config.headers.Authorization = `Bearer ${getAccessToken()}`;
+          return instance.request(config);
+        }
+      }
+      // 如果请求配置中显式要求跳过全局错误处理，则不弹出默认错误提示
+      if (config && config.skipErrorHandler) {
+        return Promise.reject(error);
+      }
+      showError(error);
+      return Promise.reject(error);
+    },
+  );
+}
+
+patchAPIInstance(API);
+installAuthInterceptors(API);
+
+// 以前登录后要重建实例来更新 New-Api-User 头；现在 token 由拦截器动态补上，保留空实现兼容旧调用。
+export function updateAPI() {}
+
+// 退出登录（撤销服务端登录会话、清 refresh cookie 和本地资料）
+export async function logout() {
+  await logoutAuth();
+}
 
 // playground
 
@@ -242,36 +293,43 @@ export const processGroupsData = (data, userGroup) => {
 
 // 原来components中的utils.js
 
-export async function getOAuthState() {
-  let path = '/api/oauth/state';
-  let affCode = localStorage.getItem('aff');
-  if (affCode && affCode.length > 0) {
-    path += `?aff=${affCode}`;
+// 上游 7-20：OAuth state 改为 POST 创建一次性 AuthFlow（flow_token），区分登录与绑定。
+// 绑定要带当前登录会话的 Bearer，回调页也要带同一会话的 Bearer 才能完成绑定。
+export async function getOAuthState(provider, intent = 'login') {
+  const body = { provider, intent };
+  if (intent === 'login') {
+    const affCode = localStorage.getItem('aff');
+    if (affCode && affCode.length > 0 && affCode.length <= 32) {
+      body.aff = affCode;
+    }
   }
-  const res = await API.get(path);
+  const res = await API.post('/api/oauth/state', body, {
+    skipAuthRefresh: intent === 'login',
+  });
   const { success, message, data } = res.data;
   if (success) {
-    return data;
+    if (typeof data === 'string') return data;
+    return data?.flow_token || '';
   } else {
     showError(message);
     return '';
   }
 }
 
-async function prepareOAuthState(options = {}) {
+async function prepareOAuthState(provider, options = {}) {
   const { shouldLogout = false } = options;
+  // 登录/注册页发起的是登录流程（先退出当前账号）；个人设置里发起的是绑定流程
   if (shouldLogout) {
     try {
-      await API.get('/api/user/logout', { skipErrorHandler: true });
+      await logoutAuth();
     } catch (err) {}
-    localStorage.removeItem('user');
-    updateAPI();
+    return await getOAuthState(provider, 'login');
   }
-  return await getOAuthState();
+  return await getOAuthState(provider, hasLocalUser() ? 'bind' : 'login');
 }
 
 export async function onDiscordOAuthClicked(client_id, options = {}) {
-  const state = await prepareOAuthState(options);
+  const state = await prepareOAuthState('discord', options);
   if (!state) return;
   const redirect_uri = `${window.location.origin}/oauth/discord`;
   const response_type = 'code';
@@ -287,7 +345,7 @@ export async function onOIDCClicked(
   openInNewTab = false,
   options = {},
 ) {
-  const state = await prepareOAuthState(options);
+  const state = await prepareOAuthState('oidc', options);
   if (!state) return;
   const url = new URL(auth_url);
   url.searchParams.set('client_id', client_id);
@@ -299,7 +357,7 @@ export async function onOIDCClicked(
 }
 
 export async function onGitHubOAuthClicked(github_client_id, options = {}) {
-  const state = await prepareOAuthState(options);
+  const state = await prepareOAuthState('github', options);
   if (!state) return;
   redirectToOAuthUrl(
     `https://github.com/login/oauth/authorize?client_id=${github_client_id}&state=${state}&scope=user:email`,
@@ -310,7 +368,7 @@ export async function onLinuxDOOAuthClicked(
   linuxdo_client_id,
   options = { shouldLogout: false },
 ) {
-  const state = await prepareOAuthState(options);
+  const state = await prepareOAuthState('linuxdo', options);
   if (!state) return;
   redirectToOAuthUrl(
     `https://connect.linux.do/oauth2/authorize?response_type=code&client_id=${linuxdo_client_id}&state=${state}`,
@@ -328,7 +386,7 @@ export async function onLinuxDOOAuthClicked(
  * @param {boolean} options.shouldLogout - Whether to logout first
  */
 export async function onCustomOAuthClicked(provider, options = {}) {
-  const state = await prepareOAuthState(options);
+  const state = await prepareOAuthState(provider.slug, options);
   if (!state) return;
 
   try {

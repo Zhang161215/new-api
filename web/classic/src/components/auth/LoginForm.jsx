@@ -39,6 +39,7 @@ import {
   prepareCredentialRequestOptions,
   buildAssertionResult,
   isPasskeySupported,
+  authUserFromData,
 } from '../../helpers';
 import Turnstile from 'react-turnstile';
 import {
@@ -108,6 +109,8 @@ const LoginForm = () => {
     useState(false);
   const [wechatCodeSubmitLoading, setWechatCodeSubmitLoading] = useState(false);
   const [showTwoFA, setShowTwoFA] = useState(false);
+  // 上游 7-20：密码校验通过后返回一次性 flow_token，2FA 验证时提交
+  const [twoFAFlowToken, setTwoFAFlowToken] = useState('');
   const [passkeySupported, setPasskeySupported] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -197,12 +200,14 @@ const LoginForm = () => {
     try {
       const res = await API.get(
         `/api/oauth/wechat?code=${inputs.wechat_verification_code}`,
+        { skipAuthRefresh: true },
       );
       const { success, message, data } = res.data;
       if (success) {
-        userDispatch({ type: 'login', payload: data });
-        localStorage.setItem('user', JSON.stringify(data));
-        setUserData(data);
+        const user = authUserFromData(data);
+        userDispatch({ type: 'login', payload: user });
+        localStorage.setItem('user', JSON.stringify(user));
+        setUserData(user);
         updateAPI();
         navigate('/');
         showSuccess('登录成功！');
@@ -240,18 +245,21 @@ const LoginForm = () => {
             username,
             password,
           },
+          { skipAuthRefresh: true },
         );
         const { success, message, data } = res.data;
         if (success) {
           // 检查是否需要2FA验证
           if (data && data.require_2fa) {
+            setTwoFAFlowToken(data.flow_token || '');
             setShowTwoFA(true);
             setLoginLoading(false);
             return;
           }
 
-          userDispatch({ type: 'login', payload: data });
-          setUserData(data);
+          const user = authUserFromData(data);
+          userDispatch({ type: 'login', payload: user });
+          setUserData(user);
           updateAPI();
           showSuccess('登录成功！');
           if (username === 'root' && password === '123456') {
@@ -299,13 +307,17 @@ const LoginForm = () => {
       }
     });
     try {
-      const res = await API.get(`/api/oauth/telegram/login`, { params });
+      const res = await API.get(`/api/oauth/telegram/login`, {
+        params,
+        skipAuthRefresh: true,
+      });
       const { success, message, data } = res.data;
       if (success) {
-        userDispatch({ type: 'login', payload: data });
-        localStorage.setItem('user', JSON.stringify(data));
+        const user = authUserFromData(data);
+        userDispatch({ type: 'login', payload: user });
+        localStorage.setItem('user', JSON.stringify(user));
         showSuccess('登录成功！');
-        setUserData(data);
+        setUserData(user);
         updateAPI();
         navigate('/');
       } else {
@@ -434,7 +446,9 @@ const LoginForm = () => {
 
     setPasskeyLoading(true);
     try {
-      const beginRes = await API.post('/api/user/passkey/login/begin');
+      const beginRes = await API.post('/api/user/passkey/login/begin', null, {
+        skipAuthRefresh: true,
+      });
       const { success, message, data } = beginRes.data;
       if (!success) {
         showError(message || '无法发起 Passkey 登录');
@@ -455,12 +469,14 @@ const LoginForm = () => {
 
       const finishRes = await API.post(
         '/api/user/passkey/login/finish',
-        payload,
+        { flow_token: data?.flow_token, credential: payload },
+        { skipAuthRefresh: true },
       );
       const finish = finishRes.data;
       if (finish.success) {
-        userDispatch({ type: 'login', payload: finish.data });
-        setUserData(finish.data);
+        const user = authUserFromData(finish.data);
+        userDispatch({ type: 'login', payload: user });
+        setUserData(user);
         updateAPI();
         showSuccess('登录成功！');
         navigate('/console');
@@ -494,8 +510,10 @@ const LoginForm = () => {
 
   // 2FA验证成功处理
   const handle2FASuccess = (data) => {
-    userDispatch({ type: 'login', payload: data });
-    setUserData(data);
+    const user = authUserFromData(data);
+    setTwoFAFlowToken('');
+    userDispatch({ type: 'login', payload: user });
+    setUserData(user);
     updateAPI();
     showSuccess('登录成功！');
     navigate('/console');
@@ -504,6 +522,7 @@ const LoginForm = () => {
   // 返回登录页面
   const handleBackToLogin = () => {
     setShowTwoFA(false);
+    setTwoFAFlowToken('');
     setInputs({ username: '', password: '', wechat_verification_code: '' });
   };
 
@@ -945,6 +964,7 @@ const LoginForm = () => {
         centered
       >
         <TwoFAVerification
+          flowToken={twoFAFlowToken}
           onSuccess={handle2FASuccess}
           onBack={handleBackToLogin}
           isModal={true}

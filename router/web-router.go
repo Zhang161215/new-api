@@ -15,24 +15,25 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ThemeAssets holds the embedded frontend assets for both themes.
-type ThemeAssets struct {
-	DefaultBuildFS   embed.FS
-	DefaultIndexPage []byte
+// WebAssets holds the embedded dashboard frontend assets.
+// 本站同时 embed 上游新版前端（web/dist）和 classic（web/classic/dist），按 theme.frontend 切换，默认 classic。
+type WebAssets struct {
+	BuildFS          embed.FS
+	IndexPage        []byte
 	ClassicBuildFS   embed.FS
 	ClassicIndexPage []byte
 }
 
-func SetWebRouter(router *gin.Engine, assets ThemeAssets) {
-	defaultFS := common.EmbedFolder(assets.DefaultBuildFS, "web/default/dist")
+func SetWebRouter(router *gin.Engine, assets WebAssets) {
+	defaultFS := common.EmbedFolder(assets.BuildFS, "web/dist")
 	classicFS := common.EmbedFolder(assets.ClassicBuildFS, "web/classic/dist")
-	themeFS := common.NewThemeAwareFS(defaultFS, classicFS)
+	frontendFS := common.NewThemeAwareFS(defaultFS, classicFS)
 
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.Use(middleware.GlobalWebRateLimit())
 	router.Use(middleware.Cache())
 	mountLiveLottery(router)
-	router.Use(static.Serve("/", themeFS))
+	router.Use(static.Serve("/", frontendFS))
 	router.NoRoute(func(c *gin.Context) {
 		c.Set(middleware.RouteTagKey, "web")
 		if strings.HasPrefix(c.Request.RequestURI, "/v1") || strings.HasPrefix(c.Request.RequestURI, "/api") || strings.HasPrefix(c.Request.RequestURI, "/assets") {
@@ -43,7 +44,7 @@ func SetWebRouter(router *gin.Engine, assets ThemeAssets) {
 		if common.GetTheme() == "classic" {
 			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.ClassicIndexPage)
 		} else {
-			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.DefaultIndexPage)
+			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.IndexPage)
 		}
 	})
 }

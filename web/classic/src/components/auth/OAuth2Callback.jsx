@@ -26,6 +26,7 @@ import {
   showSuccess,
   updateAPI,
   setUserData,
+  authUserFromData,
 } from '../../helpers';
 import { UserContext } from '../../context/User';
 import Loading from '../common/ui/Loading';
@@ -60,9 +61,10 @@ const OAuth2Callback = (props) => {
         showSuccess(t('绑定成功！'));
         navigate('/console/personal');
       } else {
-        userDispatch({ type: 'login', payload: data });
-        localStorage.setItem('user', JSON.stringify(data));
-        setUserData(data);
+        const user = authUserFromData(data);
+        userDispatch({ type: 'login', payload: user });
+        localStorage.setItem('user', JSON.stringify(user));
+        setUserData(user);
         updateAPI();
         showSuccess(t('登录成功！'));
         navigate('/console/token');
@@ -87,6 +89,18 @@ const OAuth2Callback = (props) => {
       return;
     }
     hasExecuted.current = true;
+
+    // Telegram 绑定：后端校验完 widget 回调后重定向到 /oauth/telegram?telegram_bind=success|error
+    const telegramBind = searchParams.get('telegram_bind');
+    if (telegramBind) {
+      if (telegramBind === 'success') {
+        showSuccess(t('绑定成功！'));
+      } else {
+        showError(t('授权失败'));
+      }
+      navigate('/console/personal');
+      return;
+    }
 
     const code = searchParams.get('code');
     const state = searchParams.get('state');

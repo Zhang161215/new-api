@@ -26,7 +26,7 @@ import {
   DEBUG_TABS,
 } from '../../constants/playground.constants';
 import {
-  getUserIdFromLocalStorage,
+  getAuthHeaders,
   handleApiError,
   processThinkTags,
   processIncompleteThinkTags,
@@ -185,11 +185,13 @@ export const useApiRequest = (
       setActiveDebugTab(DEBUG_TABS.REQUEST);
 
       try {
+        // /pg 走 UserAuth：上游 7-20 起要带面板 Bearer access token
+        const authHeaders = await getAuthHeaders();
         const response = await fetch(API_ENDPOINTS.CHAT_COMPLETIONS, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'New-Api-User': getUserIdFromLocalStorage(),
+            ...authHeaders,
           },
           body: JSON.stringify(payload),
         });
@@ -302,7 +304,7 @@ export const useApiRequest = (
 
   // SSE请求
   const handleSSE = useCallback(
-    (payload) => {
+    async (payload) => {
       setDebugData((prev) => ({
         ...prev,
         request: payload,
@@ -313,10 +315,12 @@ export const useApiRequest = (
       }));
       setActiveDebugTab(DEBUG_TABS.REQUEST);
 
+      // /pg 走 UserAuth：上游 7-20 起要带面板 Bearer access token
+      const authHeaders = await getAuthHeaders();
       const source = new SSE(API_ENDPOINTS.CHAT_COMPLETIONS, {
         headers: {
           'Content-Type': 'application/json',
-          'New-Api-User': getUserIdFromLocalStorage(),
+          ...authHeaders,
         },
         method: 'POST',
         payload: JSON.stringify(payload),

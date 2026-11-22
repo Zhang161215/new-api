@@ -32,20 +32,20 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
 	_ "net/http/pprof"
 )
 
-//go:embed web/default/dist
+//go:embed web/dist
 var buildFS embed.FS
 
-//go:embed web/default/dist/index.html
+//go:embed web/dist/index.html
 var indexPage []byte
 
+// 本站保留 classic 前端（默认主题），见 router/web-router.go
+//
 //go:embed web/classic/dist
 var classicBuildFS embed.FS
 
@@ -180,6 +180,10 @@ func main() {
 
 	// Initialize HTTP server
 	server := gin.New()
+	if err := configureTrustedProxies(server); err != nil {
+		common.FatalLog("failed to configure trusted proxies: " + err.Error())
+		return
+	}
 	server.Use(gin.CustomRecovery(func(c *gin.Context, err any) {
 		common.SysLog(fmt.Sprintf("panic detected: %v", err))
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -195,24 +199,13 @@ func main() {
 	server.Use(middleware.Version())
 	server.Use(middleware.I18n())
 	middleware.SetUpLogger(server)
-	// Initialize session store
-	store := cookie.NewStore([]byte(common.SessionSecret))
-	store.Options(sessions.Options{
-		Path:     "/",
-		MaxAge:   2592000, // 30 days
-		HttpOnly: true,
-		Secure:   common.SessionCookieSecure,
-		SameSite: http.SameSiteLaxMode, // 抽奖静态页与支付回跳需要 Lax（fd347506）
-	})
-	server.Use(sessions.Sessions("session", store))
-
 	InjectUmamiAnalytics()
 	InjectGoogleAnalytics()
 
 	// 设置路由
-	router.SetRouter(server, router.ThemeAssets{
-		DefaultBuildFS:   buildFS,
-		DefaultIndexPage: indexPage,
+	router.SetRouter(server, router.WebAssets{
+		BuildFS:          buildFS,
+		IndexPage:        indexPage,
 		ClassicBuildFS:   classicBuildFS,
 		ClassicIndexPage: classicIndexPage,
 	})
@@ -336,6 +329,9 @@ func InitResources() error {
 	model.CheckSetup()
 
 	// Initialize options, should after model.InitDB()
+	// 上游这里会调 model.MigrateRetiredFrontendOptions()：把 theme.frontend 强制改成 default，
+	// 并把 ApiInfo/Announcements/FAQ/UptimeKuma 旧键迁到 console_setting.* 后删除。
+	// 本站继续用 classic，不跑这个迁移（改数据，且 classic 不需要）。
 	model.InitOptionMap()
 
 	// 清理旧的磁盘缓存文件
@@ -377,6 +373,8 @@ func InitResources() error {
 		common.SysError("failed to load custom OAuth providers: " + err.Error())
 		// Don't return error, custom OAuth is not critical
 	}
+
+	service.StartAuthArtifactCleanup()
 
 	return nil
 }

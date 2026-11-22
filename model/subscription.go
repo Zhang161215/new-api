@@ -444,7 +444,7 @@ func getUserGroupByIdTx(tx *gorm.DB, userId int) (string, error) {
 		tx = DB
 	}
 	var user User
-	if err := tx.Where("id = ?", userId).First(&user).Error; err != nil {
+	if err := lockForUpdate(tx).Where("id = ?", userId).First(&user).Error; err != nil {
 		return "", err
 	}
 	return user.Group, nil
@@ -663,6 +663,12 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	return sub, nil
 }
 
+func refreshSubscriptionUserGroupCache(userId int, operation string) {
+	if err := RefreshUserGroupCache(userId); err != nil {
+		common.SysError(fmt.Sprintf("failed to refresh user group cache after %s for user %d: %v", operation, userId, err))
+	}
+}
+
 // Complete a subscription order (idempotent). Creates a UserSubscription snapshot from the plan.
 // expectedPaymentProvider guards against cross-gateway callback attacks (empty skips the check).
 // actualPaymentMethod updates the order's PaymentMethod to reflect the real payment type used (empty skips update).
@@ -678,7 +684,6 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 	var logPlanTitle string
 	var logMoney float64
 	var logPaymentMethod string
-	var upgradeGroup string
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
@@ -700,9 +705,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if !plan.Enabled {
 			// still allow completion for already purchased orders
 		}
-		upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
-		_, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
-		if err != nil {
+		if _, err := CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order"); err != nil {
 			return err
 		}
 		if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
@@ -729,11 +732,8 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		return err
 	}
 	if logUserId > 0 {
-		if actualGroup, err := GetUserGroup(logUserId, true); err == nil && actualGroup != "" {
-			_ = UpdateUserGroupCache(logUserId, actualGroup)
-		} else if upgradeGroup != "" {
-			_ = UpdateUserGroupCache(logUserId, upgradeGroup)
-		}
+		// 本站：不管是否升级分组都按库里实际分组刷新缓存（叠加订阅时 upgradeGroup 可能为空）
+		refreshSubscriptionUserGroupCache(logUserId, "subscription payment completion")
 	}
 	if logUserId > 0 {
 		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, logMoney, logPaymentMethod)
@@ -824,11 +824,11 @@ func AdminBindSubscription(userId int, planId int, sourceNote string) (string, e
 		return "", err
 	}
 	if strings.TrimSpace(plan.UpgradeGroup) != "" {
+		refreshSubscriptionUserGroupCache(userId, "admin subscription creation")
 		actualGroup, err := GetUserGroup(userId, true)
 		if err != nil || actualGroup == "" {
 			actualGroup = plan.UpgradeGroup
 		}
-		_ = UpdateUserGroupCache(userId, actualGroup)
 		if actualGroup == plan.UpgradeGroup {
 			return fmt.Sprintf("用户分组将升级到 %s", plan.UpgradeGroup), nil
 		}
@@ -895,7 +895,8 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 			}
 		}
 
-		if _, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, PaymentMethodBalance); err != nil {
+		subscription, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, PaymentMethodBalance)
+		if err != nil {
 			return err
 		}
 
@@ -920,7 +921,9 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		logPlanTitle = plan.Title
 		logMoney = plan.PriceAmount
 		chargedQuota = requiredQuota
-		upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
+		if subscription.PrevUserGroup != "" {
+			upgradeGroup = strings.TrimSpace(subscription.UpgradeGroup)
+		}
 		return nil
 	})
 	if err != nil {
@@ -933,7 +936,7 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		}
 	}
 	if upgradeGroup != "" {
-		_ = UpdateUserGroupCache(userId, upgradeGroup)
+		refreshSubscriptionUserGroupCache(userId, "subscription balance purchase")
 	}
 	msg := fmt.Sprintf("使用余额购买订阅成功，套餐: %s，支付金额: %.2f，扣除额度: %d", logPlanTitle, logMoney, chargedQuota)
 	RecordLog(userId, LogTypeTopup, msg)
@@ -1147,7 +1150,7 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 		return "", err
 	}
 	if cacheGroup != "" && userId > 0 {
-		_ = UpdateUserGroupCache(userId, cacheGroup)
+		refreshSubscriptionUserGroupCache(userId, "admin subscription update")
 	}
 	if downgradeGroup != "" {
 		return fmt.Sprintf("用户分组将回退到 %s", downgradeGroup), nil
@@ -1188,7 +1191,7 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 		return "", err
 	}
 	if cacheGroup != "" && userId > 0 {
-		_ = UpdateUserGroupCache(userId, cacheGroup)
+		refreshSubscriptionUserGroupCache(userId, "admin subscription deletion")
 	}
 	if downgradeGroup != "" {
 		return fmt.Sprintf("用户分组将回退到 %s", downgradeGroup), nil
@@ -1427,7 +1430,7 @@ func ExpireDueSubscriptions(limit int) (int, error) {
 			return expiredCount, err
 		}
 		if cacheGroup != "" {
-			_ = UpdateUserGroupCache(userId, cacheGroup)
+			refreshSubscriptionUserGroupCache(userId, "subscription expiration")
 		}
 	}
 	return expiredCount, nil

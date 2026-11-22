@@ -116,18 +116,22 @@ type User struct {
 	StripeCustomer        string                     `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
 	CreatedAt             int64                      `json:"created_at" gorm:"autoCreateTime;column:created_at"`
 	LastLoginAt           int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
+	AuthVersion           int64                      `json:"-" gorm:"type:bigint;not null;default:1;column:auth_version"`
 	AdminPermissions      map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
 	cache := &UserBase{
-		Id:       user.Id,
-		Group:    user.Group,
-		Quota:    user.Quota,
-		Status:   user.Status,
-		Username: user.Username,
-		Setting:  user.Setting,
-		Email:    user.Email,
+		Id:          user.Id,
+		Group:       user.Group,
+		Quota:       user.Quota,
+		Status:      user.Status,
+		Role:        user.Role,
+		Username:    user.Username,
+		Setting:     user.Setting,
+		Email:       user.Email,
+		AuthVersion: user.AuthVersion,
+		CacheSchema: userCacheSchemaVersion,
 	}
 	return cache
 }
@@ -720,10 +724,23 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 }
 
 func (user *User) Update(updatePassword bool) error {
-	if err := user.UpdateWithTx(DB, updatePassword); err != nil {
+	var previousAuthVersion int64
+	if err := DB.Model(&User{}).Where("id = ?", user.Id).Select("auth_version").Find(&previousAuthVersion).Error; err != nil {
 		return err
 	}
-	return updateUserCache(*user)
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		return user.UpdateWithTx(tx, updatePassword)
+	}); err != nil {
+		return err
+	}
+	if err := updateUserCache(*user); err != nil {
+		return err
+	}
+	if user.AuthVersion > previousAuthVersion {
+		_, err := RevokeAllUserSessions(user.Id, "user_security_changed")
+		return err
+	}
+	return nil
 }
 
 func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
@@ -739,7 +756,20 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 	if err = tx.First(&current, user.Id).Error; err != nil {
 		return err
 	}
-	if err = tx.Model(&current).Omit("quota", "used_quota", "request_count").Updates(newUser).Error; err != nil {
+	// Updates(struct) ignores zero values. Match that behavior when deciding
+	// whether this request actually changes authentication-sensitive state;
+	// partial self-profile updates intentionally leave role/status/group empty.
+	authChanged := (updatePassword && current.Password != newUser.Password) ||
+		(newUser.Role != 0 && current.Role != newUser.Role) ||
+		(newUser.Status != 0 && current.Status != newUser.Status) ||
+		(newUser.Group != "" && current.Group != newUser.Group)
+	if authChanged {
+		newUser.AuthVersion, err = IncrementUserAuthVersionWithTx(tx, user.Id)
+		if err != nil {
+			return err
+		}
+	}
+	if err = tx.Model(&current).Omit("quota", "used_quota", "request_count", "auth_version").Updates(newUser).Error; err != nil {
 		return err
 	}
 	return tx.First(user, user.Id).Error
@@ -762,10 +792,23 @@ var EditableUserFields = map[string]string{
 // 清零就是这么来的（前端为走原子调额接口，提交时特意剔除了 quota）。
 // provided 为 nil 时不更新任何业务字段，避免调用方漏传集合就静默清库。
 func (user *User) Edit(updatePassword bool, provided map[string]struct{}) error {
-	if err := user.EditWithTx(DB, updatePassword, provided); err != nil {
+	var previousAuthVersion int64
+	if err := DB.Model(&User{}).Where("id = ?", user.Id).Select("auth_version").Find(&previousAuthVersion).Error; err != nil {
 		return err
 	}
-	return updateUserCache(*user)
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		return user.EditWithTx(tx, updatePassword, provided)
+	}); err != nil {
+		return err
+	}
+	if err := updateUserCache(*user); err != nil {
+		return err
+	}
+	if user.AuthVersion > previousAuthVersion {
+		_, err := RevokeAllUserSessions(user.Id, "user_security_changed")
+		return err
+	}
+	return nil
 }
 
 func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool, provided map[string]struct{}) error {
@@ -799,6 +842,16 @@ func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool, provided map[stri
 	if err = tx.First(&current, user.Id).Error; err != nil {
 		return err
 	}
+	// 上游 7-20：密码或分组变化时递增 auth_version，调用方据此撤销该用户所有登录会话。
+	// 本站只写本次请求实际提交的字段，所以分组只在提交了 group 时才算变化。
+	_, groupProvided := provided["group"]
+	authChanged := (updatePassword && current.Password != newUser.Password) ||
+		(groupProvided && current.Group != newUser.Group)
+	if authChanged {
+		if _, err = IncrementUserAuthVersionWithTx(tx, user.Id); err != nil {
+			return err
+		}
+	}
 	if len(updates) > 0 {
 		if err = tx.Model(&current).Updates(updates).Error; err != nil {
 			return err
@@ -827,7 +880,15 @@ func (user *User) ClearBinding(bindingType string) error {
 		return errors.New("invalid binding type")
 	}
 
-	if err := DB.Model(&User{}).Where("id = ?", user.Id).Update(column, "").Error; err != nil {
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&User{}).Where("id = ?", user.Id).Update(column, "").Error; err != nil {
+			return err
+		}
+		if bindingType == ExternalIdentityProviderTelegram {
+			return ReleaseExternalIdentityWithTx(tx, ExternalIdentityProviderTelegram, user.Id)
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 
@@ -842,11 +903,23 @@ func (user *User) Delete() error {
 	if user.Id == 0 {
 		return errors.New("id 为空！")
 	}
-	if err := DB.Delete(user).Error; err != nil {
+	var nextAuthVersion int64
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		nextAuthVersion, err = IncrementUserAuthVersionWithTx(tx, user.Id)
+		if err != nil {
+			return err
+		}
+		return tx.Delete(user).Error
+	}); err != nil {
 		return err
 	}
-
-	// 清除缓存
+	if err := publishCommittedUserAuthVersion(user.Id, nextAuthVersion); err != nil {
+		return err
+	}
+	if _, err := RevokeAllUserSessions(user.Id, "user_deleted"); err != nil {
+		return err
+	}
 	return invalidateUserCache(user.Id)
 }
 
@@ -855,7 +928,13 @@ func (user *User) HardDelete() error {
 		return errors.New("id 为空！")
 	}
 	var tokens []Token
+	var deletedAuthVersion int64
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		deletedAuthVersion, err = IncrementUserAuthVersionWithTx(tx, user.Id)
+		if err != nil {
+			return err
+		}
 		if common.RedisEnabled {
 			if err := tx.Unscoped().Select("id", commonKeyCol).Where("user_id = ?", user.Id).Find(&tokens).Error; err != nil {
 				return err
@@ -869,6 +948,9 @@ func (user *User) HardDelete() error {
 	if err != nil {
 		return err
 	}
+	if err := publishCommittedUserAuthVersion(user.Id, deletedAuthVersion); err != nil {
+		common.SysError(fmt.Sprintf("failed to publish auth tombstone after hard deleting user %d: %v", user.Id, err))
+	}
 	if err := invalidateTokensCache(tokens); err != nil {
 		common.SysError(fmt.Sprintf("failed to invalidate token cache after hard deleting user %d: %v", user.Id, err))
 	}
@@ -879,9 +961,14 @@ func (user *User) HardDelete() error {
 }
 
 func deleteUserAuthenticationData(tx *gorm.DB, userId int) error {
+	if err := releaseAllExternalIdentitiesWithTx(tx, userId); err != nil {
+		return err
+	}
 	for _, authenticationData := range []any{
 		&TwoFABackupCode{},
 		&TwoFA{},
+		&UserSession{},
+		&AuthFlow{},
 		&PasskeyCredential{},
 		&Token{},
 	} {
@@ -1043,7 +1130,18 @@ func ResetUserPasswordByEmail(email string, password string) error {
 	if err != nil {
 		return err
 	}
-	err = DB.Model(&User{}).Where("id = ?", user.Id).Update("password", hashedPassword).Error
+	if err = DB.Transaction(func(tx *gorm.DB) error {
+		if _, err := IncrementUserAuthVersionWithTx(tx, user.Id); err != nil {
+			return err
+		}
+		return tx.Model(&User{}).Where("id = ?", user.Id).Update("password", hashedPassword).Error
+	}); err != nil {
+		return err
+	}
+	if err := PublishUserAuthCache(user.Id); err != nil {
+		return err
+	}
+	_, err = RevokeAllUserSessions(user.Id, "password_reset")
 	return err
 }
 
@@ -1120,7 +1218,7 @@ func GetUserGroup(id int, fromDB bool) (group string, err error) {
 		// Update Redis cache asynchronously on successful DB read
 		if shouldUpdateRedis(fromDB, err) {
 			gopool.Go(func() {
-				if err := updateUserGroupCache(id, group); err != nil {
+				if err := RefreshUserGroupCache(id); err != nil {
 					common.SysLog("failed to update user group cache: " + err.Error())
 				}
 			})

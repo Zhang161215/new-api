@@ -84,7 +84,12 @@ export const useSecureVerification = ({
   // 开始验证流程
   const startVerification = useCallback(
     async (apiCall, options = {}) => {
-      const { preferredMethod, title, description } = options;
+      const {
+        preferredMethod,
+        title,
+        description,
+        scope = 'channel.key.read',
+      } = options;
 
       // 检查验证方式
       const methods = await checkVerificationMethods();
@@ -98,6 +103,15 @@ export const useSecureVerification = ({
 
       // 设置默认验证方式
       let defaultMethod = preferredMethod;
+      // 指定的方式当前不可用时（如优先 Passkey 但没绑定）回落到可用方式，否则弹窗里没有对应的标签页、显示空白
+      const usable =
+        (defaultMethod === 'passkey' &&
+          methods.hasPasskey &&
+          methods.passkeySupported) ||
+        (defaultMethod === '2fa' && methods.has2FA);
+      if (!usable) {
+        defaultMethod = undefined;
+      }
       if (!defaultMethod) {
         if (methods.hasPasskey && methods.passkeySupported) {
           defaultMethod = 'passkey';
@@ -112,6 +126,7 @@ export const useSecureVerification = ({
         apiCall,
         title,
         description,
+        scope,
       }));
       setIsModalVisible(true);
 
@@ -131,11 +146,15 @@ export const useSecureVerification = ({
       setVerificationState((prev) => ({ ...prev, loading: true }));
 
       try {
-        // 先调用验证 API，成功后后端会设置 session
-        await SecureVerificationService.verify(method, code);
+        // 先调用验证 API，换取绑定当前登录会话和 scope 的 proof_token
+        const proof = await SecureVerificationService.verify(
+          method,
+          code,
+          verificationState.scope,
+        );
 
-        // 验证成功，调用业务 API（此时中间件会通过）
-        const result = await verificationState.apiCall();
+        // 验证成功，带上 proof 调用业务 API（X-Security-Proof 请求头）
+        const result = await verificationState.apiCall(proof);
 
         // 显示成功消息
         if (successMessage) {
@@ -161,6 +180,7 @@ export const useSecureVerification = ({
     },
     [
       verificationState.apiCall,
+      verificationState.scope,
       successMessage,
       onSuccess,
       onError,

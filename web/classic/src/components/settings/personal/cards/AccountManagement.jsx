@@ -99,6 +99,24 @@ const AccountManagement = ({
   const isBound = (accountId) => Boolean(accountId);
   const [showTelegramBindModal, setShowTelegramBindModal] =
     React.useState(false);
+  // 上游 7-20：Telegram 绑定先创建一次性 AuthFlow，widget 回调到 /api/oauth/telegram/bind/<flow_token>
+  const [telegramBindCallbackUrl, setTelegramBindCallbackUrl] =
+    React.useState('');
+  const openTelegramBindModal = async () => {
+    setTelegramBindCallbackUrl('');
+    try {
+      const res = await API.post('/api/oauth/telegram/bind/start');
+      const { success, message, data } = res.data;
+      if (!success || !data?.callback_url) {
+        showError(message || t('操作失败，请重试'));
+        return;
+      }
+      setTelegramBindCallbackUrl(data.callback_url);
+      setShowTelegramBindModal(true);
+    } catch (error) {
+      // 错误提示已由 API 拦截器处理
+    }
+  };
   const [customOAuthBindings, setCustomOAuthBindings] = React.useState([]);
   const [customOAuthLoading, setCustomOAuthLoading] = React.useState({});
 
@@ -439,7 +457,7 @@ const AccountManagement = ({
                           type='primary'
                           theme='outline'
                           size='small'
-                          onClick={() => setShowTelegramBindModal(true)}
+                          onClick={openTelegramBindModal}
                         >
                           {t('绑定')}
                         </Button>
@@ -468,10 +486,13 @@ const AccountManagement = ({
                 </div>
                 <div className='flex justify-center'>
                   <div className='scale-90'>
-                    <TelegramLoginButton
-                      dataAuthUrl='/api/oauth/telegram/bind'
-                      botName={status.telegram_bot_name}
-                    />
+                    {telegramBindCallbackUrl ? (
+                      <TelegramLoginButton
+                        key={telegramBindCallbackUrl}
+                        dataAuthUrl={telegramBindCallbackUrl}
+                        botName={status.telegram_bot_name}
+                      />
+                    ) : null}
                   </div>
                 </div>
               </Modal>

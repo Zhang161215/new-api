@@ -25,16 +25,25 @@ import {
   Input,
   Typography,
 } from '@douyinfe/semi-ui';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 
 const { Title, Text, Paragraph } = Typography;
 
-const TwoFAVerification = ({ onSuccess, onBack, isModal = false }) => {
+const TwoFAVerification = ({
+  flowToken = '',
+  onSuccess,
+  onBack,
+  isModal = false,
+}) => {
   const [loading, setLoading] = useState(false);
   const [useBackupCode, setUseBackupCode] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
+  // 输入框在 Form 里，回车会同时触发 onKeyPress 和表单 onSubmit；flow_token 只能用一次，
+  // 第二次请求必然失败并弹「会话已过期」，所以同一时间只放行一次提交
+  const submittingRef = useRef(false);
 
   const handleSubmit = async () => {
+    if (submittingRef.current) return;
     if (!verificationCode) {
       showError('请输入验证码');
       return;
@@ -48,16 +57,21 @@ const TwoFAVerification = ({ onSuccess, onBack, isModal = false }) => {
       return;
     }
 
+    submittingRef.current = true;
     setLoading(true);
     try {
-      const res = await API.post('/api/user/login/2fa', {
-        code: verificationCode,
-      });
+      const res = await API.post(
+        '/api/user/login/2fa',
+        {
+          code: verificationCode,
+          flow_token: flowToken,
+        },
+        { skipAuthRefresh: true },
+      );
 
       if (res.data.success) {
         showSuccess('登录成功');
-        // 保存用户信息到本地存储
-        localStorage.setItem('user', JSON.stringify(res.data.data));
+        // 用户资料已由 API 拦截器从 AuthBundle 写入 localStorage
         if (onSuccess) {
           onSuccess(res.data.data);
         }
@@ -67,6 +81,7 @@ const TwoFAVerification = ({ onSuccess, onBack, isModal = false }) => {
     } catch (error) {
       showError('验证失败，请重试');
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };

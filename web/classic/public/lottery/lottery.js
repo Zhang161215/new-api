@@ -472,20 +472,91 @@ function lotteryUserId() {
   return Number(lotteryUser()?.id) || -1;
 }
 
+// 上游 7-20 起面板鉴权改为 Bearer access token（15 分钟，只放内存）+ HttpOnly refresh cookie，
+// New-Api-User 头和 gin session cookie 都不再参与鉴权。
+// - 嵌在控制台 iframe 里：借父页面的 API 实例（它会自动补 token），这里不加 Authorization。
+// - 单独打开：自己用 refresh cookie 换 access token（和控制台共用同一把 Web Lock，避免并发轮换冲突）。
 function lotteryHeaders() {
-  const headers = { 'Cache-Control': 'no-store' };
-  const user = lotteryUser();
-  const id = Number(user?.id) || 0;
-  if (id > 0) {
-    headers['New-Api-User'] = String(id);
-    headers['New-API-User'] = String(id);
+  return { 'Cache-Control': 'no-store' };
+}
+
+const lotteryAuth = { token: '', expiresAt: 0, sid: '' };
+let lotteryRefreshPromise = null;
+
+function applyLotteryAuthBundle(data) {
+  if (!data || typeof data.access_token !== 'string' || !data.access_token) return false;
+  lotteryAuth.token = data.access_token;
+  lotteryAuth.expiresAt = Number(data.access_expires_at) || 0;
+  lotteryAuth.sid = data.session?.sid || '';
+  if (data.user && Number(data.user.id) > 0) {
+    localStorage.setItem('user', JSON.stringify(data.user));
   }
-  if (user?.token) {
-    headers.Authorization = `Bearer ${user.token}`;
-  } else if (user?.access_token) {
-    headers.Authorization = `Bearer ${user.access_token}`;
+  return true;
+}
+
+function clearLotteryAuth() {
+  lotteryAuth.token = '';
+  lotteryAuth.expiresAt = 0;
+  lotteryAuth.sid = '';
+}
+
+async function runLotteryRefresh() {
+  const delays = [80, 200, 500];
+  let mismatchRetried = false;
+  for (let attempt = 0; ; attempt += 1) {
+    let res;
+    let body = null;
+    try {
+      res = await fetch('/api/user/auth/refresh', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Cache-Control': 'no-store',
+          ...(lotteryAuth.sid ? { 'X-Auth-Session': lotteryAuth.sid } : {}),
+        },
+      });
+      body = await res.json().catch(() => null);
+    } catch {
+      return false;
+    }
+    if (res.ok && body?.success && applyLotteryAuthBundle(body.data)) return true;
+    if (res.status === 409 && body?.code === 'AUTH_REFRESH_RACE' && attempt < delays.length) {
+      await wait(delays[attempt]);
+      continue;
+    }
+    if (res.status === 409 && body?.code === 'AUTH_SESSION_MISMATCH' && !mismatchRetried) {
+      mismatchRetried = true;
+      clearLotteryAuth();
+      continue;
+    }
+    if (res.status === 401) {
+      clearLotteryAuth();
+      localStorage.removeItem('user');
+    }
+    return false;
   }
-  return headers;
+}
+
+function refreshLotteryAuth() {
+  if (!lotteryRefreshPromise) {
+    const run = () => runLotteryRefresh();
+    lotteryRefreshPromise = (
+      navigator.locks?.request
+        ? navigator.locks.request('new-api:auth-refresh', { mode: 'exclusive' }, run)
+        : run()
+    ).finally(() => {
+      lotteryRefreshPromise = null;
+    });
+  }
+  return lotteryRefreshPromise;
+}
+
+async function lotteryAccessToken(force = false) {
+  const now = Math.floor(Date.now() / 1000);
+  if (!force && lotteryAuth.token && lotteryAuth.expiresAt > now + 30) return lotteryAuth.token;
+  if (!force && !lotteryAuth.token && lotteryUserId() <= 0) return '';
+  await refreshLotteryAuth();
+  return lotteryAuth.token;
 }
 
 function inConsoleIframe() {
@@ -729,16 +800,24 @@ async function lotteryTransport(url, options = {}) {
       throw need;
     }
   }
-  const res = await fetch(url, {
-    credentials: 'include',
-    mode: 'cors',
-    ...options,
-    headers: {
-      ...lotteryHeaders(),
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(options.headers || {}),
-    },
-  });
+  const send = async (token) =>
+    fetch(url, {
+      credentials: 'include',
+      mode: 'cors',
+      ...options,
+      headers: {
+        ...lotteryHeaders(),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.headers || {}),
+      },
+    });
+  let res = await send(await lotteryAccessToken());
+  if (res.status === 401 && lotteryUserId() > 0) {
+    // access token 过期或被轮换：refresh 一次后重试
+    const token = await lotteryAccessToken(true);
+    if (token) res = await send(token);
+  }
   let body = null;
   try {
     body = await res.json();
@@ -1216,9 +1295,10 @@ const LotteryClient = {
     const body = await res.json();
     if (!body?.success) throw new Error(body?.message || '登录失败');
     if (body.data?.require_2fa) throw new Error('该账号已开启 2FA，请先在控制台登录');
-    localStorage.setItem('user', JSON.stringify(body.data));
+    // 上游 7-20：登录返回 AuthBundle（access_token + user + session），refresh cookie 由服务端写入
+    if (!applyLotteryAuthBundle(body.data)) throw new Error('登录失败');
     await this.connect();
-    return body.data;
+    return body.data.user;
   },
   async joinRound() {
     const local = loadState();

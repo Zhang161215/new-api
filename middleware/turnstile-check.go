@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -73,7 +72,7 @@ func verifyTurnstileToken(token string) error {
 	}
 	defer resp.Body.Close()
 	var res turnstileCheckResponse
-	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+	if err := common.DecodeJson(resp.Body, &res); err != nil {
 		return fmt.Errorf("siteverify 响应解析失败: %w", err)
 	}
 	if !res.Success {

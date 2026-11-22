@@ -31,6 +31,7 @@ import {
   setUserData,
   onDiscordOAuthClicked,
   onCustomOAuthClicked,
+  authUserFromData,
 } from '../../helpers';
 import Turnstile from 'react-turnstile';
 import {
@@ -197,12 +198,14 @@ const RegisterForm = () => {
     try {
       const res = await API.get(
         `/api/oauth/wechat?code=${inputs.wechat_verification_code}`,
+        { skipAuthRefresh: true },
       );
       const { success, message, data } = res.data;
       if (success) {
-        userDispatch({ type: 'login', payload: data });
-        localStorage.setItem('user', JSON.stringify(data));
-        setUserData(data);
+        const user = authUserFromData(data);
+        userDispatch({ type: 'login', payload: user });
+        localStorage.setItem('user', JSON.stringify(user));
+        setUserData(user);
         updateAPI();
         navigate('/');
         showSuccess('登录成功！');
@@ -244,6 +247,7 @@ const RegisterForm = () => {
         const res = await API.post(
           `/api/user/register?turnstile=${turnstileToken}`,
           inputs,
+          { skipAuthRefresh: true },
         );
         const { success, message } = res.data;
         if (success) {
@@ -382,13 +386,17 @@ const RegisterForm = () => {
       }
     });
     try {
-      const res = await API.get(`/api/oauth/telegram/login`, { params });
+      const res = await API.get(`/api/oauth/telegram/login`, {
+        params,
+        skipAuthRefresh: true,
+      });
       const { success, message, data } = res.data;
       if (success) {
-        userDispatch({ type: 'login', payload: data });
-        localStorage.setItem('user', JSON.stringify(data));
+        const user = authUserFromData(data);
+        userDispatch({ type: 'login', payload: user });
+        localStorage.setItem('user', JSON.stringify(user));
         showSuccess('登录成功！');
-        setUserData(data);
+        setUserData(user);
         updateAPI();
         navigate('/');
       } else {

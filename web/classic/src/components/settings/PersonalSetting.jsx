@@ -30,6 +30,7 @@ import {
   buildRegistrationResult,
   isPasskeySupported,
   setUserData,
+  logout as logoutSession,
 } from '../../helpers';
 import { UserContext } from '../../context/User';
 import { Modal } from '@douyinfe/semi-ui';
@@ -284,13 +285,22 @@ const PersonalSetting = () => {
     await startPasskeyVerification(registerPasskey, {
       preferredMethod: '2fa',
       title: t('安全验证'),
+      scope: 'passkey.register',
     });
   };
 
-  const registerPasskey = async () => {
+  // proof：已开 2FA 的用户注册 Passkey 时，begin 和 finish 都要带 passkey.register 的 X-Security-Proof
+  const registerPasskey = async (proof) => {
     setPasskeyRegisterLoading(true);
+    const proofConfig = proof
+      ? { headers: { 'X-Security-Proof': proof } }
+      : undefined;
     try {
-      const beginRes = await API.post('/api/user/passkey/register/begin');
+      const beginRes = await API.post(
+        '/api/user/passkey/register/begin',
+        null,
+        proofConfig,
+      );
       const { success, message, data } = beginRes.data;
       if (!success) {
         throw new Error(message || t('无法发起 Passkey 注册'));
@@ -307,7 +317,8 @@ const PersonalSetting = () => {
 
       const finishRes = await API.post(
         '/api/user/passkey/register/finish',
-        payload,
+        { flow_token: data?.flow_token, credential: payload },
+        proofConfig,
       );
       if (!finishRes.data.success) {
         throw new Error(
@@ -337,10 +348,13 @@ const PersonalSetting = () => {
     await startPasskeyRegistration();
   };
 
-  const removePasskey = async () => {
+  const removePasskey = async (proof) => {
     setPasskeyDeleteLoading(true);
     try {
-      const res = await API.delete('/api/user/passkey');
+      const res = await API.delete(
+        '/api/user/passkey',
+        proof ? { headers: { 'X-Security-Proof': proof } } : undefined,
+      );
       const { success, message } = res.data;
       if (!success) {
         throw new Error(message || t('操作失败，请重试'));
@@ -357,7 +371,9 @@ const PersonalSetting = () => {
   };
 
   const handleRemovePasskey = async () => {
-    await startPasskeyManagementVerification(removePasskey);
+    await startPasskeyManagementVerification(removePasskey, {
+      scope: 'passkey.delete',
+    });
   };
 
   const handlePasskeyVerificationCancel = () => {
@@ -394,7 +410,7 @@ const PersonalSetting = () => {
 
     if (success) {
       showSuccess(t('账户已删除！'));
-      await API.get('/api/user/logout');
+      await logoutSession();
       userDispatch({ type: 'logout' });
       localStorage.removeItem('user');
       navigate('/login');

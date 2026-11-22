@@ -38,6 +38,10 @@ export function isVerificationRequiredError(error) {
       'VERIFICATION_REQUIRED',
       'VERIFICATION_EXPIRED',
       'VERIFICATION_INVALID',
+      // 上游 7-20 起的 X-Security-Proof 错误码
+      'SECURITY_PROOF_REQUIRED',
+      'SECURITY_PROOF_EXPIRED',
+      'SECURITY_PROOF_INVALID',
     ];
 
     return verificationCodes.includes(data.code);

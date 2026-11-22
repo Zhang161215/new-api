@@ -45,8 +45,7 @@ import {
 } from '@douyinfe/semi-icons';
 import {
   API,
-  authHeader,
-  getUserIdFromLocalStorage,
+  getAuthHeaders,
   showError,
   showSuccess,
 } from '../../../../helpers';
@@ -330,12 +329,11 @@ const OllamaModelModal = ({
       setEventSource(closable);
 
       // 使用 fetch 请求 SSE 流
-      const authHeaders = authHeader();
-      const userId = getUserIdFromLocalStorage();
+      // 上游 7-20 起面板接口用 Bearer access token 鉴权
+      const authHeaders = await getAuthHeaders();
       const fetchHeaders = {
         'Content-Type': 'application/json',
         Accept: 'text/event-stream',
-        'New-API-User': String(userId),
         ...authHeaders,
       };
 
