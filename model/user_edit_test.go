@@ -16,7 +16,6 @@ func newEditTestUser(t *testing.T) *User {
 		Group:       "default",
 		Quota:       500000,
 		Remark:      "原备注",
-		ExpiredTime: -1,
 	}
 	require.NoError(t, DB.Create(u).Error)
 	t.Cleanup(func() { DB.Unscoped().Where("id = ?", u.Id).Delete(&User{}) })
@@ -52,7 +51,6 @@ func TestUserEdit_GroupOnlyKeepsQuota(t *testing.T) {
 	require.Equal(t, "vip", got.Group, "分组应更新")
 	require.Equal(t, 500000, got.Quota, "未提交 quota 时额度必须原样保留")
 	require.Equal(t, "原备注", got.Remark)
-	require.Equal(t, int64(-1), got.ExpiredTime, "未提交的过期时间不应被改写")
 }
 
 // 显式提交 quota 时仍要能改（含改成 0 这种合法清零）
@@ -137,7 +135,7 @@ func TestEditableUserFieldsMapping(t *testing.T) {
 	for key, column := range EditableUserFields {
 		require.Equal(t, key, column, "字段 %s 的 JSON 键与列名应一致", key)
 	}
-	for _, key := range []string{"username", "display_name", "group", "quota", "remark", "expired_time"} {
+	for _, key := range []string{"username", "display_name", "group", "quota", "remark"} {
 		_, ok := EditableUserFields[key]
 		require.True(t, ok, "可编辑字段清单缺少 %s", key)
 	}

@@ -43,9 +43,9 @@ type User struct {
 	Group                 string         `json:"group" gorm:"type:varchar(64);default:'default'"`
 	AffCode               string         `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	AffCount              int            `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota              int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`                            // 邀请剩余额度
-	AffPendingQuota       int            `json:"aff_pending_quota" gorm:"type:int;default:0;column:aff_pending_quota"`            // 邀请待到账额度
-	AffHistoryQuota       int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"`                  // 邀请历史额度
+	AffQuota              int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`                 // 邀请剩余额度
+	AffPendingQuota       int            `json:"aff_pending_quota" gorm:"type:int;default:0;column:aff_pending_quota"` // 邀请待到账额度
+	AffHistoryQuota       int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"`       // 邀请历史额度
 	InviterId             int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
 	RegisterIP            string         `json:"register_ip,omitempty" gorm:"type:varchar(64);column:register_ip;index"`
 	RegisterTime          int64          `json:"register_time" gorm:"bigint;column:register_time;index"`
@@ -59,19 +59,17 @@ type User struct {
 	Setting               string         `json:"setting" gorm:"type:text;column:setting"`
 	Remark                string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
 	StripeCustomer        string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
-	ExpiredTime           int64          `json:"expired_time" gorm:"bigint;default:-1"` // -1 means never expired
 }
 
 func (user *User) ToBaseUser() *UserBase {
 	cache := &UserBase{
-		Id:          user.Id,
-		Group:       user.Group,
-		Quota:       user.Quota,
-		Status:      user.Status,
-		Username:    user.Username,
-		Setting:     user.Setting,
-		Email:       user.Email,
-		ExpiredTime: user.ExpiredTime,
+		Id:       user.Id,
+		Group:    user.Group,
+		Quota:    user.Quota,
+		Status:   user.Status,
+		Username: user.Username,
+		Setting:  user.Setting,
+		Email:    user.Email,
 	}
 	return cache
 }
@@ -543,7 +541,6 @@ var EditableUserFields = map[string]string{
 	"group":        "group",
 	"quota":        "quota",
 	"remark":       "remark",
-	"expired_time": "expired_time",
 }
 
 // Edit 更新管理员可编辑的用户字段。
@@ -569,7 +566,6 @@ func (user *User) Edit(updatePassword bool, provided map[string]struct{}) error 
 		"group":        newUser.Group,
 		"quota":        newUser.Quota,
 		"remark":       newUser.Remark,
-		"expired_time": newUser.ExpiredTime,
 	}
 	updates := make(map[string]interface{}, len(values)+1)
 	for key, column := range EditableUserFields {

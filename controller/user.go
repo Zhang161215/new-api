@@ -439,7 +439,6 @@ func GetSelf(c *gin.Context) {
 		"inviter_id":        user.InviterId,
 		"linux_do_id":       user.LinuxDOId,
 		"setting":           user.Setting,
-		"expired_time":      user.ExpiredTime,
 		"stripe_customer":   user.StripeCustomer,
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":       permissions,                // 新增权限字段
@@ -876,7 +875,6 @@ func CreateUser(c *gin.Context) {
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
 		Role:        user.Role, // 保持管理员设置的角色
-		ExpiredTime: -1,        // 默认永不过期
 	}
 	if err := cleanUser.Insert(0); err != nil {
 		common.ApiError(c, err)
