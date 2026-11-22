@@ -21,7 +21,7 @@ func TestNewBillingSession_TrustAllowsPreconsumeOverage(t *testing.T) {
 	seedToken(t, tokenID, userID, "sk-trust-overage", 5_000_000)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-trust-overage", "default", "Claude_官转20X", "wallet_only")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-trust-overage", "default", "Claude_官转20X", "wallet_only")
 	ri.ForcePreConsume = false
 	ri.TokenUnlimited = true
 
@@ -45,7 +45,7 @@ func TestNewBillingSession_BelowTrustStillBlocksOverage(t *testing.T) {
 	seedToken(t, tokenID, userID, "sk-trust-low", 5_000_000)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-trust-low", "default", "Claude_官转20X", "wallet_only")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-trust-low", "default", "Claude_官转20X", "wallet_only")
 	ri.ForcePreConsume = false
 	ri.TokenUnlimited = true
 
@@ -66,7 +66,7 @@ func TestNewBillingSession_ForcePreConsumeStillBlocksOverage(t *testing.T) {
 	seedToken(t, tokenID, userID, "sk-trust-force", 5_000_000)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-trust-force", "default", "Claude_官转20X", "wallet_only")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-trust-force", "default", "Claude_官转20X", "wallet_only")
 	_, apiErr := NewBillingSession(c, ri, wallet+int(common.QuotaPerUnit))
 	require.NotNil(t, apiErr)
 	assert.Equal(t, types.ErrorCodeInsufficientUserQuota, apiErr.GetErrorCode())

@@ -43,7 +43,7 @@ func TestSubscriptionExhausted_FallbackWallet_RestoresNormalGroupRatio(t *testin
 	seedSubWithGroup(t, subID, userID, planID, "gpt_month", 1000, 1000, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-ratio-1", "gpt_month", "gpt_month", "subscription_first")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-ratio-1", "gpt_month", "gpt_month", "subscription_first")
 	// 模拟 HandleGroupRatio 已套用特殊倍率 1
 	ri.PriceData.GroupRatioInfo = types.GroupRatioInfo{
 		GroupRatio:        1,
@@ -81,7 +81,7 @@ func TestSubscriptionAvailable_KeepsSpecialRatio(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, planID, "gpt_month", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-ratio-2", "gpt_month", "gpt_month", "subscription_first")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-ratio-2", "gpt_month", "gpt_month", "subscription_first")
 	ri.PriceData.GroupRatioInfo = types.GroupRatioInfo{
 		GroupRatio:        1,
 		GroupSpecialRatio: 1,
@@ -116,7 +116,7 @@ func TestWalletExhausted_FallbackSubscription_RestoresSpecialRatio(t *testing.T)
 	seedSubWithGroup(t, subID, userID, planID, "gpt_month", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-ratio-4", "gpt_month", "gpt_month", "wallet_first")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-ratio-4", "gpt_month", "gpt_month", "wallet_first")
 	// 模拟 HandleGroupRatio 已套用特殊倍率（用户组=令牌组，命中 GroupGroupRatio）
 	ri.PriceData.GroupRatioInfo = types.GroupRatioInfo{
 		GroupRatio:        1,
@@ -159,7 +159,7 @@ func TestFundingFallback_NoGroupGroupRatio_Untouched(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, planID, "gpt_month", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-ratio-5", "gpt_month", "gpt_month", "wallet_first")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-ratio-5", "gpt_month", "gpt_month", "wallet_first")
 	ri.PriceData.GroupRatioInfo = types.GroupRatioInfo{
 		GroupRatio:        0.2,
 		GroupSpecialRatio: -1,
@@ -190,7 +190,7 @@ func TestSubscriptionExhausted_NoSpecialRatio_Untouched(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, planID, "gpt_month", 1000, 1000, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-ratio-3", "gpt_month", "gpt_month", "subscription_first")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-ratio-3", "gpt_month", "gpt_month", "subscription_first")
 	ri.PriceData.GroupRatioInfo = types.GroupRatioInfo{
 		GroupRatio:        0.2,
 		GroupSpecialRatio: -1,
@@ -220,7 +220,7 @@ func TestWalletOnly_SameGroup_UsesNormalGroupRatio(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, planID, "gpt_month", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-ratio-6", "gpt_month", "gpt_month", "wallet_only")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-ratio-6", "gpt_month", "gpt_month", "wallet_only")
 	ri.PriceData.GroupRatioInfo = types.GroupRatioInfo{
 		GroupRatio:        1,
 		GroupSpecialRatio: 1,
@@ -247,7 +247,7 @@ func TestSubscriptionFirst_NoActiveSub_UsesNormalGroupRatio(t *testing.T) {
 	seedToken(t, tokenID, userID, "sk-ratio-7", 5_000_000)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-ratio-7", "gpt_month", "gpt_month", "subscription_first")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-ratio-7", "gpt_month", "gpt_month", "subscription_first")
 	ri.PriceData.GroupRatioInfo = types.GroupRatioInfo{
 		GroupRatio:        1,
 		GroupSpecialRatio: 1,

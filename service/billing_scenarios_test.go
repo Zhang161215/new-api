@@ -81,7 +81,7 @@ func runScenario(t *testing.T, acc scenarioAccount, exp scenarioExpect, caseName
 
 		// 4) 跑 NewBillingSession
 		c := newTestGinContext()
-		ri := makeRelayInfo(acc.userId, acc.tokenId, acc.tokenKey, acc.userGroup, exp.usingGroup, exp.pref)
+		ri := makeBillingRelayInfo(acc.userId, acc.tokenId, acc.tokenKey, acc.userGroup, exp.usingGroup, exp.pref)
 		session, apiErr := NewBillingSession(c, ri, exp.preConsume)
 
 		// 5) 断言
@@ -529,7 +529,7 @@ func TestScenario_EdgeCases(t *testing.T) {
 		seedSubWithGroup(t, 4101, 4001, 4101, "gpt_month", 5_000_000, 0, "active", 86400)
 
 		c := newTestGinContext()
-		ri := makeRelayInfo(4001, 4001, "sk-edge1", "gpt_month", "", "subscription_first")
+		ri := makeBillingRelayInfo(4001, 4001, "sk-edge1", "gpt_month", "", "subscription_first")
 		session, apiErr := NewBillingSession(c, ri, 1000)
 		require.Nil(t, apiErr)
 		require.NotNil(t, session)
@@ -551,7 +551,7 @@ func TestScenario_EdgeCases(t *testing.T) {
 
 		// usingGroup="gpt_month"（小写），与订阅组大小写不一致 → 当前实现按字符串严格比较 → 不命中 → 强制钱包
 		c := newTestGinContext()
-		ri := makeRelayInfo(4002, 4002, "sk-edge2", "GPT_Month", "gpt_month", "subscription_first")
+		ri := makeBillingRelayInfo(4002, 4002, "sk-edge2", "GPT_Month", "gpt_month", "subscription_first")
 		session, apiErr := NewBillingSession(c, ri, 1000)
 		require.Nil(t, apiErr)
 		require.NotNil(t, session)
@@ -573,7 +573,7 @@ func TestScenario_EdgeCases(t *testing.T) {
 
 		// 第一次扣
 		c1 := newTestGinContext()
-		ri1 := makeRelayInfo(4003, 4003, "sk-edge3", "gpt_month", "gpt_month", "subscription_first")
+		ri1 := makeBillingRelayInfo(4003, 4003, "sk-edge3", "gpt_month", "gpt_month", "subscription_first")
 		s1, e1 := NewBillingSession(c1, ri1, 800)
 		require.Nil(t, e1)
 		require.NotNil(t, s1)
@@ -581,7 +581,7 @@ func TestScenario_EdgeCases(t *testing.T) {
 
 		// 第二次扣（不同 requestId）
 		c2 := newTestGinContext()
-		ri2 := makeRelayInfo(4003, 4003, "sk-edge3", "gpt_month", "gpt_month", "subscription_first")
+		ri2 := makeBillingRelayInfo(4003, 4003, "sk-edge3", "gpt_month", "gpt_month", "subscription_first")
 		s2, e2 := NewBillingSession(c2, ri2, 500)
 		require.Nil(t, e2)
 		require.NotNil(t, s2)
@@ -604,7 +604,7 @@ func TestScenario_EdgeCases(t *testing.T) {
 		// 跨组 10 次，订阅一直不动
 		for i := 0; i < 10; i++ {
 			c := newTestGinContext()
-			ri := makeRelayInfo(4004, 4004, "sk-edge4", "gpt_month", "default", "subscription_first")
+			ri := makeBillingRelayInfo(4004, 4004, "sk-edge4", "gpt_month", "default", "subscription_first")
 			s, e := NewBillingSession(c, ri, 100)
 			require.Nil(t, e, "iter=%d", i)
 			require.NotNil(t, s)
@@ -628,7 +628,7 @@ func TestScenario_EdgeCases(t *testing.T) {
 		// 步骤 A：命中订阅
 		for i := 0; i < 3; i++ {
 			c := newTestGinContext()
-			ri := makeRelayInfo(4005, 4005, "sk-edge5", "gpt_month", "gpt_month", "subscription_first")
+			ri := makeBillingRelayInfo(4005, 4005, "sk-edge5", "gpt_month", "gpt_month", "subscription_first")
 			_, e := NewBillingSession(c, ri, 200)
 			require.Nil(t, e)
 		}
@@ -638,7 +638,7 @@ func TestScenario_EdgeCases(t *testing.T) {
 		// 步骤 B：跨组走钱包
 		for i := 0; i < 3; i++ {
 			c := newTestGinContext()
-			ri := makeRelayInfo(4005, 4005, "sk-edge5", "gpt_month", "default", "subscription_first")
+			ri := makeBillingRelayInfo(4005, 4005, "sk-edge5", "gpt_month", "default", "subscription_first")
 			_, e := NewBillingSession(c, ri, 200)
 			require.Nil(t, e)
 		}

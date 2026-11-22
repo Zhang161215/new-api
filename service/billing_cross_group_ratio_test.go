@@ -16,7 +16,6 @@ import (
 	"testing"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -101,7 +100,7 @@ func TestHandleGroupRatio_SubscriberAcrossGroups(t *testing.T) {
 				UserGroup:  c.userGroup,
 				UsingGroup: c.usingGroup,
 			}
-			got := helper.HandleGroupRatio(ctx, ri)
+			got := HandleGroupRatio(ctx, ri)
 			assert.Equal(t, c.wantRatio, got.GroupRatio, c.whyItMatters)
 			assert.Equal(t, c.wantHasSpec, got.HasSpecialRatio,
 				"HasSpecialRatio 决定日志里是否显示「专属倍率」")
@@ -132,8 +131,8 @@ func TestCrossGroup_SubscriberUsingOtherGroup_KeepsThatGroupRatio(t *testing.T) 
 		t.Run("pref="+pref, func(t *testing.T) {
 			c := newTestGinContext()
 			// 用户组是订阅组，但令牌走 Claude_Aws
-			ri := makeRelayInfo(userID, tokenID, "sk-xg-1", "Codex_GPT_PRO", "Claude_Aws", pref)
-			ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+			ri := makeBillingRelayInfo(userID, tokenID, "sk-xg-1", "Codex_GPT_PRO", "Claude_Aws", pref)
+			ri.PriceData.GroupRatioInfo = HandleGroupRatio(c, ri)
 			require.Equal(t, 0.1, ri.PriceData.GroupRatioInfo.GroupRatio,
 				"前置条件：跨组基准倍率应为 Claude_Aws 的 0.1")
 
@@ -167,8 +166,8 @@ func TestSameGroup_SubscriptionExhausted_FallsBackTo03(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 1000, 1000, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-xg-2", "Codex_GPT_PRO", "Codex_GPT_PRO", "subscription_first")
-	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-xg-2", "Codex_GPT_PRO", "Codex_GPT_PRO", "subscription_first")
+	ri.PriceData.GroupRatioInfo = HandleGroupRatio(c, ri)
 	require.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio,
 		"前置条件：同组订阅用户基准倍率应为 1")
 
@@ -205,8 +204,8 @@ func TestMultiSubscriptions_EachGroupKeepsOwnRatio(t *testing.T) {
 	// 用户当前组是 Codex_GPT_PRO（最后一次升级），但拿 Claude_Aws 令牌。
 	// 持有 Claude 订阅时，应套 Claude 自己的专属倍率，而不是账号组对不上就退回 GroupRatio。
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-xg-3", "Codex_GPT_PRO", "Claude_Aws", "subscription_first")
-	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-xg-3", "Codex_GPT_PRO", "Claude_Aws", "subscription_first")
+	ri.PriceData.GroupRatioInfo = HandleGroupRatio(c, ri)
 	assert.Equal(t, 0.5, ri.PriceData.GroupRatioInfo.GroupRatio,
 		"叠卡后令牌组有生效订阅，应套 Claude_Aws→Claude_Aws 的专属倍率")
 	assert.True(t, ri.PriceData.GroupRatioInfo.HasSpecialRatio)
@@ -220,8 +219,8 @@ func TestMultiSubscriptions_EachGroupKeepsOwnRatio(t *testing.T) {
 
 	// 反向：账号组被日卡改成 Claude_Aws，GPT 令牌仍应 1x（线上 1688 Ethan）
 	c2 := newTestGinContext()
-	ri2 := makeRelayInfo(userID, tokenID, "sk-xg-3", "Claude_Aws", "Codex_GPT_PRO", "subscription_first")
-	ri2.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c2, ri2)
+	ri2 := makeBillingRelayInfo(userID, tokenID, "sk-xg-3", "Claude_Aws", "Codex_GPT_PRO", "subscription_first")
+	ri2.PriceData.GroupRatioInfo = HandleGroupRatio(c2, ri2)
 	assert.Equal(t, float64(1), ri2.PriceData.GroupRatioInfo.GroupRatio,
 		"users.group 被后买的日卡覆盖后，GPT 月卡仍应按 1x 扣订阅额度")
 	assert.True(t, ri2.PriceData.GroupRatioInfo.HasSpecialRatio)
@@ -245,7 +244,7 @@ func TestCrossGroup_StaleSpecialRatio_NotAppliedToWallet(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-xg-4", "Codex_GPT_PRO", "Claude_Aws", "subscription_first")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-xg-4", "Codex_GPT_PRO", "Claude_Aws", "subscription_first")
 	// 人为构造「倍率已是订阅的 1x」但令牌是跨组的状态
 	ri.PriceData.GroupRatioInfo = types.GroupRatioInfo{
 		GroupRatio:        1,
@@ -278,8 +277,8 @@ func TestStacked_OverwrittenUserGroup_GPTExhausted_FallsBackTo03(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 1000, 1000, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-xg-eth", "Claude_Aws", "Codex_GPT_PRO", "subscription_first")
-	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-xg-eth", "Claude_Aws", "Codex_GPT_PRO", "subscription_first")
+	ri.PriceData.GroupRatioInfo = HandleGroupRatio(c, ri)
 	require.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio,
 		"有生效 GPT 订阅时，即使用户组已被改成 Claude_Aws，基准倍率也必须是 1")
 
@@ -307,7 +306,7 @@ func TestHandleGroupRatio_NoGPTSub_OverwrittenGroup_Stays03(t *testing.T) {
 		UserGroup:  "Claude_Aws",
 		UsingGroup: "Codex_GPT_PRO",
 	}
-	got := helper.HandleGroupRatio(c, ri)
+	got := HandleGroupRatio(c, ri)
 	assert.Equal(t, 0.3, got.GroupRatio)
 	assert.False(t, got.HasSpecialRatio)
 }
@@ -338,8 +337,8 @@ func TestWeeklyCard_AliasBpsGroup_UsesSubscription(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-bps-1", "Codex_GPT_PRO", bpsGroup, "subscription_first")
-	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-bps-1", "Codex_GPT_PRO", bpsGroup, "subscription_first")
+	ri.PriceData.GroupRatioInfo = HandleGroupRatio(c, ri)
 	require.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio)
 	require.True(t, ri.PriceData.GroupRatioInfo.HasSpecialRatio)
 
@@ -366,8 +365,8 @@ func TestWeeklyCard_AliasBpsGroup_ClaudeStillWallet(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-bps-2", "Codex_GPT_PRO", "Claude_Aws", "subscription_first")
-	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-bps-2", "Codex_GPT_PRO", "Claude_Aws", "subscription_first")
+	ri.PriceData.GroupRatioInfo = HandleGroupRatio(c, ri)
 	session, apiErr := NewBillingSession(c, ri, 100)
 	require.Nil(t, apiErr)
 	assert.Equal(t, BillingSourceWallet, session.funding.Source(),
@@ -387,8 +386,8 @@ func TestWeeklyCard_AliasBpsGroup_StackedClaudeUser(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-bps-3", "Claude_Aws", bpsGroup, "subscription_first")
-	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-bps-3", "Claude_Aws", bpsGroup, "subscription_first")
+	ri.PriceData.GroupRatioInfo = HandleGroupRatio(c, ri)
 	assert.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio,
 		"账号被日卡改成 Claude_Aws 后，不降智令牌仍应按周卡 1x 扣")
 	session, apiErr := NewBillingSession(c, ri, 100)
@@ -409,8 +408,8 @@ func TestWeeklyCard_AliasBpsGroup_WalletOnly_Uses03(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-bps-4", "Codex_GPT_PRO", bpsGroup, "wallet_only")
-	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-bps-4", "Codex_GPT_PRO", bpsGroup, "wallet_only")
+	ri.PriceData.GroupRatioInfo = HandleGroupRatio(c, ri)
 	require.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio,
 		"前置：HandleGroupRatio 仍会先套上专属 1x")
 
@@ -437,8 +436,8 @@ func TestWeeklyCard_AliasBpsGroup_WalletFirst_HasBalance_Uses03(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-bps-5", "Codex_GPT_PRO", bpsGroup, "wallet_first")
-	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-bps-5", "Codex_GPT_PRO", bpsGroup, "wallet_first")
+	ri.PriceData.GroupRatioInfo = HandleGroupRatio(c, ri)
 
 	session, apiErr := NewBillingSession(c, ri, 1000)
 	require.Nil(t, apiErr)
@@ -467,8 +466,8 @@ func TestVip_WalletOnly_ProGroup_Keeps02(t *testing.T) {
 	seedToken(t, tokenID, userID, "sk-vip-1", 5_000_000)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-vip-1", "vip", "Codex_GPT_PRO", "wallet_only")
-	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-vip-1", "vip", "Codex_GPT_PRO", "wallet_only")
+	ri.PriceData.GroupRatioInfo = HandleGroupRatio(c, ri)
 	require.Equal(t, 0.2, ri.PriceData.GroupRatioInfo.GroupRatio)
 
 	session, apiErr := NewBillingSession(c, ri, 1000)
@@ -490,8 +489,8 @@ func TestVip_WalletOnly_Claude_Keeps015(t *testing.T) {
 	seedToken(t, tokenID, userID, "sk-vip-2", 5_000_000)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-vip-2", "vip", "Claude_Aws", "wallet_only")
-	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-vip-2", "vip", "Claude_Aws", "wallet_only")
+	ri.PriceData.GroupRatioInfo = HandleGroupRatio(c, ri)
 
 	session, apiErr := NewBillingSession(c, ri, 100)
 	require.Nil(t, apiErr)
@@ -512,8 +511,8 @@ func TestVip_WithWeeklyCard_SubscriptionUses1x(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-vip-3", "vip", "Codex_GPT_PRO", "subscription_first")
-	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-vip-3", "vip", "Codex_GPT_PRO", "subscription_first")
+	ri.PriceData.GroupRatioInfo = HandleGroupRatio(c, ri)
 	require.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio,
 		"有周卡时订阅初值就是套餐 1x，不能先套 VIP 0.2")
 
@@ -538,8 +537,8 @@ func TestVip_WithWeeklyCard_WalletOnly_Keeps02(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-vip-4", "vip", "Codex_GPT_PRO", "wallet_only")
-	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-vip-4", "vip", "Codex_GPT_PRO", "wallet_only")
+	ri.PriceData.GroupRatioInfo = HandleGroupRatio(c, ri)
 	require.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio,
 		"有周卡时初值按套餐 1x，仅钱包再降回 VIP 折扣")
 
@@ -563,8 +562,8 @@ func TestVip_WithWeeklyCard_Exhausted_FallsBackTo02(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 1000, 1000, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-vip-5", "vip", "Codex_GPT_PRO", "subscription_first")
-	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-vip-5", "vip", "Codex_GPT_PRO", "subscription_first")
+	ri.PriceData.GroupRatioInfo = HandleGroupRatio(c, ri)
 	require.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio,
 		"卡还在时初值仍是套餐 1x，额度耗尽后再回落钱包")
 
@@ -587,8 +586,8 @@ func TestVip_WalletOnly_Bps_Inherits02(t *testing.T) {
 	seedToken(t, tokenID, userID, "sk-vip-6", 5_000_000)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-vip-6", "vip", bpsGroup, "wallet_only")
-	ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, ri)
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-vip-6", "vip", bpsGroup, "wallet_only")
+	ri.PriceData.GroupRatioInfo = HandleGroupRatio(c, ri)
 
 	session, apiErr := NewBillingSession(c, ri, 1000)
 	require.Nil(t, apiErr)
@@ -630,8 +629,8 @@ func TestVipWeeklyCard_BusinessMatrix(t *testing.T) {
 			seedSubWithGroup(t, sid, uid, pid, "Codex_GPT_PRO", 5_000_000, 0, "active", 86400)
 
 			ctx := newTestGinContext()
-			ri := makeRelayInfo(uid, tid, "sk-vip-mx", "vip", c.using, c.pref)
-			ri.PriceData.GroupRatioInfo = helper.HandleGroupRatio(ctx, ri)
+			ri := makeBillingRelayInfo(uid, tid, "sk-vip-mx", "vip", c.using, c.pref)
+			ri.PriceData.GroupRatioInfo = HandleGroupRatio(ctx, ri)
 			session, apiErr := NewBillingSession(ctx, ri, 100)
 			require.Nil(t, apiErr, c.name)
 			assert.Equal(t, c.wantSource, session.funding.Source(), c.name)

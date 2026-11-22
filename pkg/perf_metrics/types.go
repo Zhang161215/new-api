@@ -2,7 +2,11 @@ package perfmetrics
 
 import "sync/atomic"
 
-// Sample 一次请求（跨所有重试）的最终结果，在请求边界只采一次。
+type Store interface {
+	Record(sample Sample)
+	Query(params QueryParams) (QueryResult, error)
+}
+
 type Sample struct {
 	Model        string
 	Group        string
@@ -12,6 +16,48 @@ type Sample struct {
 	Success      bool
 	OutputTokens int64
 	GenerationMs int64
+}
+
+type QueryParams struct {
+	Model string
+	Group string
+	Hours int
+}
+
+type BucketPoint struct {
+	Ts           int64   `json:"ts"`
+	AvgTtftMs    int64   `json:"avg_ttft_ms"`
+	AvgLatencyMs int64   `json:"avg_latency_ms"`
+	SuccessRate  float64 `json:"success_rate"`
+	AvgTps       float64 `json:"avg_tps"`
+}
+
+type GroupResult struct {
+	Group        string        `json:"group"`
+	AvgTtftMs    int64         `json:"avg_ttft_ms"`
+	AvgLatencyMs int64         `json:"avg_latency_ms"`
+	SuccessRate  float64       `json:"success_rate"`
+	AvgTps       float64       `json:"avg_tps"`
+	Series       []BucketPoint `json:"series"`
+}
+
+type QueryResult struct {
+	ModelName    string        `json:"model_name"`
+	SeriesSchema string        `json:"series_schema"`
+	Groups       []GroupResult `json:"groups"`
+}
+
+type ModelSummary struct {
+	ModelName          string    `json:"model_name"`
+	AvgLatencyMs       int64     `json:"avg_latency_ms"`
+	SuccessRate        float64   `json:"success_rate"`
+	AvgTps             float64   `json:"avg_tps"`
+	RecentSuccessRates []float64 `json:"recent_success_rates,omitempty"`
+	RequestCount       int64     `json:"-"`
+}
+
+type SummaryAllResult struct {
+	Models []ModelSummary `json:"models"`
 }
 
 type bucketKey struct {
@@ -28,16 +74,6 @@ type counters struct {
 	ttftCount      int64
 	outputTokens   int64
 	generationMs   int64
-}
-
-func (c *counters) merge(v counters) {
-	c.requestCount += v.requestCount
-	c.successCount += v.successCount
-	c.totalLatencyMs += v.totalLatencyMs
-	c.ttftSumMs += v.ttftSumMs
-	c.ttftCount += v.ttftCount
-	c.outputTokens += v.outputTokens
-	c.generationMs += v.generationMs
 }
 
 type atomicBucket struct {
@@ -93,11 +129,25 @@ func (b *atomicBucket) drain() counters {
 }
 
 func (b *atomicBucket) addCounters(c counters) {
-	b.requestCount.Add(c.requestCount)
-	b.successCount.Add(c.successCount)
-	b.totalLatencyMs.Add(c.totalLatencyMs)
-	b.ttftSumMs.Add(c.ttftSumMs)
-	b.ttftCount.Add(c.ttftCount)
-	b.outputTokens.Add(c.outputTokens)
-	b.generationMs.Add(c.generationMs)
+	if c.requestCount != 0 {
+		b.requestCount.Add(c.requestCount)
+	}
+	if c.successCount != 0 {
+		b.successCount.Add(c.successCount)
+	}
+	if c.totalLatencyMs != 0 {
+		b.totalLatencyMs.Add(c.totalLatencyMs)
+	}
+	if c.ttftSumMs != 0 {
+		b.ttftSumMs.Add(c.ttftSumMs)
+	}
+	if c.ttftCount != 0 {
+		b.ttftCount.Add(c.ttftCount)
+	}
+	if c.outputTokens != 0 {
+		b.outputTokens.Add(c.outputTokens)
+	}
+	if c.generationMs != 0 {
+		b.generationMs.Add(c.generationMs)
+	}
 }

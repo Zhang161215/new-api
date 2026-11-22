@@ -123,7 +123,7 @@ func CountLotteryPrizeUsed(name string) (int64, error) {
 }
 
 func lotteryRedemptionKeyCol() string {
-	if common.UsingPostgreSQL {
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		return `"key"`
 	}
 	return "`key`"

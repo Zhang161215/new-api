@@ -38,26 +38,11 @@ func stripReasoningEffortSuffix(model string) string {
 }
 
 func EffortFromReasoningJSON(raw json.RawMessage) string {
-	if len(raw) == 0 {
-		return ""
-	}
-	var parsed struct {
-		Effort string `json:"effort"`
-	}
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return ""
-	}
-	return strings.TrimSpace(parsed.Effort)
+	return dto.EffortFromReasoningJSON(raw)
 }
 
 func EffortFromChatRequest(req *dto.GeneralOpenAIRequest) string {
-	if req == nil {
-		return ""
-	}
-	if s := strings.TrimSpace(req.ReasoningEffort); s != "" {
-		return s
-	}
-	return EffortFromReasoningJSON(req.Reasoning)
+	return dto.EffortFromChatRequest(req)
 }
 
 func DefaultReasoningEffort(model string) string {

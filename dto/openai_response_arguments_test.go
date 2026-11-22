@@ -5,34 +5,6 @@ import (
 	"testing"
 )
 
-func TestFlexibleJSONString_UnmarshalObjectAndString(t *testing.T) {
-	t.Parallel()
-
-	var fromObject FlexibleJSONString
-	if err := json.Unmarshal([]byte(`{"command":"ls"}`), &fromObject); err != nil {
-		t.Fatalf("object unmarshal: %v", err)
-	}
-	if fromObject.String() != `{"command":"ls"}` {
-		t.Fatalf("object stored as %q", fromObject)
-	}
-
-	var fromString FlexibleJSONString
-	if err := json.Unmarshal([]byte(`"{\"command\":\"ls\"}"`), &fromString); err != nil {
-		t.Fatalf("string unmarshal: %v", err)
-	}
-	if fromString.String() != `{"command":"ls"}` {
-		t.Fatalf("string stored as %q", fromString)
-	}
-
-	var fromNull FlexibleJSONString
-	if err := json.Unmarshal([]byte(`null`), &fromNull); err != nil {
-		t.Fatalf("null unmarshal: %v", err)
-	}
-	if fromNull.String() != "" {
-		t.Fatalf("null stored as %q", fromNull)
-	}
-}
-
 func TestResponsesStreamResponse_AcceptsObjectArguments(t *testing.T) {
 	t.Parallel()
 
@@ -50,7 +22,7 @@ func TestResponsesStreamResponse_AcceptsObjectArguments(t *testing.T) {
 	if err := json.Unmarshal([]byte(itemAdded), &added); err != nil {
 		t.Fatalf("item.done unmarshal: %v", err)
 	}
-	if added.Item == nil || added.Item.Arguments.String() != `{"command":"pwd"}` {
+	if added.Item == nil || added.Item.ArgumentsString() != `{"command":"pwd"}` {
 		t.Fatalf("item.arguments=%v", added.Item)
 	}
 
@@ -73,7 +45,7 @@ func TestResponsesStreamResponse_AcceptsObjectArguments(t *testing.T) {
 	if done.Response == nil || done.Response.Usage == nil || done.Response.Usage.TotalTokens != 14 {
 		t.Fatalf("usage not parsed: %+v", done.Response)
 	}
-	if len(done.Response.Output) != 1 || done.Response.Output[0].Arguments.String() != `{"command":"pwd"}` {
+	if len(done.Response.Output) != 1 || done.Response.Output[0].ArgumentsString() != `{"command":"pwd"}` {
 		t.Fatalf("output.arguments=%v", done.Response.Output)
 	}
 }

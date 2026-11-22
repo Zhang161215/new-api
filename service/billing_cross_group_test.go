@@ -81,6 +81,9 @@ func seedSubWithGroup(t *testing.T, id, userId, planId int, upgradeGroup string,
 		Status:       status,
 		StartTime:    now - 3600,
 		EndTime:      now + endOffsetSec,
+		// 与线上一致：CreateUserSubscriptionFromPlanTx 在套餐未配置时按 true 快照；
+		// 存量订阅迁移后该列为 NULL，也不会被当成「禁止回落钱包」。
+		AllowWalletOverflow: true,
 	}
 	require.NoError(t, model.DB.Create(sub).Error)
 }
@@ -232,7 +235,7 @@ func TestGetActiveSubscriptionUpgradeGroups_IsolatedByUser(t *testing.T) {
 // makeRelayInfo 组装一个最小可用的 RelayInfo，用于 NewBillingSession 测试。
 // 关键字段：UserId / UserGroup / UsingGroup / Token* / UserSetting.BillingPreference。
 // 通过 IsPlayground=true 跳过 PreConsumeTokenQuota，简化测试 setup。
-func makeRelayInfo(userId, tokenId int, tokenKey, userGroup, usingGroup, billingPref string) *relaycommon.RelayInfo {
+func makeBillingRelayInfo(userId, tokenId int, tokenKey, userGroup, usingGroup, billingPref string) *relaycommon.RelayInfo {
 	return &relaycommon.RelayInfo{
 		RequestId:       fmt.Sprintf("test-req-%d-%d-%d", userId, tokenId, time.Now().UnixNano()),
 		UserId:          userId,
@@ -268,7 +271,7 @@ func TestNewBillingSession_CrossGroup_SubscriptionFirst_Matching(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, planID, "gpt_month", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-cross-1", "gpt_month", "gpt_month", "subscription_first")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-cross-1", "gpt_month", "gpt_month", "subscription_first")
 
 	session, apiErr := NewBillingSession(c, ri, 1000)
 	require.Nil(t, apiErr)
@@ -292,7 +295,7 @@ func TestNewBillingSession_CrossGroup_SubscriptionFirst_NonMatching(t *testing.T
 	seedSubWithGroup(t, subID, userID, 1, "gpt_month", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-cross-2", "gpt_month", "default", "subscription_first")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-cross-2", "gpt_month", "default", "subscription_first")
 
 	session, apiErr := NewBillingSession(c, ri, 1000)
 	require.Nil(t, apiErr)
@@ -316,7 +319,7 @@ func TestNewBillingSession_CrossGroup_SubscriptionOnly_NonMatchingForcedWallet(t
 	seedSubWithGroup(t, subID, userID, 1, "gpt_month", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-cross-3", "gpt_month", "default", "subscription_only")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-cross-3", "gpt_month", "default", "subscription_only")
 
 	session, apiErr := NewBillingSession(c, ri, 1000)
 	require.Nil(t, apiErr)
@@ -339,7 +342,7 @@ func TestNewBillingSession_CrossGroup_VipNoLongerExcepted(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, 1, "vip", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-cross-4", "vip", "default", "subscription_first")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-cross-4", "vip", "default", "subscription_first")
 
 	session, apiErr := NewBillingSession(c, ri, 1000)
 	require.Nil(t, apiErr)
@@ -362,7 +365,7 @@ func TestNewBillingSession_WalletFirst_Matching_GoesWallet(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, 1, "gpt_month", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-cross-5", "gpt_month", "gpt_month", "wallet_first")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-cross-5", "gpt_month", "gpt_month", "wallet_first")
 
 	session, apiErr := NewBillingSession(c, ri, 1000)
 	require.Nil(t, apiErr)
@@ -383,7 +386,7 @@ func TestNewBillingSession_WalletOnly_NoChange(t *testing.T) {
 	seedToken(t, tokenID, userID, "sk-cross-6", 5_000_000)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-cross-6", "default", "default", "wallet_only")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-cross-6", "default", "default", "wallet_only")
 
 	session, apiErr := NewBillingSession(c, ri, 1000)
 	require.Nil(t, apiErr)
@@ -402,7 +405,7 @@ func TestNewBillingSession_NoSubscription_FallbackWallet(t *testing.T) {
 	seedToken(t, tokenID, userID, "sk-cross-7", 5_000_000)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-cross-7", "default", "default", "subscription_first")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-cross-7", "default", "default", "subscription_first")
 
 	session, apiErr := NewBillingSession(c, ri, 1000)
 	require.Nil(t, apiErr)
@@ -425,7 +428,7 @@ func TestNewBillingSession_MultiSubscriptions_HitSvip(t *testing.T) {
 	seedSubWithGroup(t, subSvipID, userID, planSvip, "svip", 7_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-cross-8", "svip", "svip", "subscription_first")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-cross-8", "svip", "svip", "subscription_first")
 
 	session, apiErr := NewBillingSession(c, ri, 1000)
 	require.Nil(t, apiErr)
@@ -450,7 +453,7 @@ func TestNewBillingSession_EmptyUsingGroup_Skipped(t *testing.T) {
 	seedSubWithGroup(t, subID, userID, planID, "gpt_month", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-cross-9", "gpt_month", "", "subscription_first")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-cross-9", "gpt_month", "", "subscription_first")
 
 	session, apiErr := NewBillingSession(c, ri, 1000)
 	require.Nil(t, apiErr)
@@ -474,7 +477,7 @@ func TestNewBillingSession_MultiSubscriptions_NoMatch_Wallet(t *testing.T) {
 	seedSubWithGroup(t, subB, userID, 2, "svip", 5_000_000, 0, "active", 86400)
 
 	c := newTestGinContext()
-	ri := makeRelayInfo(userID, tokenID, "sk-cross-10", "gpt_month", "default", "subscription_first")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-cross-10", "gpt_month", "default", "subscription_first")
 
 	session, apiErr := NewBillingSession(c, ri, 1000)
 	require.Nil(t, apiErr)
@@ -501,7 +504,7 @@ func TestNewBillingSession_CrossGroup_UsingPlanFallbackGroup(t *testing.T) {
 	c := newTestGinContext()
 
 	// usingGroup=vip 落在 fallback 集合内 → 走订阅
-	ri := makeRelayInfo(userID, tokenID, "sk-cross-11", "vip", "vip", "subscription_first")
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-cross-11", "vip", "vip", "subscription_first")
 	session, apiErr := NewBillingSession(c, ri, 500)
 	require.Nil(t, apiErr)
 	require.NotNil(t, session)

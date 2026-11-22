@@ -65,10 +65,10 @@ func shanghaiDay(ts int64) string {
 }
 
 func shanghaiDateSQL() string {
-	if common.UsingPostgreSQL {
+	if common.UsingLogDatabase(common.DatabaseTypePostgreSQL) {
 		return `to_char(timezone('Asia/Shanghai', to_timestamp(created_at)), 'MM-DD')`
 	}
-	if common.UsingMySQL {
+	if common.UsingLogDatabase(common.DatabaseTypeMySQL) {
 		return `DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(created_at), INTERVAL 8 HOUR), '%m-%d')`
 	}
 	return `strftime('%m-%d', created_at, 'unixepoch', '+8 hours')`

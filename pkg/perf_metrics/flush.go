@@ -2,6 +2,7 @@ package perfmetrics
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -11,32 +12,32 @@ import (
 
 func flushLoop() {
 	for {
-		time.Sleep(time.Duration(perf_metrics_setting.GetFlushIntervalMinutes()) * time.Minute)
+		interval := perf_metrics_setting.GetFlushIntervalMinutes()
+		time.Sleep(time.Duration(interval) * time.Minute)
 		setting := perf_metrics_setting.GetSetting()
 		if !setting.Enabled {
 			continue
 		}
-		FlushAll()
+		flushCompletedBuckets()
 		cleanupExpiredMetrics(setting.RetentionDays)
 	}
 }
 
-// FlushAll 把内存里所有桶（包括当前小时）的增量落库。
-// 与上游只落已结束小时不同：fork 没有优雅停机、一天可能发几次版，当前小时也要及时落，
-// 多实例的数据也才能在一个间隔内互相看到。upsert 是累加，重复调用不会重复计数。
-func FlushAll() {
-	staleBefore := bucketStart(time.Now().Unix()) - bucketSeconds
+func flushCompletedBuckets() {
+	currentBucket := bucketStart(time.Now().Unix())
 	hotBuckets.Range(func(key, value any) bool {
 		k := key.(bucketKey)
+		if k.bucketTs >= currentBucket {
+			return true
+		}
+
 		bucket := value.(*atomicBucket)
 		drained := bucket.drain()
 		if drained.requestCount == 0 {
-			// 只删一小时以前的空桶：新样本只会落到当前桶，删旧桶不会和 Record 抢
-			if k.bucketTs < staleBefore {
-				hotBuckets.Delete(key)
-			}
+			deleteOldEmptyBucket(k, key)
 			return true
 		}
+
 		err := model.UpsertPerfMetric(&model.PerfMetric{
 			ModelName:      k.model,
 			Group:          k.group,
@@ -51,10 +52,19 @@ func FlushAll() {
 		})
 		if err != nil {
 			bucket.addCounters(drained)
-			common.SysError(fmt.Sprintf("perf metrics flush failed model=%s group=%s bucket=%d: %s", k.model, k.group, k.bucketTs, err.Error()))
+			common.SysError(fmt.Sprintf("failed to flush perf metric bucket model=%s group=%s bucket=%d: %s", k.model, k.group, k.bucketTs, err.Error()))
+			return true
 		}
+
+		deleteOldEmptyBucket(k, key)
 		return true
 	})
+}
+
+func deleteOldEmptyBucket(k bucketKey, rawKey any) {
+	if k.bucketTs < bucketStart(time.Now().Add(-24*time.Hour).Unix()) {
+		hotBuckets.Delete(rawKey)
+	}
 }
 
 func cleanupExpiredMetrics(retentionDays int) {
@@ -63,6 +73,26 @@ func cleanupExpiredMetrics(retentionDays int) {
 	}
 	cutoff := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour).Unix()
 	if err := model.DeletePerfMetricsBefore(cutoff); err != nil {
-		common.SysError("perf metrics cleanup failed: " + err.Error())
+		common.SysError("failed to cleanup expired perf metrics: " + err.Error())
 	}
+}
+
+func redisCounters(values map[string]string) counters {
+	return counters{
+		requestCount:   parseRedisInt(values["req"]),
+		successCount:   parseRedisInt(values["ok"]),
+		totalLatencyMs: parseRedisInt(values["lat"]),
+		ttftSumMs:      parseRedisInt(values["ttft"]),
+		ttftCount:      parseRedisInt(values["ttft_n"]),
+		outputTokens:   parseRedisInt(values["out"]),
+		generationMs:   parseRedisInt(values["gen_ms"]),
+	}
+}
+
+func parseRedisInt(value string) int64 {
+	if value == "" {
+		return 0
+	}
+	parsed, _ := strconv.ParseInt(value, 10, 64)
+	return parsed
 }

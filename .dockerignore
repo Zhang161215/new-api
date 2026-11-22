@@ -13,3 +13,8 @@ data
 *.log
 one-api.db*
 new-api-local
+/web/default/node_modules
+/web/classic/node_modules
+!THIRD-PARTY-LICENSES.md
+# 本站用 Dockerfile.prebuilt：web/classic/dist、web/default/dist 在本地构建后随上下文进入镜像，
+# 所以这里不能排除它们（上游 Dockerfile 会用构建阶段的产物覆盖，不受影响）。

@@ -108,13 +108,13 @@ func TestClassifyRelayOutcome(t *testing.T) {
 
 func TestBuildModelStatusWindowAndGroups(t *testing.T) {
 	now := int64(1790154000 + 1800) // 某小时的中间
-	start := bucketStart(now) - int64(statusBucketCount-1)*bucketSeconds
+	start := bucketStart(now) - int64(statusBucketCount-1)*statusBucketSeconds()
 	groups := map[string]map[int64]counters{
 		"default": {
-			start:                     {requestCount: 10, successCount: 9, totalLatencyMs: 20000, ttftSumMs: 5000, ttftCount: 5, outputTokens: 800, generationMs: 10000},
-			bucketStart(now):          {requestCount: 10, successCount: 10, totalLatencyMs: 10000},
-			start - bucketSeconds:     {requestCount: 99, successCount: 0}, // 窗口外，不计
-			bucketStart(now) + 3600*2: {requestCount: 5, successCount: 0},  // 未来桶（时钟漂移），不计
+			start:                         {requestCount: 10, successCount: 9, totalLatencyMs: 20000, ttftSumMs: 5000, ttftCount: 5, outputTokens: 800, generationMs: 10000},
+			bucketStart(now):              {requestCount: 10, successCount: 10, totalLatencyMs: 10000},
+			start - statusBucketSeconds(): {requestCount: 99, successCount: 0}, // 窗口外，不计
+			bucketStart(now) + 3600*2:     {requestCount: 5, successCount: 0},  // 未来桶（时钟漂移），不计
 		},
 		"vip": {bucketStart(now): {requestCount: 4, successCount: 2}},
 	}

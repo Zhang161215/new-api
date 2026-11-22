@@ -1,6 +1,7 @@
 package perfmetrics
 
 import (
+	"github.com/QuantumNous/new-api/setting/perf_metrics_setting"
 	"math"
 	"sort"
 	"sync"
@@ -89,7 +90,7 @@ func loadRawWindow() *rawWindow {
 }
 
 func queryRawWindow(now int64) (*rawWindow, error) {
-	startTs := bucketStart(now) - int64(statusBucketCount-1)*bucketSeconds
+	startTs := bucketStart(now) - int64(statusBucketCount-1)*statusBucketSeconds()
 	raw := &rawWindow{startTs: startTs, data: map[string]map[string]map[int64]counters{}}
 	add := func(k bucketKey, v counters) {
 		if v.requestCount == 0 || k.bucketTs < startTs {
@@ -155,7 +156,7 @@ func buildModelStatus(startTs int64, groups map[string]map[int64]counters, allow
 		var gTotal counters
 		gHourly := make([]counters, statusBucketCount)
 		for ts, v := range groups[g] {
-			idx := int((ts - startTs) / bucketSeconds)
+			idx := int((ts - startTs) / statusBucketSeconds())
 			if idx < 0 || idx >= statusBucketCount {
 				continue
 			}
@@ -241,4 +242,12 @@ func throughputOf(v counters) float64 {
 func round(v float64, digits int) float64 {
 	p := math.Pow(10, float64(digits))
 	return math.Round(v*p) / p
+}
+
+// statusBucketSeconds 跟随上游可配置的桶宽（默认 1 小时）。
+func statusBucketSeconds() int64 {
+	if v := perf_metrics_setting.GetBucketSeconds(); v > 0 {
+		return v
+	}
+	return 3600
 }

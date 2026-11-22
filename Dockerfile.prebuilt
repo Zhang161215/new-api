@@ -4,10 +4,12 @@
 # 曾把整机拖到 OOM、所有服务假死。改为本地打好 web/dist 传上来，
 # 服务器只跑 Go 编译（几百 MB 足够）。
 #
-# 用法（在 /opt/new-api 下，且 web/dist 已就位）：
+# 用法（在 /opt/new-api 下，且 web/classic/dist、web/default/dist 已就位）：
 #   docker build -f Dockerfile.prebuilt -t new-api:<tag> .
 #
-# 注意：web/dist 被 .gitignore 忽略，git pull 不会带来，必须单独上传。
+# 注意：dist 被 .gitignore 忽略，git pull 不会带来，必须单独上传（newapi-release.sh 会打包上传）。
+# 上游 rc.21 起前端分成 classic（本站在用的旧版界面）和 default（新版界面），Go 两个都 embed，
+# 缺任何一个都编译不过。
 
 FROM golang:1.26.1-alpine@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039 AS builder
 ENV GO111MODULE=on CGO_ENABLED=0
@@ -22,9 +24,10 @@ WORKDIR /build
 ADD go.mod go.sum ./
 RUN go mod download
 
-# web/dist 随构建上下文一并进入（不在 .dockerignore 中），故无需 --from 阶段
+# 两份 dist 随构建上下文一并进入（不在 .dockerignore 中），故无需 --from 阶段
 COPY . .
-RUN test -f ./web/dist/index.html || (echo "web/dist 缺失或不完整：请先在本地 bun run build 并上传" && exit 1)
+RUN test -f ./web/classic/dist/index.html || (echo "web/classic/dist 缺失：请先在本地构建并上传" && exit 1)
+RUN test -f ./web/default/dist/index.html || (echo "web/default/dist 缺失：请先在本地构建并上传" && exit 1)
 RUN go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'" -o new-api
 
 FROM debian:bookworm-slim@sha256:f06537653ac770703bc45b4b113475bd402f451e85223f0f2837acbf89ab020a
@@ -35,7 +38,7 @@ RUN apt-get update \
     && update-ca-certificates
 
 COPY --from=builder /build/new-api /
-COPY --from=builder /build/web/public/lottery /web/public/lottery
+COPY --from=builder /build/web/classic/public/lottery /web/classic/public/lottery
 EXPOSE 3000
 WORKDIR /data
 ENTRYPOINT ["/new-api"]

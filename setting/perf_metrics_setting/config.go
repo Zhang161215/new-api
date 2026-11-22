@@ -1,18 +1,19 @@
-// Package perf_metrics_setting 模型广场性能采集的开关与参数（移植自上游 perf_metrics_setting）。
 package perf_metrics_setting
 
 import "github.com/QuantumNous/new-api/setting/config"
 
 type PerfMetricsSetting struct {
-	Enabled       bool `json:"enabled"`
-	FlushInterval int  `json:"flush_interval"` // 分钟；每轮连当前小时桶一起落库，重启最多丢一个间隔
-	RetentionDays int  `json:"retention_days"` // <=0 表示不清理
+	Enabled       bool   `json:"enabled"`
+	FlushInterval int    `json:"flush_interval"`
+	BucketTime    string `json:"bucket_time"`
+	RetentionDays int    `json:"retention_days"`
 }
 
 var perfMetricsSetting = PerfMetricsSetting{
 	Enabled:       true,
-	FlushInterval: 1,
-	RetentionDays: 30,
+	FlushInterval: 5,
+	BucketTime:    "hour",
+	RetentionDays: 0,
 }
 
 func init() {
@@ -21,6 +22,19 @@ func init() {
 
 func GetSetting() PerfMetricsSetting {
 	return perfMetricsSetting
+}
+
+func GetBucketSeconds() int64 {
+	switch perfMetricsSetting.BucketTime {
+	case "minute":
+		return 60
+	case "5min":
+		return 300
+	case "hour":
+		return 3600
+	default:
+		return 3600
+	}
 }
 
 func GetFlushIntervalMinutes() int {
