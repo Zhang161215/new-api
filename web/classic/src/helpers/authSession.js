@@ -214,8 +214,8 @@ async function runRefresh() {
       clearAuthSession();
       return { kind: 'anonymous' };
     }
-    if (!res.status || res.status >= 500) {
-      // 网络或服务端临时故障：保留登录状态，下次请求再试
+    if (!res.status || res.status === 429 || res.status >= 500) {
+      // 网络/服务端临时故障或被限流（上游 rc.23 172114422 同样处理）：保留登录状态，下次请求再试
       return { kind: 'transient_error', error: res.error };
     }
     clearAuthSession();

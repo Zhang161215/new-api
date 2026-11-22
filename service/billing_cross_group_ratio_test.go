@@ -15,6 +15,7 @@ package service
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -180,6 +181,41 @@ func TestSameGroup_SubscriptionExhausted_FallsBackTo03(t *testing.T) {
 	assert.False(t, ri.PriceData.GroupRatioInfo.HasSpecialRatio)
 	assert.Equal(t, 300, session.GetPreConsumedQuota(),
 		"预扣费应按 0.3/1 缩放：1000 → 300")
+}
+
+// 阶梯计费（tiered_expr）回落钱包：结算用的是快照里的倍率，快照必须跟着切到 0.3，
+// 否则预扣按 0.3、结算按 1 或反过来，会多收或少收。
+func TestSameGroup_SubscriptionExhausted_TieredSnapshotFollowsWalletRatio(t *testing.T) {
+	ensureSubscriptionPlanMigrated(t)
+	truncateCross(t)
+	setProdLikeRatios(t)
+
+	const userID, tokenID, planID, subID = 3112, 3112, 393, 393
+	seedUser(t, userID, 10_000_000)
+	seedToken(t, tokenID, userID, "sk-xg-tiered", 5_000_000)
+	seedPlan(t, planID, "Codex_GPT_PRO")
+	seedSubWithGroup(t, subID, userID, planID, "Codex_GPT_PRO", 1000, 1000, "active", 86400)
+
+	c := newTestGinContext()
+	ri := makeBillingRelayInfo(userID, tokenID, "sk-xg-tiered", "Codex_GPT_PRO", "Codex_GPT_PRO", "subscription_first")
+	ri.PriceData.GroupRatioInfo = HandleGroupRatio(c, ri)
+	require.Equal(t, float64(1), ri.PriceData.GroupRatioInfo.GroupRatio)
+	ri.TieredBillingSnapshot = &billingexpr.BillingSnapshot{
+		BillingMode:               "tiered_expr",
+		ExprString:                `tier("base", p)`,
+		ExprHash:                  billingexpr.ExprHashString(`tier("base", p)`),
+		GroupRatio:                1,
+		EstimatedQuotaBeforeGroup: 1000,
+		EstimatedQuotaAfterGroup:  1000,
+		QuotaPerUnit:              500_000,
+	}
+
+	session, apiErr := NewBillingSession(c, ri, 1000)
+	require.Nil(t, apiErr)
+	assert.Equal(t, BillingSourceWallet, session.funding.Source())
+	assert.Equal(t, 0.3, ri.PriceData.GroupRatioInfo.GroupRatio)
+	assert.Equal(t, 0.3, ri.TieredBillingSnapshot.GroupRatio, "结算快照倍率要和资金源一致")
+	assert.Equal(t, 300, ri.TieredBillingSnapshot.EstimatedQuotaAfterGroup)
 }
 
 // 同时持有两个不同分组的订阅时，各自分组用各自的倍率，互不串味。

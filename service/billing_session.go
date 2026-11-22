@@ -12,8 +12,8 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
-	"github.com/QuantumNous/new-api/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
@@ -245,6 +245,10 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 func (s *BillingSession) reserveFunding(delta int) error {
 	switch funding := s.funding.(type) {
 	case *WalletFunding:
+		// 与结算补扣（SettleBilling 正差额 → WalletFunding.Settle）语义一致：
+		// 全额无条件扣减，余额不足的部分记为欠费（余额可为负），不中断请求，
+		// 保证日志记录的预扣额度与用户余额的实际变动始终对账一致。
+		// DecreaseUserQuota 仅在数据库错误时失败。
 		if err := model.DecreaseUserQuota(funding.userId, delta, false); err != nil {
 			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 		}
@@ -369,6 +373,10 @@ func (s *BillingSession) syncRelayInfo() {
 // 「钱包够付新倍率、不够付旧倍率」的用户误拒；结算阶段虽有差额返还，
 // 但那时请求已经被拒了。反方向同理，避免订阅额度被过量预占。
 func switchRatioForFundingFallback(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int, toWallet bool) int {
+	// 没有分组信息就无从按资金源取倍率，保持调用方算好的值（正常转发 UsingGroup 一定有值）
+	if relayInfo.UsingGroup == "" {
+		return preConsumedQuota
+	}
 	gri := &relayInfo.PriceData.GroupRatioInfo
 	active := EnsureActiveSubscriptionGroups(relayInfo)
 	var newRatio float64
@@ -418,6 +426,12 @@ func switchRatioForFundingFallback(c *gin.Context, relayInfo *relaycommon.RelayI
 		"用户 %d 倍率对齐资金源 (funding=%s, usingGroup=%s, %.4g → %.4g, 预扣费 %d → %d)",
 		relayInfo.UserId, funding, relayInfo.UsingGroup,
 		oldRatio, newRatio, preConsumedQuota, newPreConsumed))
+
+	// tiered_expr 结算按快照里的倍率算（TryTieredSettle），倍率换了快照也要跟着换，
+	// 否则预扣按新倍率、结算按旧倍率，回落钱包时会少收。
+	if _, err := refreshTieredBillingGroup(relayInfo); err != nil {
+		logger.LogError(c, fmt.Sprintf("用户 %d 同步阶梯计费快照倍率失败: %v", relayInfo.UserId, err))
+	}
 
 	return newPreConsumed
 }
