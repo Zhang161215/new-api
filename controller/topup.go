@@ -87,27 +87,10 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
-	// 如果启用了虎皮椒支付，自动添加微信支付到支付方法列表
-	if operation_setting.XunhuPayAppId != "" && operation_setting.XunhuPayAppSecret != "" {
-		hasWxpay := false
-		for _, method := range payMethods {
-			if method["type"] == "wxpay" {
-				hasWxpay = true
-			}
-		}
-		if !hasWxpay {
-			payMethods = append(payMethods, map[string]string{
-				"name": "微信支付",
-				"type": "wxpay",
-			})
-		}
-	}
-
 	data := gin.H{
 		"enable_online_topup": operation_setting.PayAddress != "" && operation_setting.EpayId != "" && operation_setting.EpayKey != "",
 		"enable_stripe_topup": setting.StripeApiSecret != "" && setting.StripeWebhookSecret != "" && setting.StripePriceId != "",
 		"enable_creem_topup":  setting.CreemApiKey != "" && setting.CreemProducts != "[]",
-		"enable_xunhu_topup":  operation_setting.XunhuPayAppId != "" && operation_setting.XunhuPayAppSecret != "",
 		"enable_waffo_topup": enableWaffo,
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {

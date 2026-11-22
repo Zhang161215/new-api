@@ -41,10 +41,10 @@ import {
 
 const { Text } = Typography;
 
-// 过滤易支付方式（排除 stripe/creem，以及虎皮椒接管的 wxpay）
-function getEpayMethods(payMethods = [], enableXunhuTopUp = false) {
+// 过滤易支付方式（排除 stripe/creem）
+function getEpayMethods(payMethods = []) {
   return (payMethods || []).filter(
-    (m) => m?.type && m.type !== 'stripe' && m.type !== 'creem' && !(enableXunhuTopUp && m.type === 'wxpay'),
+    (m) => m?.type && m.type !== 'stripe' && m.type !== 'creem',
   );
 }
 
@@ -77,7 +77,6 @@ const SubscriptionPlansCard = ({
   enableOnlineTopUp = false,
   enableStripeTopUp = false,
   enableCreemTopUp = false,
-  enableXunhuTopUp = false,
   billingPreference,
   onChangeBillingPreference,
   preferredSubscriptionId = 0,
@@ -97,7 +96,7 @@ const SubscriptionPlansCard = ({
   const [agreementText, setAgreementText] = useState('');
   const agreementLoaded = useRef(false);
 
-  const epayMethods = useMemo(() => getEpayMethods(payMethods, enableXunhuTopUp), [payMethods, enableXunhuTopUp]);
+  const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
 
   const loadAgreement = async () => {
     if (agreementLoaded.current) return;
@@ -206,40 +205,6 @@ const SubscriptionPlansCard = ({
         submitEpayForm({ url: res.data.url, params: res.data.data });
         showSuccess(t('已发起支付'));
         closeBuy();
-      } else {
-        const errorMsg =
-          typeof res.data?.data === 'string'
-            ? res.data.data
-            : res.data?.message || t('支付失败');
-        showError(errorMsg);
-      }
-    } catch (e) {
-      showError(t('支付请求失败'));
-    } finally {
-      setPaying(false);
-    }
-  };
-
-  const payXunhu = async () => {
-    if (!selectedPlan?.plan?.id) {
-      showError(t('请选择套餐'));
-      return;
-    }
-    setPaying(true);
-    try {
-      const res = await API.post('/api/subscription/xunhu/pay', {
-        plan_id: selectedPlan.plan.id,
-        payment_method: 'wxpay',
-      });
-      if (res.data?.message === 'success') {
-        const payUrl = res.data.data;
-        if (payUrl) {
-          window.open(payUrl, '_blank');
-          showSuccess(t('已打开支付页面'));
-          closeBuy();
-        } else {
-          showError(t('获取支付链接失败'));
-        }
       } else {
         const errorMsg =
           typeof res.data?.data === 'string'
@@ -821,7 +786,6 @@ const SubscriptionPlansCard = ({
         enableOnlineTopUp={enableOnlineTopUp}
         enableStripeTopUp={enableStripeTopUp}
         enableCreemTopUp={enableCreemTopUp}
-        enableXunhuTopUp={enableXunhuTopUp}
         purchaseLimitInfo={
           selectedPlan?.plan?.id
             ? {
@@ -834,7 +798,6 @@ const SubscriptionPlansCard = ({
         onPayStripe={payStripe}
         onPayCreem={payCreem}
         onPayEpay={payEpay}
-        onPayXunhu={payXunhu}
       />
     </>
   );

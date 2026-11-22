@@ -73,7 +73,6 @@ const TopUp = () => {
   // Creem 相关状态
   const [creemProducts, setCreemProducts] = useState([]);
   const [enableCreemTopUp, setEnableCreemTopUp] = useState(false);
-  const [enableXunhuTopUp, setEnableXunhuTopUp] = useState(false);
   const [creemOpen, setCreemOpen] = useState(false);
   const [selectedCreemProduct, setSelectedCreemProduct] = useState(null);
 
@@ -198,7 +197,7 @@ const TopUp = () => {
         return;
       }
     } else {
-      if (!enableOnlineTopUp && !enableXunhuTopUp) {
+      if (!enableOnlineTopUp) {
         showError(t('管理员未开启在线充值！'));
         return;
       }
@@ -251,12 +250,6 @@ const TopUp = () => {
           amount: parseInt(topUpCount),
           payment_method: 'stripe',
         });
-      } else if (enableXunhuTopUp && payWay === 'wxpay') {
-        // 虎皮椒支付请求（仅微信）
-        res = await API.post('/api/user/xunhu/pay', {
-          amount: parseInt(topUpCount),
-          payment_method: payWay,
-        });
       } else {
         // 普通支付请求
         res = await API.post('/api/user/pay', {
@@ -271,14 +264,6 @@ const TopUp = () => {
           if (payWay === 'stripe') {
             // Stripe 支付回调处理
             window.open(data.pay_link, '_blank');
-          } else if (enableXunhuTopUp && payWay === 'wxpay') {
-            // 虎皮椒返回支付URL，直接跳转
-            let payUrl = typeof data === 'string' ? data : data?.url;
-            if (payUrl) {
-              window.open(payUrl, '_blank');
-            } else {
-              showError(t('获取支付链接失败'));
-            }
           } else {
             // 普通支付表单提交
             let params = data;
@@ -587,8 +572,6 @@ const TopUp = () => {
           setEnableOnlineTopUp(enableOnlineTopUp);
           setEnableStripeTopUp(enableStripeTopUp);
           setEnableCreemTopUp(enableCreemTopUp);
-          const enableXunhu = data.enable_xunhu_topup || false;
-          setEnableXunhuTopUp(enableXunhu);
           const enableWaffoTopUp = data.enable_waffo_topup || false;
           setEnableWaffoTopUp(enableWaffoTopUp);
           setWaffoPayMethods(data.waffo_pay_methods || []);
@@ -892,7 +875,6 @@ const TopUp = () => {
           enableOnlineTopUp={enableOnlineTopUp}
           enableStripeTopUp={enableStripeTopUp}
           enableCreemTopUp={enableCreemTopUp}
-          enableXunhuTopUp={enableXunhuTopUp}
           creemProducts={creemProducts}
           creemPreTopUp={creemPreTopUp}
           enableWaffoTopUp={enableWaffoTopUp}

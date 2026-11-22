@@ -78,13 +78,11 @@ const SubscriptionPurchaseModal = ({
   enableOnlineTopUp = false,
   enableStripeTopUp = false,
   enableCreemTopUp = false,
-  enableXunhuTopUp = false,
   purchaseLimitInfo = null,
   agreementText = '',
   onPayStripe,
   onPayCreem,
   onPayEpay,
-  onPayXunhu,
 }) => {
   const plan = selectedPlan?.plan;
   const totalAmount = Number(plan?.total_amount || 0);
@@ -110,8 +108,7 @@ const SubscriptionPurchaseModal = ({
   const hasStripe = enableStripeTopUp && !!plan?.stripe_price_id;
   const hasCreem = enableCreemTopUp && !!plan?.creem_product_id;
   const hasEpay = enableOnlineTopUp && epayMethods.length > 0;
-  const hasXunhu = enableXunhuTopUp;
-  const hasAnyPayment = hasStripe || hasCreem || hasEpay || hasXunhu;
+  const hasAnyPayment = hasStripe || hasCreem || hasEpay;
   const purchaseLimit = Number(purchaseLimitInfo?.limit || 0);
   const purchaseCount = Number(purchaseLimitInfo?.count || 0);
   const purchaseLimitReached =
@@ -425,20 +422,6 @@ const SubscriptionPurchaseModal = ({
                     </Button>
                   )}
                 </div>
-              )}
-
-              {/* 虎皮椒微信支付 */}
-              {hasXunhu && (
-                <Button
-                  theme='light'
-                  block
-                  icon={<SiWechat size={14} color='#07C160' />}
-                  onClick={onPayXunhu}
-                  loading={paying}
-                  disabled={purchaseLimitReached}
-                >
-                  {t('微信支付')}
-                </Button>
               )}
 
               {/* 易支付：图标卡片式选择，与充值页 RechargeCard 的样式保持一致。

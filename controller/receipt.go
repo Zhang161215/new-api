@@ -100,7 +100,7 @@ func receiptCurrency(paymentMethod string) (code string, symbol string) {
 			return strings.ToUpper(strings.TrimSpace(setting.WaffoCurrency)), ""
 		}
 	default:
-		// 易支付系（alipay / wxpay / xunhu / custom*）一律人民币收款
+		// 易支付系（alipay / wxpay / custom*）一律人民币收款
 		return "CNY", "¥"
 	}
 }
