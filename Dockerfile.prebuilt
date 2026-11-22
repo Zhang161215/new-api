@@ -22,6 +22,8 @@ ENV GOEXPERIMENT=greenteagc
 WORKDIR /build
 
 ADD go.mod go.sum ./
+# relaykit 是用 replace 引用的本地子模块（上游 rc.23 起），go mod download 解析依赖图时需要它的 go.mod
+ADD relaykit/go.mod ./relaykit/go.mod
 RUN go mod download
 
 # 两份 dist 随构建上下文一并进入（不在 .dockerignore 中），故无需 --from 阶段
