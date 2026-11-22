@@ -450,6 +450,7 @@ func extractUserInput(body []byte) string {
 // 真实意图在更早轮次或 system 里，既漏审也容易被绕过；
 // recent/full 会把 system 与更早的消息一并纳入，代价是送审文本变长。
 func extractAuditInput(body []byte, scope string, recentN int) string {
+	body = unwrapResponsesWSCreate(body)
 	var peek promptAuditPeek
 	if err := json.Unmarshal(body, &peek); err != nil {
 		return ""
@@ -626,4 +627,21 @@ func truncateRunes(s string, max int) string {
 		return s
 	}
 	return string(r[:max])
+}
+
+// unwrapResponsesWSCreate 上游 rc.40 的 Responses WebSocket（GET /v1/responses）每条 response.create
+// 也会以 POST /v1/responses 的形式跑一遍中间件，但 body 是原始事件：参数可能平铺在顶层，
+// 也可能包在 "response" 里。包着的情况要取出来，否则抽不到用户文本、审核被静默跳过。
+func unwrapResponsesWSCreate(body []byte) []byte {
+	var event struct {
+		Type     string          `json:"type"`
+		Response json.RawMessage `json:"response"`
+	}
+	if err := json.Unmarshal(body, &event); err != nil || event.Type != "response.create" {
+		return body
+	}
+	if trimmed := strings.TrimSpace(string(event.Response)); strings.HasPrefix(trimmed, "{") {
+		return event.Response
+	}
+	return body
 }

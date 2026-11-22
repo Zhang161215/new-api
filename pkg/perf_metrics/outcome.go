@@ -46,6 +46,11 @@ func ClassifyRelayOutcome(ctx context.Context, info *relaycommon.RelayInfo, apiE
 	if info.StreamStatus == nil {
 		return OutcomeSuccess
 	}
+	// 客户端中途离开会让读上游的流以 scanner_err 等结束，这不是渠道的错，不计样本；
+	// 已经收到 completed 终态的流不受影响（结果已完整给到，之后断开是正常读完）。
+	if ctx != nil && ctx.Err() == context.Canceled && stream.Response != relaycommon.ResponseOutcomeCompleted {
+		return OutcomeIgnored
+	}
 	deadlineExceeded := errors.Is(info.StreamStatus.EndError, context.DeadlineExceeded)
 	if stream.Response == relaycommon.ResponseOutcomeCancelled || stream.EndReason == relaycommon.StreamEndReasonPingFail {
 		return OutcomeIgnored

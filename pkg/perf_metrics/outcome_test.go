@@ -38,7 +38,7 @@ func upstreamErr(status int, errType string, code any) *types.NewAPIError {
 	return types.WithOpenAIError(types.OpenAIError{Message: "x", Type: errType, Code: code}, status)
 }
 
-func TestClassifyRelayOutcome(t *testing.T) {
+func TestClassifyRelayOutcomeSite(t *testing.T) {
 	cases := []struct {
 		name string
 		ctx  context.Context
