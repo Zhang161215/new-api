@@ -53,8 +53,6 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/creem/webhook", controller.CreemWebhook)
 		apiRouter.POST("/waffo/webhook", controller.WaffoWebhook)
 
-		apiRouter.GET("/subscription/public_plans", controller.GetSubscriptionPlans)
-
 		lotteryRoute := apiRouter.Group("/lottery")
 		{
 			lotteryRoute.GET("", middleware.TryUserAuth(), controller.GetLottery)
