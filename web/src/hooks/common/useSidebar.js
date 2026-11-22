@@ -53,7 +53,6 @@ export const DEFAULT_ADMIN_CONFIG = {
     redemption: true,
     lottery: true,
     user: true,
-    analytics: true,
     affiliateRebates: true,
     subscription: true,
     promptAudit: true,

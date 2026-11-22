@@ -65,7 +65,6 @@ import {
   Key,
   BarChart3,
   PieChart,
-  AreaChart,
   Image as ImageIcon,
   CheckSquare,
   CreditCard,
@@ -132,8 +131,6 @@ export function getLucideIcon(key, selected = false) {
       return <BarChart3 {...commonProps} color={iconColor} />;
     case 'dailyRanking':
       return <PieChart {...commonProps} color={iconColor} />;
-    case 'analytics':
-      return <AreaChart {...commonProps} color={iconColor} />;
     case 'affiliateRebates':
       return <Handshake {...commonProps} color={iconColor} />;
     case 'midjourney':

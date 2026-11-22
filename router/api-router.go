@@ -375,11 +375,6 @@ func SetApiRouter(router *gin.Engine) {
 		analyticsRoute := apiRouter.Group("/analytics")
 		analyticsRoute.Use(middleware.AdminAuth())
 		{
-			analyticsRoute.GET("/top-users", controller.GetTopUsers)
-			analyticsRoute.GET("/top-tokens", controller.GetTopTokens)
-			analyticsRoute.GET("/user/:id/ips", controller.GetUserIPs)
-			analyticsRoute.GET("/sharing-risk", controller.GetSharingRisk)
-			analyticsRoute.GET("/invite-risk", controller.GetInviteRisk)
 			analyticsRoute.GET("/station-overview", controller.GetStationOverview)
 			analyticsRoute.GET("/ops-costs", controller.GetOpsCosts)
 			analyticsRoute.POST("/ops-costs", controller.CreateOpsCost)
