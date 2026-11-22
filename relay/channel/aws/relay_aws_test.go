@@ -1,6 +1,8 @@
 package aws
 
 import (
+	"github.com/QuantumNous/new-api/tokenkit"
+
 	"bytes"
 	"context"
 	"errors"
@@ -15,7 +17,6 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream/eventstreamapi"
@@ -447,7 +448,7 @@ func TestAwsStreamHandlerStopsAtClientCancellation(t *testing.T) {
 	assert.Equal(t, 100, result.usage.BillingUsage.ClaudeUsage.InputTokens)
 	// 本站定制（计费宁愿多收不少收）：断流时按已发给用户的文本估算 output，
 	// 不用 message_start 里占位的 output_tokens=1（上游原断言是 1）。
-	assert.Equal(t, service.EstimateTokenByModel(awsTestModel, "partial"), result.usage.BillingUsage.ClaudeUsage.OutputTokens)
+	assert.Equal(t, tokenkit.Estimate(awsTestModel, "partial"), result.usage.BillingUsage.ClaudeUsage.OutputTokens)
 	assert.GreaterOrEqual(t, result.usage.BillingUsage.ClaudeUsage.OutputTokens, 1)
 	assert.Equal(t, bodyLengthBeforeCancel, responseWriter.Body.Len())
 	assert.NotContains(t, responseWriter.Body.String(), "[DONE]")

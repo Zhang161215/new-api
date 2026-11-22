@@ -11,7 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
-
+	"github.com/QuantumNous/new-api/tokenkit"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -228,6 +228,34 @@ func TestFormatClaudeResponseInfo_ContentBlockDelta(t *testing.T) {
 	if claudeInfo.ResponseText.String() != "hello" {
 		t.Errorf("ResponseText = %q, want %q", claudeInfo.ResponseText.String(), "hello")
 	}
+}
+
+// A stream cut off during an agent tool call must still estimate the call's
+// output tokens when the final usage never arrives.
+func TestClaudeStreamFallbackCountsInterruptedToolUse(t *testing.T) {
+	claudeInfo := &ClaudeResponseInfo{Usage: &dto.Usage{}}
+	events := []*dto.ClaudeResponse{
+		{Type: "content_block_start", ContentBlock: &dto.ClaudeMediaMessage{Type: "tool_use", Id: "toolu_1", Name: "read_file"}},
+		{Type: "content_block_delta", Delta: &dto.ClaudeMediaMessage{Type: "input_json_delta", PartialJson: commonPointer(`{"path":`)}},
+		{Type: "content_block_delta", Delta: &dto.ClaudeMediaMessage{Type: "input_json_delta", PartialJson: commonPointer(`"main.go"}`)}},
+	}
+	for _, event := range events {
+		require.True(t, FormatClaudeResponseInfo(event, nil, claudeInfo))
+	}
+	require.Equal(t, `read_file{"path":"main.go"}`, claudeInfo.ResponseText.String())
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude,
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-sonnet-5"},
+	}
+	info.SetEstimatePromptTokens(100)
+	HandleStreamFinalResponse(c, info, claudeInfo)
+
+	// Text estimate plus the per-tool_use framing the upstream bills.
+	assert.Equal(t, tokenkit.Estimate("claude-sonnet-5", `read_file{"path":"main.go"}`)+40, claudeInfo.Usage.CompletionTokens)
+	// 本站：上游没给 input_tokens 时不用本地估算的 prompt 补（Claude CLI 请求体常被估到数百万），上游原断言是 100。
+	assert.Equal(t, 0, claudeInfo.Usage.PromptTokens)
 }
 
 func TestBuildOpenAIStyleUsageFromClaudeUsage(t *testing.T) {

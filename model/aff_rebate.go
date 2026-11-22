@@ -33,8 +33,8 @@ type AffRebate struct {
 	RebateMoney  float64 `json:"rebate_money"`                         // 返利美元（展示用）
 	Status       string  `json:"status" gorm:"type:varchar(20);index;default:'pending'"`
 	CreatedAt    int64   `json:"created_at" gorm:"index"`
-	ReleaseAt    int64   `json:"release_at" gorm:"index"`  // 预计到账时间
-	ReleasedAt   int64   `json:"released_at"`              // 实际到账时间（手动或定时）
+	ReleaseAt    int64   `json:"release_at" gorm:"index"` // 预计到账时间
+	ReleasedAt   int64   `json:"released_at"`             // 实际到账时间（手动或定时）
 	RevokedAt    int64   `json:"revoked_at"`
 	RevokeReason string  `json:"revoke_reason" gorm:"type:varchar(255)"`
 	OperatorId   int     `json:"operator_id"` // 管理员操作时记录
@@ -177,7 +177,11 @@ func ReleaseAffRebateById(id int, operatorId int) (bool, error) {
 			return err
 		}
 		released = true
-		RecordLog(r.InviterId, LogTypeAffiliateRebate, fmt.Sprintf("邀请返利 $%.2f 已到账（被邀人 #%d 首次充值 $%.2f）", r.RebateMoney, r.InviteeId, r.TopUpMoney))
+		RecordLog(r.InviterId, LogTypeAffiliateRebate, common.NewMessage("邀请返利 ${{rebate}} 已到账（被邀人 #{{invitee}} 首次充值 ${{topup}}）", map[string]any{
+			"rebate":  fmt.Sprintf("%.2f", r.RebateMoney),
+			"invitee": r.InviteeId,
+			"topup":   fmt.Sprintf("%.2f", r.TopUpMoney),
+		}))
 		return nil
 	})
 	return released, err
@@ -272,7 +276,10 @@ func RevokeAffRebateById(id int, operatorId int, reason string) error {
 			return err
 		}
 
-		RecordLog(r.InviterId, LogTypeAffiliateRebate, fmt.Sprintf("邀请返利 $%.2f 已被撤销（原因：%s）", r.RebateMoney, reason))
+		RecordLog(r.InviterId, LogTypeAffiliateRebate, common.NewMessage("邀请返利 ${{rebate}} 已被撤销（原因：{{reason}}）", map[string]any{
+			"rebate": fmt.Sprintf("%.2f", r.RebateMoney),
+			"reason": reason,
+		}))
 		return nil
 	})
 }

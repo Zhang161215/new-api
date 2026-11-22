@@ -11,7 +11,6 @@ import (
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/gin-contrib/gzip"
-	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 )
 
@@ -28,19 +27,36 @@ func SetWebRouter(router *gin.Engine, assets WebAssets, pluginDispatcher gin.Han
 	defaultFS := common.EmbedFolder(assets.BuildFS, "web/dist")
 	classicFS := common.EmbedFolder(assets.ClassicBuildFS, "web/classic/dist")
 	frontendFS := common.NewThemeAwareFS(defaultFS, classicFS)
+	compress := gzip.Gzip(gzip.DefaultCompression)
+	// 本站：ServeFrontendFiles 按 URL 路径缓存压缩结果，两套前端各用一份缓存，
+	// 否则运行中切换主题后 /favicon.ico 这类同名文件会继续返回另一套的内容。
+	serveDefaultFiles := middleware.ServeFrontendFiles(defaultFS)
+	serveClassicFiles := middleware.ServeFrontendFiles(classicFS)
+	serveFrontendFiles := func(c *gin.Context) {
+		if common.GetTheme() == "classic" {
+			serveClassicFiles(c)
+			return
+		}
+		serveDefaultFiles(c)
+	}
 
 	webMiddlewares := []gin.HandlerFunc{
 		middleware.RouteTag("web"),
-		gzip.Gzip(gzip.DefaultCompression),
+		func(c *gin.Context) {
+			// ServeFrontendFiles sends build files already compressed.
+			if !frontendFS.Exists("/", c.Request.URL.Path) {
+				compress(c)
+			}
+		},
 		middleware.AccessTokenAudit(),
-		middleware.GlobalWebRateLimit(),
+		middleware.GlobalWebRateLimit(frontendFS),
 		middleware.Cache(),
 	}
 	mountLiveLottery(router, webMiddlewares)
 
 	noRoute := append([]gin.HandlerFunc{pluginDispatcher}, webMiddlewares...)
 	noRoute = append(noRoute,
-		static.Serve("/", frontendFS),
+		serveFrontendFiles,
 		func(c *gin.Context) {
 			if strings.HasPrefix(c.Request.RequestURI, "/v1") || strings.HasPrefix(c.Request.RequestURI, "/api") || strings.HasPrefix(c.Request.RequestURI, "/assets") {
 				controller.RelayNotFound(c)

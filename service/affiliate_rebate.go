@@ -119,9 +119,14 @@ func TriggerAffiliateRebate(topUp *model.TopUp) error {
 	}
 
 	releaseTimeStr := time.Unix(rebate.ReleaseAt, 0).Format("2006-01-02 15:04")
-	model.RecordLog(invitee.InviterId, model.LogTypeAffiliateRebate, fmt.Sprintf(
-		"邀请用户 #%d 首次充值 $%.2f，返利 $%.2f 已生成，预计 %s 到账",
-		invitee.Id, topUp.Money, rebateMoney, releaseTimeStr,
+	model.RecordLog(invitee.InviterId, model.LogTypeAffiliateRebate, common.NewMessage(
+		"邀请用户 #{{invitee}} 首次充值 ${{topup}}，返利 ${{rebate}} 已生成，预计 {{release_at}} 到账",
+		map[string]any{
+			"invitee":    invitee.Id,
+			"topup":      fmt.Sprintf("%.2f", topUp.Money),
+			"rebate":     fmt.Sprintf("%.2f", rebateMoney),
+			"release_at": releaseTimeStr,
+		},
 	))
 	return nil
 }

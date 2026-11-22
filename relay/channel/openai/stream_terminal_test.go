@@ -10,7 +10,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -23,7 +22,6 @@ func newTerminalTestContext(t *testing.T, path string, body string) (*gin.Contex
 	old := constant.StreamingTimeout
 	constant.StreamingTimeout = 30
 	t.Cleanup(func() { constant.StreamingTimeout = old })
-	service.InitTokenEncoders()
 
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPost, path, nil)

@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 )
 
@@ -116,7 +116,7 @@ func redisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark st
 		duration,
 	)
 	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("rate limit check failed (mark=%s): %v", mark, err))
+		logger.LogError(c.Request.Context(), common.LogText("rate limit check failed (mark=%s): %v", mark, err))
 		c.Status(http.StatusInternalServerError)
 		c.Abort()
 		return
@@ -159,30 +159,34 @@ func rateLimitFactory(maxRequestNum int, duration int64, mark string) func(c *gi
 	}
 }
 
+// skipGlobalWebRateLimit：本站额外放到静态限流桶的路径——抽奖页（从磁盘目录挂载，不走前端构建 FS）等。
+// 前端构建里真实存在的文件由下面的 frontendFS.Exists 判定（上游 rc.43），原来按扩展名放行的规则已去掉：
+// 不存在的 .js 会落到 SPA 首页，按页面计数和上游一致。
 func skipGlobalWebRateLimit(c *gin.Context) bool {
 	path := c.Request.URL.Path
-	if strings.HasPrefix(path, "/assets/") || strings.HasPrefix(path, "/a1/") || strings.HasPrefix(path, "/lottery/") {
-		return true
-	}
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".js", ".css", ".map", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico", ".woff", ".woff2", ".ttf", ".eot":
-		return true
-	}
-	return false
+	return strings.HasPrefix(path, "/assets/") || strings.HasPrefix(path, "/a1/") || strings.HasPrefix(path, "/lottery/")
 }
 
-func GlobalWebRateLimit() func(c *gin.Context) {
+// GlobalWebRateLimit limits dashboard pages and other fallback paths per IP.
+// Files that exist in the frontend build count against a separate static
+// limiter instead, so lazy-loaded chunks and icons do not use up the page
+// budget. The static limiter is disabled by default.
+func GlobalWebRateLimit(frontendFS static.ServeFileSystem) func(c *gin.Context) {
+	webLimit := defNext
 	if common.GlobalWebRateLimitEnable {
-		limit := rateLimitFactory(common.GlobalWebRateLimitNum, common.GlobalWebRateLimitDuration, "GW")
-		return func(c *gin.Context) {
-			if skipGlobalWebRateLimit(c) {
-				c.Next()
-				return
-			}
-			limit(c)
-		}
+		webLimit = rateLimitFactory(common.GlobalWebRateLimitNum, common.GlobalWebRateLimitDuration, "GW")
 	}
-	return defNext
+	staticLimit := defNext
+	if common.GlobalStaticRateLimitEnable {
+		staticLimit = rateLimitFactory(common.GlobalStaticRateLimitNum, common.GlobalStaticRateLimitDuration, "GS")
+	}
+	return func(c *gin.Context) {
+		if skipGlobalWebRateLimit(c) || frontendFS.Exists("/", c.Request.URL.Path) {
+			staticLimit(c)
+			return
+		}
+		webLimit(c)
+	}
 }
 
 func GlobalAPIRateLimit() func(c *gin.Context) {
@@ -255,7 +259,7 @@ func userRateLimitFactory(maxRequestNum int, duration int64, mark string) func(c
 func userRedisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, key string) {
 	allowed, _, ttlSeconds, err := redisFixedWindowTake(c.Request.Context(), key, maxRequestNum, duration)
 	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("rate limit check failed (key=%s): %v", key, err))
+		logger.LogError(c.Request.Context(), common.LogText("rate limit check failed (key=%s): %v", key, err))
 		c.Status(http.StatusInternalServerError)
 		c.Abort()
 		return

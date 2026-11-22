@@ -256,6 +256,8 @@ func makeBillingRelayInfo(userId, tokenId int, tokenKey, userGroup, usingGroup, 
 func newTestGinContext() *gin.Context {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
+	// rc.43 起 BillingSession 会读请求语言（i18n.StatedLang），上下文必须带 Request
+	c.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
 	return c
 }
 

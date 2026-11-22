@@ -94,27 +94,18 @@ func TurnstileCheck() gin.HandlerFunc {
 		}
 		token := c.Query("turnstile")
 		if token == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "Turnstile token 为空",
-			})
+			common.ApiErrorT(c, "Turnstile token is empty")
 			c.Abort()
 			return
 		}
 		if len(token) > turnstileMaxTokenLen {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "Turnstile 校验失败，请刷新重试！",
-			})
+			common.ApiErrorT(c, "Turnstile verification failed, please refresh and try again!")
 			c.Abort()
 			return
 		}
 		if err := verifyTurnstileToken(token); err != nil {
 			common.SysLog("Turnstile 校验失败: " + err.Error())
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "Turnstile 校验失败，请刷新重试！",
-			})
+			common.ApiErrorT(c, "Turnstile verification failed, please refresh and try again!")
 			c.Abort()
 			return
 		}
