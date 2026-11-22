@@ -285,7 +285,9 @@ func lotteryCodeStatus(item Redemption, now int64) string {
 	return "unused"
 }
 
-func isLotteryRedemptionName(name string) bool {
+// isLotteryRedemptionName 在事务里调用时必须传 tx：SQLite 只有一个连接，
+// 在事务内再用 DB 查询会一直等连接，卡死。
+func isLotteryRedemptionName(db *gorm.DB, name string) bool {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return false
@@ -294,7 +296,7 @@ func isLotteryRedemptionName(name string) bool {
 		return true
 	}
 	var n int64
-	if err := DB.Model(&LotteryPrize{}).Where("redemption_name = ?", name).Count(&n).Error; err != nil {
+	if err := db.Model(&LotteryPrize{}).Where("redemption_name = ?", name).Count(&n).Error; err != nil {
 		return false
 	}
 	return n > 0
@@ -436,7 +438,7 @@ func DeleteLotteryPrizeCode(id int) error {
 	if err := DB.First(&item, id).Error; err != nil {
 		return err
 	}
-	if !isLotteryRedemptionName(item.Name) {
+	if !isLotteryRedemptionName(DB, item.Name) {
 		return errors.New("只能删除抽奖兑换码")
 	}
 	if item.Status == common.RedemptionCodeStatusUsed || item.UsedUserId > 0 {

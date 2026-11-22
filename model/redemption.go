@@ -160,7 +160,7 @@ func Redeem(key string, userId int) (quota int, err error) {
 		if redemption.ExpiredTime != 0 && redemption.ExpiredTime < common.GetTimestamp() {
 			return errors.New("该兑换码已过期")
 		}
-		if isLotteryRedemptionName(redemption.Name) {
+		if isLotteryRedemptionName(tx, redemption.Name) {
 			if redemption.UsedUserId == 0 {
 				return ErrLotteryCodeNotRedeemable
 			}
