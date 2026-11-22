@@ -5,18 +5,18 @@ import "testing"
 func TestFormatMatchingModelName_ClaudeDottedVersion(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"claude-opus-5.5":                 "claude-opus-5-5",
-		"claude-sonnet-5.5":               "claude-sonnet-5-5",
-		"claude-haiku-4.5":                "claude-haiku-4-5",
-		"claude-opus-5-5":                 "claude-opus-5-5",
-		"claude-sonnet-5":                 "claude-sonnet-5",
-		"claude-3.5-sonnet":               "claude-3-5-sonnet",
-		"claude-opus-5.5-thinking":        "claude-opus-5-5-thinking",
-		"claude-sonnet-4.5-20250929":      "claude-sonnet-4-5-20250929",
-		"gpt-6.1-sol":                     "gpt-6.1-sol",
-		"gpt-5.6-sol":                     "gpt-5.6-sol",
-		"gemini-2.5-flash":                "gemini-2.5-flash",
-		"claude-opus-5.5-openai-compact":  "claude-opus-5-5",
+		"claude-opus-5.5":            "claude-opus-5-5",
+		"claude-sonnet-5.5":          "claude-sonnet-5-5",
+		"claude-haiku-4.5":           "claude-haiku-4-5",
+		"claude-opus-5-5":            "claude-opus-5-5",
+		"claude-sonnet-5":            "claude-sonnet-5",
+		"claude-3.5-sonnet":          "claude-3-5-sonnet",
+		"claude-opus-5.5-thinking":   "claude-opus-5-5-thinking",
+		"claude-sonnet-4.5-20250929": "claude-sonnet-4-5-20250929",
+		"gpt-6.1-sol":                "gpt-6.1-sol",
+		"gpt-5.6-sol":                "gpt-5.6-sol",
+		"gemini-2.5-flash":           "gemini-2.5-flash",
+		// -openai-compact 后缀方案上游 rc.27（#6770）已取消，不再剥后缀
 	}
 	for in, want := range cases {
 		got := FormatMatchingModelName(in)

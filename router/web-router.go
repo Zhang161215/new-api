@@ -24,32 +24,39 @@ type WebAssets struct {
 	ClassicIndexPage []byte
 }
 
-func SetWebRouter(router *gin.Engine, assets WebAssets) {
+func SetWebRouter(router *gin.Engine, assets WebAssets, pluginDispatcher gin.HandlerFunc) {
 	defaultFS := common.EmbedFolder(assets.BuildFS, "web/dist")
 	classicFS := common.EmbedFolder(assets.ClassicBuildFS, "web/classic/dist")
 	frontendFS := common.NewThemeAwareFS(defaultFS, classicFS)
 
-	router.Use(gzip.Gzip(gzip.DefaultCompression))
-	router.Use(middleware.GlobalWebRateLimit())
-	router.Use(middleware.Cache())
-	mountLiveLottery(router)
-	router.Use(static.Serve("/", frontendFS))
-	router.NoRoute(func(c *gin.Context) {
-		c.Set(middleware.RouteTagKey, "web")
-		if strings.HasPrefix(c.Request.RequestURI, "/v1") || strings.HasPrefix(c.Request.RequestURI, "/api") || strings.HasPrefix(c.Request.RequestURI, "/assets") {
-			controller.RelayNotFound(c)
-			return
-		}
-		c.Header("Cache-Control", "no-cache")
-		if common.GetTheme() == "classic" {
-			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.ClassicIndexPage)
-		} else {
-			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.IndexPage)
-		}
-	})
+	webMiddlewares := []gin.HandlerFunc{
+		middleware.RouteTag("web"),
+		gzip.Gzip(gzip.DefaultCompression),
+		middleware.GlobalWebRateLimit(),
+		middleware.Cache(),
+	}
+	mountLiveLottery(router, webMiddlewares)
+
+	noRoute := append([]gin.HandlerFunc{pluginDispatcher}, webMiddlewares...)
+	noRoute = append(noRoute,
+		static.Serve("/", frontendFS),
+		func(c *gin.Context) {
+			if strings.HasPrefix(c.Request.RequestURI, "/v1") || strings.HasPrefix(c.Request.RequestURI, "/api") || strings.HasPrefix(c.Request.RequestURI, "/assets") {
+				controller.RelayNotFound(c)
+				return
+			}
+			c.Header("Cache-Control", "no-cache")
+			if common.GetTheme() == "classic" {
+				c.Data(http.StatusOK, "text/html; charset=utf-8", assets.ClassicIndexPage)
+			} else {
+				c.Data(http.StatusOK, "text/html; charset=utf-8", assets.IndexPage)
+			}
+		},
+	)
+	router.NoRoute(noRoute...)
 }
 
-func mountLiveLottery(router *gin.Engine) {
+func mountLiveLottery(router *gin.Engine, webMiddlewares []gin.HandlerFunc) {
 	candidates := []string{filepath.Join("web", "classic", "public", "lottery")}
 	if exe, err := os.Executable(); err == nil {
 		dir := filepath.Dir(exe)
@@ -63,15 +70,15 @@ func mountLiveLottery(router *gin.Engine) {
 		if err != nil || !st.IsDir() {
 			continue
 		}
-		router.Use(func(c *gin.Context) {
-			if strings.HasPrefix(c.Request.URL.Path, "/lottery") {
-				c.Header("Cache-Control", "no-store")
-				c.Header("X-Frame-Options", "SAMEORIGIN")
-				c.Header("Content-Security-Policy", "frame-ancestors 'self'")
-			}
+		// 上游 rc.27 起前端的 gzip/限流/缓存头都挂在 NoRoute 链上，不再是全局 Use；
+		// 抽奖页是注册的路由，要自己带上这几个中间件（顺序同前：先 Cache，再用 no-store 覆盖）。
+		handlers := append(append([]gin.HandlerFunc{}, webMiddlewares...), func(c *gin.Context) {
+			c.Header("Cache-Control", "no-store")
+			c.Header("X-Frame-Options", "SAMEORIGIN")
+			c.Header("Content-Security-Policy", "frame-ancestors 'self'")
 			c.Next()
 		})
-		router.Static("/lottery", dir)
+		router.Group("/lottery", handlers...).Static("/", dir)
 		common.SysLog("serving lottery pages from " + dir)
 		return
 	}
