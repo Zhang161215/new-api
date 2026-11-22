@@ -45,6 +45,12 @@ const PasswordResetForm = () => {
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0);
+  // token 只能用一次：每次提交后清空并重新挂载组件，拿新的 token
+  const resetTurnstile = () => {
+    setTurnstileToken('');
+    setTurnstileWidgetKey((v) => v + 1);
+  };
   const [disableButton, setDisableButton] = useState(false);
   const [countdown, setCountdown] = useState(30);
 
@@ -101,6 +107,7 @@ const PasswordResetForm = () => {
       showError(message);
     }
     setLoading(false);
+    if (turnstileEnabled) resetTurnstile();
   }
 
   return (
@@ -176,6 +183,7 @@ const PasswordResetForm = () => {
             {turnstileEnabled && (
               <div className='flex justify-center mt-6'>
                 <Turnstile
+                  key={turnstileWidgetKey}
                   sitekey={turnstileSiteKey}
                   onVerify={(token) => {
                     setTurnstileToken(token);

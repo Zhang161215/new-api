@@ -35,6 +35,7 @@ const EmailBindModal = ({
   countdown,
   turnstileEnabled,
   turnstileSiteKey,
+  turnstileWidgetKey,
   setTurnstileToken,
 }) => {
   return (
@@ -93,6 +94,7 @@ const EmailBindModal = ({
         {turnstileEnabled && (
           <div className='flex justify-center'>
             <Turnstile
+              key={turnstileWidgetKey}
               sitekey={turnstileSiteKey}
               onVerify={(token) => {
                 setTurnstileToken(token);

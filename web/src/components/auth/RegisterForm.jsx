@@ -87,6 +87,12 @@ const RegisterForm = () => {
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0);
+  // token 只能用一次：每次提交后清空并重新挂载组件，拿新的 token
+  const resetTurnstile = () => {
+    setTurnstileToken('');
+    setTurnstileWidgetKey((v) => v + 1);
+  };
   const [showWeChatLoginModal, setShowWeChatLoginModal] = useState(false);
   const [showEmailRegister, setShowEmailRegister] = useState(false);
   const [wechatLoading, setWechatLoading] = useState(false);
@@ -250,6 +256,7 @@ const RegisterForm = () => {
         showError('注册失败，请重试');
       } finally {
         setRegisterLoading(false);
+        if (turnstileEnabled) resetTurnstile();
       }
     }
   }
@@ -276,6 +283,7 @@ const RegisterForm = () => {
       showError('发送验证码失败，请重试');
     } finally {
       setVerificationCodeLoading(false);
+      if (turnstileEnabled) resetTurnstile();
     }
   };
 
@@ -790,6 +798,7 @@ const RegisterForm = () => {
         {turnstileEnabled && (
           <div className='flex justify-center mt-6'>
             <Turnstile
+              key={turnstileWidgetKey}
               sitekey={turnstileSiteKey}
               onVerify={(token) => {
                 setTurnstileToken(token);
