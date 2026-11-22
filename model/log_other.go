@@ -86,7 +86,7 @@ func (o *LogOther) setContent(parts []*common.Message) string {
 	o.SetPublic(logOtherContentPartsKey, parts)
 	texts := make([]string, 0, len(parts))
 	for _, part := range parts {
-		texts = append(texts, part.Error())
+		texts = append(texts, part.Localized(common.LogContentLanguage)) // 本站：content 列给 classic 看，按中文渲染
 	}
 	return strings.Join(texts, ", ")
 }

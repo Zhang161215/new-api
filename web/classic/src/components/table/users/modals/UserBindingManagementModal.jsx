@@ -41,6 +41,12 @@ import {
   IconGithubLogo,
 } from '@douyinfe/semi-icons';
 import { SiDiscord, SiTelegram, SiWechat, SiLinux } from 'react-icons/si';
+import SecureVerificationModal from '../../../common/modals/SecureVerificationModal';
+import { useSecureVerification } from '../../../../hooks/common/useSecureVerification';
+import {
+  securityResult,
+  withProof,
+} from '../../../../services/secureVerification';
 
 const { Text } = Typography;
 
@@ -52,6 +58,8 @@ const UserBindingManagementModal = ({
   formApiRef,
 }) => {
   const { t } = useTranslation();
+  // 上游 rc.43：管理员解绑用户的登录方式要先做安全验证（proof 绑定用户 + 绑定类型/提供方）
+  const security = useSecureVerification();
   const [bindingLoading, setBindingLoading] = React.useState(false);
   const [showBoundOnly, setShowBoundOnly] = React.useState(true);
   const [statusInfo, setStatusInfo] = React.useState({});
@@ -124,31 +132,36 @@ const UserBindingManagementModal = ({
       content: t('确定要解绑 {{name}} 吗？', { name: bindingItem.name }),
       okText: t('确认'),
       cancelText: t('取消'),
-      onOk: async () => {
-        const loadingKey = `builtin-${bindingItem.key}`;
-        setBindingLoadingState(loadingKey, true);
-        try {
-          const res = await API.delete(
-            `/api/user/${userId}/bindings/${bindingItem.key}`,
-          );
-          if (!res.data?.success) {
-            showError(res.data?.message || t('操作失败'));
-            return;
-          }
-          setBuiltInBindings((prev) => ({
-            ...prev,
-            [bindingItem.field]: '',
-          }));
-          formApiRef.current?.setValue(bindingItem.field, '');
-          showSuccess(t('解绑成功'));
-        } catch (error) {
-          showError(
-            error.response?.data?.message || error.message || t('操作失败'),
-          );
-        } finally {
-          setBindingLoadingState(loadingKey, false);
-        }
-      },
+      onOk: () =>
+        security.startVerification(
+          async (proof) => {
+            const loadingKey = `builtin-${bindingItem.key}`;
+            setBindingLoadingState(loadingKey, true);
+            try {
+              await securityResult(
+                API.delete(
+                  `/api/user/${userId}/bindings/${bindingItem.key}`,
+                  withProof(proof),
+                ),
+                t('操作失败'),
+              );
+              setBuiltInBindings((prev) => ({
+                ...prev,
+                [bindingItem.field]: '',
+              }));
+              formApiRef.current?.setValue(bindingItem.field, '');
+              showSuccess(t('解绑成功'));
+            } finally {
+              setBindingLoadingState(loadingKey, false);
+            }
+          },
+          {
+            title: t('安全验证'),
+            scope: 'admin.user.binding.clear',
+            context: { user_id: Number(userId), binding_type: bindingItem.key },
+            description: t('解绑该用户的登录方式前，请先验证身份。'),
+          },
+        ),
     });
   };
 
@@ -160,31 +173,39 @@ const UserBindingManagementModal = ({
       content: t('确定要解绑 {{name}} 吗？', { name: provider.name }),
       okText: t('确认'),
       cancelText: t('取消'),
-      onOk: async () => {
-        const loadingKey = `custom-${provider.id}`;
-        setBindingLoadingState(loadingKey, true);
-        try {
-          const res = await API.delete(
-            `/api/user/${userId}/oauth/bindings/${provider.id}`,
-          );
-          if (!res.data?.success) {
-            showError(res.data?.message || t('操作失败'));
-            return;
-          }
-          setCustomOAuthBindings((prev) =>
-            prev.filter(
-              (item) => Number(item.provider_id) !== Number(provider.id),
-            ),
-          );
-          showSuccess(t('解绑成功'));
-        } catch (error) {
-          showError(
-            error.response?.data?.message || error.message || t('操作失败'),
-          );
-        } finally {
-          setBindingLoadingState(loadingKey, false);
-        }
-      },
+      onOk: () =>
+        security.startVerification(
+          async (proof) => {
+            const loadingKey = `custom-${provider.id}`;
+            setBindingLoadingState(loadingKey, true);
+            try {
+              await securityResult(
+                API.delete(
+                  `/api/user/${userId}/oauth/bindings/${provider.id}`,
+                  withProof(proof),
+                ),
+                t('操作失败'),
+              );
+              setCustomOAuthBindings((prev) =>
+                prev.filter(
+                  (item) => Number(item.provider_id) !== Number(provider.id),
+                ),
+              );
+              showSuccess(t('解绑成功'));
+            } finally {
+              setBindingLoadingState(loadingKey, false);
+            }
+          },
+          {
+            title: t('安全验证'),
+            scope: 'admin.user.binding.clear',
+            context: {
+              user_id: Number(userId),
+              provider_id: Number(provider.id),
+            },
+            description: t('解绑该用户的登录方式前，请先验证身份。'),
+          },
+        ),
     });
   };
 
@@ -326,107 +347,120 @@ const UserBindingManagementModal = ({
     : allBindingItems;
 
   return (
-    <Modal
-      centered
-      visible={visible}
-      onCancel={onCancel}
-      footer={null}
-      width={isMobile ? '100%' : 760}
-      title={
-        <div className='flex items-center'>
-          <IconLink className='mr-2' />
-          {t('账户绑定管理')}
-        </div>
-      }
-    >
-      <Spin spinning={bindingLoading}>
-        <div className='max-h-[68vh] overflow-y-auto pr-1 pb-2'>
-          <div className='flex items-center justify-between mb-4 gap-3 flex-wrap'>
-            <Checkbox
-              checked={showBoundOnly}
-              onChange={(e) => setShowBoundOnly(Boolean(e.target.checked))}
-            >
-              {t('仅显示已绑定')}
-            </Checkbox>
-            <Text type='tertiary'>
-              {t('已绑定')} {boundCount} / {allBindingItems.length}
-            </Text>
+    <>
+      <Modal
+        centered
+        visible={visible}
+        onCancel={onCancel}
+        footer={null}
+        width={isMobile ? '100%' : 760}
+        title={
+          <div className='flex items-center'>
+            <IconLink className='mr-2' />
+            {t('账户绑定管理')}
           </div>
-
-          {visibleBindingItems.length === 0 ? (
-            <Card className='!rounded-xl border-dashed'>
-              <Text type='tertiary'>{t('暂无已绑定项')}</Text>
-            </Card>
-          ) : (
-            <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
-              {visibleBindingItems.map((item, index) => {
-                const isBound = Boolean(item.value);
-                const loadingKey =
-                  item.type === 'builtin'
-                    ? `builtin-${item.key}`
-                    : `custom-${item.providerId}`;
-                const statusText = isBound
-                  ? item.value
-                  : item.enabled
-                    ? t('未绑定')
-                    : t('未启用');
-                const shouldSpanTwoColsOnDesktop =
-                  visibleBindingItems.length % 2 === 1 &&
-                  index === visibleBindingItems.length - 1;
-
-                return (
-                  <Card
-                    key={item.key}
-                    className={`!rounded-xl ${shouldSpanTwoColsOnDesktop ? 'lg:col-span-2' : ''}`}
-                  >
-                    <div className='flex items-center justify-between gap-3 min-h-[92px]'>
-                      <div className='flex items-center flex-1 min-w-0'>
-                        <div className='w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center mr-3 flex-shrink-0'>
-                          {item.icon}
-                        </div>
-                        <div className='min-w-0 flex-1'>
-                          <div className='font-medium text-gray-900 flex items-center gap-2'>
-                            <span>{item.name}</span>
-                            <Tag size='small' color='white'>
-                              {item.type === 'builtin'
-                                ? t('内置')
-                                : t('自定义')}
-                            </Tag>
-                          </div>
-                          <div className='text-sm text-gray-500 truncate'>
-                            {statusText}
-                          </div>
-                        </div>
-                      </div>
-                      <Button
-                        type='danger'
-                        theme='borderless'
-                        icon={<IconDelete />}
-                        size='small'
-                        disabled={!isBound}
-                        loading={Boolean(bindingActionLoading[loadingKey])}
-                        onClick={() => {
-                          if (item.type === 'builtin') {
-                            handleUnbindBuiltInAccount(item);
-                            return;
-                          }
-                          handleUnbindCustomOAuthAccount({
-                            id: item.providerId,
-                            name: item.name,
-                          });
-                        }}
-                      >
-                        {t('解绑')}
-                      </Button>
-                    </div>
-                  </Card>
-                );
-              })}
+        }
+      >
+        <Spin spinning={bindingLoading}>
+          <div className='max-h-[68vh] overflow-y-auto pr-1 pb-2'>
+            <div className='flex items-center justify-between mb-4 gap-3 flex-wrap'>
+              <Checkbox
+                checked={showBoundOnly}
+                onChange={(e) => setShowBoundOnly(Boolean(e.target.checked))}
+              >
+                {t('仅显示已绑定')}
+              </Checkbox>
+              <Text type='tertiary'>
+                {t('已绑定')} {boundCount} / {allBindingItems.length}
+              </Text>
             </div>
-          )}
-        </div>
-      </Spin>
-    </Modal>
+
+            {visibleBindingItems.length === 0 ? (
+              <Card className='!rounded-xl border-dashed'>
+                <Text type='tertiary'>{t('暂无已绑定项')}</Text>
+              </Card>
+            ) : (
+              <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
+                {visibleBindingItems.map((item, index) => {
+                  const isBound = Boolean(item.value);
+                  const loadingKey =
+                    item.type === 'builtin'
+                      ? `builtin-${item.key}`
+                      : `custom-${item.providerId}`;
+                  const statusText = isBound
+                    ? item.value
+                    : item.enabled
+                      ? t('未绑定')
+                      : t('未启用');
+                  const shouldSpanTwoColsOnDesktop =
+                    visibleBindingItems.length % 2 === 1 &&
+                    index === visibleBindingItems.length - 1;
+
+                  return (
+                    <Card
+                      key={item.key}
+                      className={`!rounded-xl ${shouldSpanTwoColsOnDesktop ? 'lg:col-span-2' : ''}`}
+                    >
+                      <div className='flex items-center justify-between gap-3 min-h-[92px]'>
+                        <div className='flex items-center flex-1 min-w-0'>
+                          <div className='w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center mr-3 flex-shrink-0'>
+                            {item.icon}
+                          </div>
+                          <div className='min-w-0 flex-1'>
+                            <div className='font-medium text-gray-900 flex items-center gap-2'>
+                              <span>{item.name}</span>
+                              <Tag size='small' color='white'>
+                                {item.type === 'builtin'
+                                  ? t('内置')
+                                  : t('自定义')}
+                              </Tag>
+                            </div>
+                            <div className='text-sm text-gray-500 truncate'>
+                              {statusText}
+                            </div>
+                          </div>
+                        </div>
+                        <Button
+                          type='danger'
+                          theme='borderless'
+                          icon={<IconDelete />}
+                          size='small'
+                          disabled={!isBound}
+                          loading={Boolean(bindingActionLoading[loadingKey])}
+                          onClick={() => {
+                            if (item.type === 'builtin') {
+                              handleUnbindBuiltInAccount(item);
+                              return;
+                            }
+                            handleUnbindCustomOAuthAccount({
+                              id: item.providerId,
+                              name: item.name,
+                            });
+                          }}
+                        >
+                          {t('解绑')}
+                        </Button>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </Spin>
+      </Modal>
+      <SecureVerificationModal
+        visible={security.isModalVisible}
+        requirements={security.requirements}
+        verificationState={security.verificationState}
+        onVerify={security.executeVerification}
+        onCancel={security.cancelVerification}
+        onCodeChange={security.setVerificationCode}
+        onMethodSwitch={security.switchVerificationMethod}
+        title={security.verificationState.title}
+        description={security.verificationState.description}
+      />
+    </>
   );
 };
 

@@ -57,11 +57,18 @@ import {
   IconEdit,
 } from '@douyinfe/semi-icons';
 import UserBindingManagementModal from './UserBindingManagementModal';
+import SecureVerificationModal from '../../../common/modals/SecureVerificationModal';
+import { useSecureVerification } from '../../../../hooks/common/useSecureVerification';
+import {
+  securityResult,
+  withProof,
+} from '../../../../services/secureVerification';
 
 const { Text, Title } = Typography;
 
 const EditUserModal = (props) => {
   const { t } = useTranslation();
+  const security = useSecureVerification();
   const userId = props.editingUser.id;
   const [loading, setLoading] = useState(true);
   const [adjustModalOpen, setAdjustModalOpen] = useState(false);
@@ -154,6 +161,34 @@ const EditUserModal = (props) => {
       payload.id = parseInt(userId);
     }
     const url = userId ? `/api/user/` : `/api/user/self`;
+    // 上游 rc.43：管理员给用户重置密码要先做安全验证（proof 绑定目标用户），其余字段直接保存
+    if (userId && payload.password) {
+      setLoading(false);
+      const targetId = parseInt(userId);
+      security.startVerification(
+        async (proof) => {
+          setLoading(true);
+          try {
+            await securityResult(
+              API.put(url, payload, withProof(proof)),
+              t('更新失败'),
+            );
+            showSuccess(t('用户信息更新成功！'));
+            props.refresh();
+            props.handleClose();
+          } finally {
+            setLoading(false);
+          }
+        },
+        {
+          title: t('安全验证'),
+          scope: 'admin.user.update',
+          context: { user_id: targetId },
+          description: t('重置该用户的密码前，请先验证身份。'),
+        },
+      );
+      return;
+    }
     const res = await API.put(url, payload);
     const { success, message } = res.data;
     if (success) {
@@ -170,7 +205,11 @@ const EditUserModal = (props) => {
   const adjustQuota = async () => {
     const quotaVal = parseInt(adjustQuotaLocal) || 0;
     if (quotaVal <= 0 && adjustMode !== 'override') return;
-    if (adjustMode === 'override' && (adjustQuotaLocal === '' || adjustQuotaLocal == null)) return;
+    if (
+      adjustMode === 'override' &&
+      (adjustQuotaLocal === '' || adjustQuotaLocal == null)
+    )
+      return;
     setAdjustLoading(true);
     try {
       const res = await API.post('/api/user/manage', {
@@ -401,7 +440,10 @@ const EditUserModal = (props) => {
                             ? `▾ ${t('收起原生额度输入')}`
                             : `▸ ${t('使用原生额度输入')}`}
                         </div>
-                        <div style={{ display: showQuotaInput ? 'block' : 'none' }} className='mt-2'>
+                        <div
+                          style={{ display: showQuotaInput ? 'block' : 'none' }}
+                          className='mt-2'
+                        >
                           <Form.InputNumber
                             field='quota'
                             label={t('额度')}
@@ -539,7 +581,10 @@ const EditUserModal = (props) => {
             ? `▾ ${t('收起原生额度输入')}`
             : `▸ ${t('使用原生额度输入')}`}
         </div>
-        <div style={{ display: showAdjustQuotaRaw ? 'block' : 'none' }} className='mt-2'>
+        <div
+          style={{ display: showAdjustQuotaRaw ? 'block' : 'none' }}
+          className='mt-2'
+        >
           <div className='mb-1'>
             <Text size='small'>{t('额度')}</Text>
           </div>
@@ -564,6 +609,18 @@ const EditUserModal = (props) => {
           />
         </div>
       </Modal>
+
+      <SecureVerificationModal
+        visible={security.isModalVisible}
+        requirements={security.requirements}
+        verificationState={security.verificationState}
+        onVerify={security.executeVerification}
+        onCancel={security.cancelVerification}
+        onCodeChange={security.setVerificationCode}
+        onMethodSwitch={security.switchVerificationMethod}
+        title={security.verificationState.title}
+        description={security.verificationState.description}
+      />
     </>
   );
 };

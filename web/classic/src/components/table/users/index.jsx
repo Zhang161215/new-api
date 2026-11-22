@@ -28,6 +28,7 @@ import EditUserModal from './modals/EditUserModal';
 import { useUsersData } from '../../../hooks/users/useUsersData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
+import SecureVerificationModal from '../../common/modals/SecureVerificationModal';
 
 const UsersPage = () => {
   const usersData = useUsersData();
@@ -117,6 +118,19 @@ const UsersPage = () => {
       >
         <UsersTable {...usersData} />
       </CardPro>
+
+      {/* 管理操作的安全验证（rc.43） */}
+      <SecureVerificationModal
+        visible={usersData.security.isModalVisible}
+        requirements={usersData.security.requirements}
+        verificationState={usersData.security.verificationState}
+        onVerify={usersData.security.executeVerification}
+        onCancel={usersData.security.cancelVerification}
+        onCodeChange={usersData.security.setVerificationCode}
+        onMethodSwitch={usersData.security.switchVerificationMethod}
+        title={usersData.security.verificationState.title}
+        description={usersData.security.verificationState.description}
+      />
     </>
   );
 };

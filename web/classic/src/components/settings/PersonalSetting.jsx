@@ -86,8 +86,6 @@ const PersonalSetting = () => {
   const [loading, setLoading] = useState(false);
   const [disableButton, setDisableButton] = useState(false);
   const [countdown, setCountdown] = useState(30);
-  const [systemToken, setSystemToken] = useState('');
-  const [accessTokenStatus, setAccessTokenStatus] = useState(null);
   // 上游 rc.36 邮箱绑定：start 返回 flow_token，换绑时还要原邮箱的验证码
   const [emailBindFlow, setEmailBindFlow] = useState(null);
   const [passkeyStatus, setPasskeyStatus] = useState({ enabled: false });
@@ -150,7 +148,6 @@ const PersonalSetting = () => {
     })();
 
     getUserData();
-    loadAccessTokenStatus();
 
     isPasskeySupported()
       .then(setPasskeySupported)
@@ -196,50 +193,6 @@ const PersonalSetting = () => {
   const handleInputChange = (name, value) => {
     setInputs((inputs) => ({ ...inputs, [name]: value }));
   };
-
-  const loadAccessTokenStatus = async () => {
-    try {
-      const res = await API.get('/api/user/token/status', securityRequestConfig);
-      if (res.data?.success) setAccessTokenStatus(res.data.data);
-    } catch (e) {
-      // 忽略，不影响生成
-    }
-  };
-
-  const generateAccessToken = () =>
-    startSecurity(
-      async (proof) => {
-        const data = await securityResult(
-          API.post('/api/user/token', undefined, withProof(proof)),
-          t('生成令牌失败'),
-        );
-        setSystemToken(data);
-        await copy(data);
-        showSuccess(t('令牌已重置并已复制到剪贴板'));
-        loadAccessTokenStatus();
-      },
-      {
-        scope: 'access_token.generate',
-        description: t('生成新的系统访问令牌会让旧令牌立即失效，请先验证身份。'),
-      },
-    );
-
-  const revokeAccessToken = () =>
-    startSecurity(
-      async (proof) => {
-        await securityResult(
-          API.delete('/api/user/token', withProof(proof)),
-          t('撤销令牌失败'),
-        );
-        setSystemToken('');
-        showSuccess(t('系统访问令牌已撤销'));
-        loadAccessTokenStatus();
-      },
-      {
-        scope: 'access_token.revoke',
-        description: t('撤销后使用该令牌的程序将无法再调用管理接口。'),
-      },
-    );
 
   const loadPasskeyStatus = async () => {
     try {
@@ -340,7 +293,9 @@ const PersonalSetting = () => {
       {
         scope: 'account.binding.bind',
         context: { provider },
-        description: t('绑定新的登录方式前需要验证身份，验证后会跳转到授权页面。'),
+        description: t(
+          '绑定新的登录方式前需要验证身份，验证后会跳转到授权页面。',
+        ),
       },
     );
 
@@ -349,7 +304,10 @@ const PersonalSetting = () => {
     startSecurity(
       async (proof) => {
         await securityResult(
-          API.delete(`/api/user/oauth/bindings/${providerId}`, withProof(proof)),
+          API.delete(
+            `/api/user/oauth/bindings/${providerId}`,
+            withProof(proof),
+          ),
           t('操作失败'),
         );
         showSuccess(t('解绑成功'));
@@ -372,12 +330,6 @@ const PersonalSetting = () => {
     } else {
       showError(message);
     }
-  };
-
-  const handleSystemTokenClick = async (e) => {
-    e.target.select();
-    await copy(e.target.value);
-    showSuccess(t('系统令牌已复制到剪切板'));
   };
 
   const deleteAccount = async () => {
@@ -457,9 +409,7 @@ const PersonalSetting = () => {
           ),
           t('密码修改失败'),
         );
-        showSuccess(
-          hasPassword ? t('密码修改成功！') : t('密码设置成功！'),
-        );
+        showSuccess(hasPassword ? t('密码修改成功！') : t('密码设置成功！'));
         setShowChangePasswordModal(false);
         setInputs((prev) => ({
           ...prev,
@@ -556,7 +506,10 @@ const PersonalSetting = () => {
       showError(t('请输入邮箱验证码！'));
       return;
     }
-    if (emailBindFlow.old_email_required && inputs.email_old_code.trim() === '') {
+    if (
+      emailBindFlow.old_email_required &&
+      inputs.email_old_code.trim() === ''
+    ) {
       showError(t('请输入原邮箱收到的验证码！'));
       return;
     }
@@ -669,13 +622,8 @@ const PersonalSetting = () => {
                 t={t}
                 userState={userState}
                 status={status}
-                systemToken={systemToken}
                 setShowEmailBindModal={setShowEmailBindModal}
                 setShowWeChatBindModal={setShowWeChatBindModal}
-                generateAccessToken={generateAccessToken}
-                revokeAccessToken={revokeAccessToken}
-                accessTokenStatus={accessTokenStatus}
-                handleSystemTokenClick={handleSystemTokenClick}
                 hasPassword={hasPassword}
                 onOAuthBind={startOAuthBind}
                 onCustomOAuthUnbind={startCustomOAuthUnbind}

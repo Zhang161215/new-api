@@ -18,10 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { API } from '../helpers';
-import {
-  buildOAuthAuthorizeUrl,
-  getOAuthAuthorization,
-} from '../helpers/api';
+import { buildOAuthAuthorizeUrl, getOAuthAuthorization } from '../helpers/api';
 import {
   prepareCredentialRequestOptions,
   buildAssertionResult,
@@ -38,9 +35,15 @@ import {
  *
  * scope 与 context：
  *   channel.key.read {channel_id}、passkey.register、passkey.delete、2fa.setup、2fa.disable、
- *   2fa.backup_codes.regenerate、access_token.generate、access_token.revoke、
+ *   2fa.backup_codes.regenerate、
+ *   access_token.generate {scopes, expires_at}、access_token.update {token_id, scopes}、
+ *   access_token.revoke {token_id | legacy:true}（rc.43 作用域访问令牌）、
  *   account.binding.bind {provider[, email | code]}、account.binding.unbind {provider_id}、
- *   account.password.set、account.password.change、account.delete
+ *   account.password.set、account.password.change、account.delete、
+ *   rc.43 管理员操作：admin.user.manage {user_id, action}、admin.user.delete {user_id}、
+ *   admin.user.update {user_id}（重置密码）、admin.user.passkey.reset {user_id}、
+ *   admin.user.2fa.disable {user_id}、admin.user.binding.clear {user_id, binding_type | provider_id}、
+ *   admin.user.create {role}（只在创建管理员时）
  *
  * 没开 2FA / Passkey 的用户：有密码的用密码验证，纯 OAuth 注册的用户用已绑定的 OAuth 账号验证（弹窗）。
  */
@@ -326,7 +329,11 @@ export class SecureVerificationService {
       isPasskeySupported().catch(() => false),
     ]);
     const methods = (requirements?.methods || []).map((option) => {
-      if (option.method === 'passkey' && option.available && !passkeySupported) {
+      if (
+        option.method === 'passkey' &&
+        option.available &&
+        !passkeySupported
+      ) {
         return {
           ...option,
           available: false,
@@ -369,7 +376,9 @@ export class SecureVerificationService {
         if (!input.password) throw new SecurityError('请输入当前密码');
         if (options.passwordEncryptionEnabled) {
           // 本站没开密码传输加密（PASSWORD_LOGIN_ENCRYPTION_ENABLED），classic 也没实现加密
-          throw new SecurityError('站点开启了密码加密传输，classic 界面暂不支持密码验证');
+          throw new SecurityError(
+            '站点开启了密码加密传输，classic 界面暂不支持密码验证',
+          );
         }
         proof = await securityResult(
           API.post(

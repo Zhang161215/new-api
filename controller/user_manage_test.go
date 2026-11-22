@@ -15,6 +15,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
@@ -242,13 +243,13 @@ func TestManageUserQuotaRecordsTopupAndAudit(t *testing.T) {
 		name, mode, action, content string
 		value, wantQuota            int
 	}{
-		{"add", "add", "user.quota_add", "Increased user quota by 500", 500, 1500},
-		{"subtract", "subtract", "user.quota_subtract", "Decreased user quota by 500", 500, 500},
-		{"override_up", "override", "user.quota_override", "Overrode user quota from 1000 to 1500", 1500, 1500},
-		{"override_down", "override", "user.quota_override", "Overrode user quota from 1000 to 500", 500, 500},
-		{"override_unchanged", "override", "user.quota_override", "Overrode user quota from 1000 to 1000", 1000, 1000},
-		{"override_zero", "override", "user.quota_override", "Overrode user quota from 1000 to 0", 0, 0},
-		{"override_negative", "override", "user.quota_override", "Overrode user quota from 1000 to -1", -1, -1},
+		{"add", "add", "user.quota_add", "Increased user quota by " + logger.FormatQuota(500), 500, 1500},
+		{"subtract", "subtract", "user.quota_subtract", "Decreased user quota by " + logger.FormatQuota(500), 500, 500},
+		{"override_up", "override", "user.quota_override", "Overrode user quota from " + logger.FormatQuota(1000) + " to " + logger.FormatQuota(1500), 1500, 1500},
+		{"override_down", "override", "user.quota_override", "Overrode user quota from " + logger.FormatQuota(1000) + " to " + logger.FormatQuota(500), 500, 500},
+		{"override_unchanged", "override", "user.quota_override", "Overrode user quota from " + logger.FormatQuota(1000) + " to " + logger.FormatQuota(1000), 1000, 1000},
+		{"override_zero", "override", "user.quota_override", "Overrode user quota from " + logger.FormatQuota(1000) + " to " + logger.FormatQuota(0), 0, 0},
+		{"override_negative", "override", "user.quota_override", "Overrode user quota from " + logger.FormatQuota(1000) + " to " + logger.FormatQuota(-1), -1, -1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := setupManageUserTestDB(t)

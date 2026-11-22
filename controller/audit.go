@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
@@ -102,18 +103,45 @@ func recordPasskeyDomainAudit(c *gin.Context, change *model.PasskeyDomainChange,
 	markAuditLogged(c)
 }
 
-// auditContentEN 按 action 模板渲染英文兜底文本；未登记的 action 退回 action 本身。
+// auditContentEN 按 action 模板渲染 content 文本；未登记的 action 退回 action 本身。
+// 本站：上游写英文兜底；classic 的日志页直接显示 content 列，这里改为按 common.LogContentLanguage
+// 渲染（默认中文，与 RecordLog 的 setContent 一致）。模板里的 ${name} 换成新版前端 locale 的 {{name}}
+// 键去查同一份译文，没有译文时仍是英文；缺失的参数和上游一样渲染为空串。
 func auditContentEN(action string, params map[string]any) string {
 	tmpl, ok := auditContentTemplates[action]
 	if !ok {
 		return action
 	}
-	return os.Expand(tmpl, func(key string) string {
-		if v, ok := params[key]; ok {
-			return fmt.Sprintf("%v", v)
+	values := map[string]any{}
+	key := os.Expand(tmpl, func(name string) string {
+		values[name] = ""
+		if v, ok := params[name]; ok {
+			values[name] = auditContentValue(action, name, v)
 		}
-		return ""
+		return "{{" + name + "}}"
 	})
+	return common.NewMessage(key, values).Localized(common.LogContentLanguage)
+}
+
+// auditQuotaContentParams 是 content 里要按额度展示格式（$/¥/自定义）显示的参数。
+// 本站：上游 params 存原始额度单位，新版前端渲染时自己格式化；classic 直接显示 content，
+// 不格式化就是「增加用户额度 250000」。只改 content，params 原样保留。
+var auditQuotaContentParams = map[string]map[string]bool{
+	"user.quota_add":      {"quota": true},
+	"user.quota_subtract": {"quota": true},
+	"user.quota_override": {"from": true, "to": true},
+}
+
+func auditContentValue(action, name string, v any) string {
+	if auditQuotaContentParams[action][name] {
+		switch q := v.(type) {
+		case int:
+			return logger.FormatQuota(q)
+		case int64:
+			return logger.FormatQuota(int(q))
+		}
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 // auditOperatorInfo 从上下文构建操作者身份信息（管理员 id/用户名/角色）。

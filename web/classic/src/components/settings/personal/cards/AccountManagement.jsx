@@ -53,18 +53,14 @@ import {
   getOAuthProviderIcon,
 } from '../../../../helpers';
 import TwoFASetting from '../components/TwoFASetting';
+import AccessTokensCard from './AccessTokensCard';
 
 const AccountManagement = ({
   t,
   userState,
   status,
-  systemToken,
   setShowEmailBindModal,
   setShowWeChatBindModal,
-  generateAccessToken,
-  revokeAccessToken,
-  accessTokenStatus,
-  handleSystemTokenClick,
   hasPassword = true,
   onOAuthBind,
   onCustomOAuthUnbind,
@@ -104,7 +100,9 @@ const AccountManagement = ({
   const isBound = (accountId) => Boolean(accountId);
   // 上游 rc.36：Telegram 改走标准 OAuth（和 GitHub 等一样先验证身份再跳转授权）
   const openTelegramBindModal = () =>
-    onOAuthBind('telegram', (proof) => onTelegramOAuthClicked({ bindProof: proof }));
+    onOAuthBind('telegram', (proof) =>
+      onTelegramOAuthClicked({ bindProof: proof }),
+    );
   const [customOAuthBindings, setCustomOAuthBindings] = React.useState([]);
   const [customOAuthLoading, setCustomOAuthLoading] = React.useState({});
 
@@ -118,7 +116,9 @@ const AccountManagement = ({
         showError(res.data.message || t('获取绑定信息失败'));
       }
     } catch (error) {
-      showError(error.response?.data?.message || error.message || t('获取绑定信息失败'));
+      showError(
+        error.response?.data?.message || error.message || t('获取绑定信息失败'),
+      );
     }
   };
 
@@ -142,13 +142,17 @@ const AccountManagement = ({
   // Check if custom OAuth provider is bound
   const isCustomOAuthBound = (providerId) => {
     const normalizedId = Number(providerId);
-    return customOAuthBindings.some((b) => Number(b.provider_id) === normalizedId);
+    return customOAuthBindings.some(
+      (b) => Number(b.provider_id) === normalizedId,
+    );
   };
 
   // Get binding info for a provider
   const getCustomOAuthBinding = (providerId) => {
     const normalizedId = Number(providerId);
-    return customOAuthBindings.find((b) => Number(b.provider_id) === normalizedId);
+    return customOAuthBindings.find(
+      (b) => Number(b.provider_id) === normalizedId,
+    );
   };
 
   React.useEffect(() => {
@@ -544,7 +548,10 @@ const AccountManagement = ({
                               size='small'
                               loading={customOAuthLoading[provider.id]}
                               onClick={() =>
-                                handleUnbindCustomOAuth(provider.id, provider.name)
+                                handleUnbindCustomOAuth(
+                                  provider.id,
+                                  provider.name,
+                                )
                               }
                             >
                               {t('解绑')}
@@ -581,79 +588,8 @@ const AccountManagement = ({
           <div className='py-4'>
             <div className='space-y-6'>
               <Space vertical className='w-full'>
-                {/* 系统访问令牌 */}
-                <Card className='!rounded-xl w-full'>
-                  <div className='flex flex-col sm:flex-row items-start sm:justify-between gap-4'>
-                    <div className='flex items-start w-full sm:w-auto'>
-                      <div className='w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mr-4 flex-shrink-0'>
-                        <IconKey size='large' className='text-slate-600' />
-                      </div>
-                      <div className='flex-1'>
-                        <Typography.Title heading={6} className='mb-1'>
-                          {t('系统访问令牌')}
-                        </Typography.Title>
-                        <Typography.Text type='tertiary' className='text-sm'>
-                          {t('用于API调用的身份验证令牌，请妥善保管')}
-                        </Typography.Text>
-                        {accessTokenStatus?.exists && (
-                          <div className='mt-2 text-xs text-gray-500 space-y-1'>
-                            <div>
-                              {t('当前令牌')}：
-                              {accessTokenStatus.token_ref
-                                ? `${accessTokenStatus.token_ref.slice(0, 12)}…`
-                                : '-'}
-                              {accessTokenStatus.created_at
-                                ? `，${t('生成于')} ${new Date(accessTokenStatus.created_at * 1000).toLocaleString()}`
-                                : ''}
-                            </div>
-                            <div>
-                              {t('最近使用')}：
-                              {accessTokenStatus.last_used_at
-                                ? `${new Date(accessTokenStatus.last_used_at * 1000).toLocaleString()}${accessTokenStatus.last_used_ip ? `（${accessTokenStatus.last_used_ip}）` : ''}`
-                                : t('尚未使用')}
-                            </div>
-                          </div>
-                        )}
-                        {systemToken && (
-                          <div className='mt-3'>
-                            <Input
-                              readonly
-                              value={systemToken}
-                              onClick={handleSystemTokenClick}
-                              size='large'
-                              prefix={<IconKey />}
-                            />
-                            <div className='mt-1 text-xs text-gray-500'>
-                              {t('令牌只显示这一次，请立即复制保存')}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <Space className='w-full sm:w-auto'>
-                      {accessTokenStatus?.exists && (
-                        <Button
-                          type='danger'
-                          theme='outline'
-                          onClick={revokeAccessToken}
-                        >
-                          {t('撤销')}
-                        </Button>
-                      )}
-                      <Button
-                        type='primary'
-                        theme='solid'
-                        onClick={generateAccessToken}
-                        className='!bg-slate-600 hover:!bg-slate-700 w-full sm:w-auto'
-                        icon={<IconKey />}
-                      >
-                        {systemToken || accessTokenStatus?.exists
-                          ? t('重新生成')
-                          : t('生成令牌')}
-                      </Button>
-                    </Space>
-                  </div>
-                </Card>
+                {/* 访问令牌（上游 rc.43 作用域访问令牌） */}
+                <AccessTokensCard />
 
                 {/* 密码管理 */}
                 <Card className='!rounded-xl w-full'>

@@ -22,10 +22,23 @@ import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
+import { useSecureVerification } from '../common/useSecureVerification';
+import { securityResult, withProof } from '../../services/secureVerification';
 
 export const useUsersData = () => {
   const { t } = useTranslation();
   const [compactMode, setCompactMode] = useTableCompactMode('users');
+
+  // 上游 rc.43：管理员改用户状态/角色、注销、重置 Passkey/2FA 都要先做安全验证，
+  // proof 绑定目标用户（和操作），一次一用。页面里渲染 SecureVerificationModal 用 security。
+  const security = useSecureVerification();
+  const startAdminVerification = (apiCall, scope, context, description) =>
+    security.startVerification(apiCall, {
+      title: t('安全验证'),
+      scope,
+      context,
+      description,
+    });
 
   // State management
   const [users, setUsers] = useState([]);
@@ -121,71 +134,86 @@ export const useUsersData = () => {
   };
 
   // Manage user operations (promote, demote, enable, disable, delete)
-  const manageUser = async (userId, action, record) => {
-    // Trigger loading state to force table re-render
-    setLoading(true);
+  const MANAGE_DESCRIPTIONS = {
+    promote: '提升为管理员前，请先验证身份。',
+    demote: '取消管理员身份前，请先验证身份。',
+    enable: '启用用户前，请先验证身份。',
+    disable: '禁用用户前，请先验证身份。',
+    delete: '注销用户前，请先验证身份。注销不可恢复。',
+  };
 
-    const res = await API.post('/api/user/manage', {
-      id: userId,
-      action,
-    });
-
-    const { success, message } = res.data;
-    if (success) {
-      showSuccess(t('操作成功完成！'));
-      const user = res.data.data;
-
-      // Create a new array and new object to ensure React detects changes
-      const newUsers = users.map((u) => {
-        if (u.id === userId) {
-          if (action === 'delete') {
-            return { ...u, DeletedAt: new Date() };
-          }
-          return { ...u, status: user.status, role: user.role };
+  const applyManageResult = (userId, action, user) => {
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.id !== userId) return u;
+        if (action === 'delete') {
+          return { ...u, DeletedAt: new Date() };
         }
-        return u;
-      });
+        return { ...u, status: user?.status, role: user?.role };
+      }),
+    );
+  };
 
-      setUsers(newUsers);
-    } else {
-      showError(message);
-    }
-
-    setLoading(false);
+  const manageUser = async (userId, action, record) => {
+    const isDelete = action === 'delete';
+    return startAdminVerification(
+      async (proof) => {
+        setLoading(true);
+        try {
+          const user = await securityResult(
+            API.post(
+              '/api/user/manage',
+              { id: userId, action },
+              withProof(proof),
+            ),
+            t('操作失败，请重试'),
+          );
+          showSuccess(t('操作成功完成！'));
+          applyManageResult(userId, action, user);
+        } finally {
+          setLoading(false);
+        }
+      },
+      isDelete ? 'admin.user.delete' : 'admin.user.manage',
+      isDelete ? { user_id: userId } : { user_id: userId, action },
+      t(MANAGE_DESCRIPTIONS[action] || '请先验证身份。'),
+    );
   };
 
   const resetUserPasskey = async (user) => {
     if (!user) {
       return;
     }
-    try {
-      const res = await API.delete(`/api/user/${user.id}/reset_passkey`);
-      const { success, message } = res.data;
-      if (success) {
+    return startAdminVerification(
+      async (proof) => {
+        await securityResult(
+          API.delete(`/api/user/${user.id}/reset_passkey`, withProof(proof)),
+          t('操作失败，请重试'),
+        );
         showSuccess(t('Passkey 已重置'));
-      } else {
-        showError(message || t('操作失败，请重试'));
-      }
-    } catch (error) {
-      showError(t('操作失败，请重试'));
-    }
+      },
+      'admin.user.passkey.reset',
+      { user_id: user.id },
+      t('重置该用户的 Passkey 前，请先验证身份。'),
+    );
   };
 
   const resetUserTwoFA = async (user) => {
     if (!user) {
       return;
     }
-    try {
-      const res = await API.delete(`/api/user/${user.id}/2fa`);
-      const { success, message } = res.data;
-      if (success) {
+    return startAdminVerification(
+      async (proof) => {
+        await securityResult(
+          API.delete(`/api/user/${user.id}/2fa`, withProof(proof)),
+          t('操作失败，请重试'),
+        );
         showSuccess(t('二步验证已重置'));
-      } else {
-        showError(message || t('操作失败，请重试'));
-      }
-    } catch (error) {
-      showError(t('操作失败，请重试'));
-    }
+      },
+      'admin.user.2fa.disable',
+      { user_id: user.id },
+      t('重置该用户的两步验证前，请先验证身份。'),
+    );
   };
 
   // Handle page change
@@ -275,6 +303,7 @@ export const useUsersData = () => {
   }, []);
 
   return {
+    security,
     // Data state
     users,
     loading,

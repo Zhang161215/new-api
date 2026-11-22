@@ -213,6 +213,10 @@ func ApiErrorStatus(c *gin.Context, status int, err error, fields ...gin.H) {
 	var message *Message
 	if errors.As(err, &message) {
 		maps.Copy(body, message.Fields())
+		// 本站：classic 只显示 message，按读者语言渲染（被包装过的错误保留外层原文），见 message_locale.go
+		if direct, ok := err.(*Message); ok {
+			body["message"] = direct.Localized(RequestLanguage(c))
+		}
 	}
 	for _, extra := range fields {
 		maps.Copy(body, extra)
@@ -231,7 +235,7 @@ func ApiSuccessT(c *gin.Context, key string, data any, params ...map[string]any)
 	message := NewMessage(key, params...)
 	body := gin.H{
 		"success": true,
-		"message": message.Error(),
+		"message": message.Localized(RequestLanguage(c)), // 本站：见 message_locale.go
 		"data":    data,
 	}
 	maps.Copy(body, message.Fields())
