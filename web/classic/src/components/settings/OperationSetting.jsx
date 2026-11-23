@@ -63,11 +63,6 @@ const OperationSetting = () => {
     /* 左侧边栏模块管理（管理员） */
     SidebarModulesAdmin: '',
 
-    /* 敏感词设置 */
-    CheckSensitiveEnabled: false,
-    CheckSensitiveOnPromptEnabled: false,
-    SensitiveWords: '',
-
     /* 日志设置 */
     LogConsumeEnabled: false,
 
@@ -142,9 +137,9 @@ const OperationSetting = () => {
         <div style={{ marginTop: '10px' }}>
           <SettingsSidebarModulesAdmin options={inputs} refresh={onRefresh} />
         </div>
-        {/* 屏蔽词过滤设置 */}
+        {/* 屏蔽词过滤设置（本站：rc.51 起只读，展示迁移后的请求过滤实例） */}
         <Card style={{ marginTop: '10px' }}>
-          <SettingsSensitiveWords options={inputs} refresh={onRefresh} />
+          <SettingsSensitiveWords />
         </Card>
         {/* 日志设置 */}
         <Card style={{ marginTop: '10px' }}>

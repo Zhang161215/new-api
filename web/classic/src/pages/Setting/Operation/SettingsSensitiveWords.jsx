@@ -17,143 +17,113 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState, useRef } from 'react';
-import { Button, Col, Form, Row, Spin, Tag } from '@douyinfe/semi-ui';
-import {
-  compareObjects,
-  API,
-  showError,
-  showSuccess,
-  showWarning,
-  reportRejectedSaves,
-} from '../../../helpers';
+// 本站：上游 rc.51 下线了旧屏蔽词检查（CheckSensitiveEnabled / SensitiveWords 等 option），
+// 首次启动把词表迁到「请求过滤」插件实例（request-filter），旧 option 删除。
+// 这里不能再写旧 option（写回去下次启动会再迁一份重复实例），改成只读展示迁移后的实例。
+// 实例的开关/词表编辑在新版界面「请求插件」里；classic 暂不提供编辑。
+
+import React, { useEffect, useState } from 'react';
+import { Banner, Empty, Spin, Table, Tag, Typography } from '@douyinfe/semi-ui';
+import { API, showError } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 
-export default function SettingsSensitiveWords(props) {
-  const { t } = useTranslation();
-  const [loading, setLoading] = useState(false);
-  const [inputs, setInputs] = useState({
-    CheckSensitiveEnabled: false,
-    CheckSensitiveOnPromptEnabled: false,
-    SensitiveWords: '',
-  });
-  const refForm = useRef();
-  const [inputsRow, setInputsRow] = useState(inputs);
+const { Text } = Typography;
 
-  function onSubmit() {
-    const updateArray = compareObjects(inputs, inputsRow);
-    if (!updateArray.length) return showWarning(t('你似乎并没有修改什么'));
-    const requestQueue = updateArray.map((item) => {
-      let value = '';
-      if (typeof inputs[item.key] === 'boolean') {
-        value = String(inputs[item.key]);
-      } else {
-        value = inputs[item.key];
-      }
-      return API.put('/api/option/', {
-        key: item.key,
-        value,
-      });
-    });
-    setLoading(true);
-    Promise.all(requestQueue)
-      .then((res) => {
-        if (reportRejectedSaves(res)) return;
-        if (requestQueue.length === 1) {
-          if (res.includes(undefined)) return;
-        } else if (requestQueue.length > 1) {
-          if (res.includes(undefined))
-            return showError(t('部分保存失败，请重试'));
-        }
-        showSuccess(t('保存成功'));
-        props.refresh();
-      })
-      .catch(() => {
-        showError(t('保存失败，请重试'));
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }
+function keywordCount(config) {
+  const keywords =
+    config && typeof config.keywords === 'string' ? config.keywords : '';
+  return keywords
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean).length;
+}
+
+export default function SettingsSensitiveWords() {
+  const { t } = useTranslation();
+  const [loading, setLoading] = useState(true);
+  const [instances, setInstances] = useState([]);
 
   useEffect(() => {
-    const currentInputs = {};
-    for (let key in props.options) {
-      if (Object.keys(inputs).includes(key)) {
-        currentInputs[key] = props.options[key];
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await API.get('/api/request_plugin/instances');
+        const { success, message, data } = res.data;
+        if (!success) {
+          showError(message);
+          return;
+        }
+        const list = (data?.instances || []).filter(
+          (item) => item.plugin === 'request-filter',
+        );
+        if (!cancelled) setInstances(list);
+      } catch (e) {
+        // 拦截器已提示
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    }
-    setInputs(currentInputs);
-    setInputsRow(structuredClone(currentInputs));
-    refForm.current.setValues(currentInputs);
-  }, [props.options]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const columns = [
+    { title: t('名称'), dataIndex: 'name' },
+    {
+      title: t('状态'),
+      dataIndex: 'enabled',
+      render: (enabled) =>
+        enabled ? (
+          <Tag color='green'>{t('已启用')}</Tag>
+        ) : (
+          <Tag color='grey'>{t('已禁用')}</Tag>
+        ),
+    },
+    {
+      title: t('范围'),
+      dataIndex: 'global',
+      render: (global, record) =>
+        global
+          ? t('全局')
+          : [...(record.groups || []), ...(record.models || [])].join(', ') ||
+            '-',
+    },
+    {
+      title: t('屏蔽词数量'),
+      dataIndex: 'config',
+      render: (config) => (config ? keywordCount(config) : '-'),
+    },
+  ];
+
   return (
-    <>
-      <Spin spinning={loading}>
-        <Form
-          values={inputs}
-          getFormApi={(formAPI) => (refForm.current = formAPI)}
-          style={{ marginBottom: 15 }}
-        >
-          <Form.Section text={t('屏蔽词过滤设置')}>
-            <Row gutter={16}>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                <Form.Switch
-                  field={'CheckSensitiveEnabled'}
-                  label={t('启用屏蔽词过滤功能')}
-                  size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
-                  onChange={(value) => {
-                    setInputs({
-                      ...inputs,
-                      CheckSensitiveEnabled: value,
-                    });
-                  }}
-                />
-              </Col>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                <Form.Switch
-                  field={'CheckSensitiveOnPromptEnabled'}
-                  label={t('启用 Prompt 检查')}
-                  size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
-                  onChange={(value) =>
-                    setInputs({
-                      ...inputs,
-                      CheckSensitiveOnPromptEnabled: value,
-                    })
-                  }
-                />
-              </Col>
-            </Row>
-            <Row>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                <Form.TextArea
-                  label={t('屏蔽词列表')}
-                  extraText={t('一行一个屏蔽词，不需要符号分割')}
-                  placeholder={t('一行一个屏蔽词，不需要符号分割')}
-                  field={'SensitiveWords'}
-                  onChange={(value) =>
-                    setInputs({
-                      ...inputs,
-                      SensitiveWords: value,
-                    })
-                  }
-                  style={{ fontFamily: 'JetBrains Mono, Consolas' }}
-                  autosize={{ minRows: 6, maxRows: 12 }}
-                />
-              </Col>
-            </Row>
-            <Row>
-              <Button size='default' onClick={onSubmit}>
-                {t('保存屏蔽词过滤设置')}
-              </Button>
-            </Row>
-          </Form.Section>
-        </Form>
-      </Spin>
-    </>
+    <Spin spinning={loading}>
+      <Typography.Title heading={6} style={{ marginBottom: 12 }}>
+        {t('屏蔽词过滤设置')}
+      </Typography.Title>
+      <Banner
+        type='info'
+        closeIcon={null}
+        style={{ marginBottom: 12 }}
+        description={
+          <Text>
+            {t(
+              '屏蔽词检查已改为「请求过滤」插件，原有词表已自动迁移到下方实例（原来未开启提示词检查的，迁移后保持禁用）。开关与词表请在新版界面的请求插件中管理。',
+            )}
+          </Text>
+        }
+      />
+      {instances.length > 0 ? (
+        <Table
+          columns={columns}
+          dataSource={instances}
+          rowKey='id'
+          pagination={false}
+          size='small'
+        />
+      ) : (
+        !loading && <Empty description={t('暂无请求过滤实例')} />
+      )}
+    </Spin>
   );
 }
