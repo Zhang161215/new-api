@@ -510,7 +510,10 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	}
 	user.Role = common.RoleCommonUser
 	user.Status = common.UserStatusEnabled
-	user.RegisterIP = c.ClientIP()
+	// 本站：记录注册 IP；没有 Request 的上下文（测试里直接调用）跳过，ClientIP 会空指针
+	if c.Request != nil {
+		user.RegisterIP = c.ClientIP()
+	}
 	user.RegisterTime = common.GetTimestamp()
 
 	// Handle affiliate code
@@ -518,6 +521,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	if affiliateCode != "" {
 		inviterId, _ = model.GetUserIdByAffCode(affiliateCode)
 	}
+	user.InviterId = inviterId
 
 	// Use transaction to ensure user creation and OAuth binding are atomic
 	if genericProvider, ok := provider.(*oauth.GenericOAuthProvider); ok {

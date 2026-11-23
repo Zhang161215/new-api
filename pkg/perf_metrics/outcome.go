@@ -17,16 +17,27 @@ const (
 	OutcomeIgnored Outcome = "ignored"
 )
 
-// ClassifyRelayOutcome 判断一次已结束的请求算不算健康样本。
-// 业务拒绝、客户端取消、用户侧参数/额度错误不进分母；与重试、禁用渠道、计费无关。
-// 移植自上游，流式请求结合协议终态（ResponseOutcome）判断：没等到终态就 EOF 的流算截断失败。
-// 本站：不采用 rc.47 的「ctx 已取消且不是正常结束的流一律忽略」——非流式成功响应写完后客户端断开，
-// ctx 也会被取消，按上游会把成功样本全丢掉；ctx 取消只在出错或流未收到 completed 时才算忽略（见下）。
+// ClassifyRelayOutcome decides whether one finished relay counts as a health
+// sample. Business rejections and cancellations during generation are not
+// samples; a stream already completed normally without errors remains eligible
+// after its context is canceled, and so does an error-free non-stream response,
+// since a proxy may close the connection right after it is written.
+// Classification is independent of retries, channel disabling and billing.
 func ClassifyRelayOutcome(ctx context.Context, info *relaycommon.RelayInfo, apiErr *types.NewAPIError) Outcome {
 	if info == nil || info.PerformanceBusinessRejection {
 		return OutcomeIgnored
 	}
 	stream := info.StreamStatus.OutcomeSnapshot()
+	completedNormally := apiErr == nil
+	if info.StreamStatus != nil {
+		completedNormally = completedNormally &&
+			stream.Response == relaycommon.ResponseOutcomeCompleted &&
+			(stream.EndReason == relaycommon.StreamEndReasonEOF || stream.EndReason == relaycommon.StreamEndReasonDone) &&
+			!stream.HasErrors && info.StreamStatus.EndError == nil
+	}
+	if ctx != nil && ctx.Err() == context.Canceled && !completedNormally {
+		return OutcomeIgnored
+	}
 	if apiErr != nil && errors.Is(apiErr, context.Canceled) {
 		return OutcomeIgnored
 	}
@@ -34,26 +45,11 @@ func ClassifyRelayOutcome(ctx context.Context, info *relaycommon.RelayInfo, apiE
 		return classifyFailure(false, stream.ErrorCode, stream.ErrorType, stream.ErrorStatus)
 	}
 	if apiErr != nil {
-		// 只在出错时看客户端是否已离开。成功的非流式响应在 handler 里就写完了，客户端读完即断开，
-		// ctx 随之被取消——上游在这里一律判"忽略"，会把成功请求漏掉（本地联调实测非流式成功 0 条入库）。
-		// 错误响应由最外层 defer 写出、晚于采样，所以此刻 ctx 已取消只可能是客户端在拿到结果前就走了。
-		if errors.Is(apiErr, context.Canceled) || (ctx != nil && ctx.Err() == context.Canceled) {
-			return OutcomeIgnored
-		}
 		root := rootAPIError(apiErr)
 		local := root.GetErrorType() == types.ErrorTypeNewAPIError
-		return classifyFailure(local, string(root.GetErrorCode()), string(root.ToOpenAIError().Type), root.StatusCode)
+		return classifyFailure(local, string(root.GetErrorCode()), root.ToOpenAIError().Type, root.StatusCode)
 	}
-
-	if info.StreamStatus == nil {
-		return OutcomeSuccess
-	}
-	// 客户端中途离开会让读上游的流以 scanner_err 等结束，这不是渠道的错，不计样本；
-	// 已经收到 completed 终态的流不受影响（结果已完整给到，之后断开是正常读完）。
-	if ctx != nil && ctx.Err() == context.Canceled && stream.Response != relaycommon.ResponseOutcomeCompleted {
-		return OutcomeIgnored
-	}
-	deadlineExceeded := errors.Is(info.StreamStatus.EndError, context.DeadlineExceeded)
+	deadlineExceeded := info.StreamStatus != nil && errors.Is(info.StreamStatus.EndError, context.DeadlineExceeded)
 	if stream.Response == relaycommon.ResponseOutcomeCancelled || stream.EndReason == relaycommon.StreamEndReasonPingFail {
 		return OutcomeIgnored
 	}
@@ -83,7 +79,9 @@ func ClassifyRelayOutcome(ctx context.Context, info *relaycommon.RelayInfo, apiE
 	return OutcomeSuccess
 }
 
-// rootAPIError 顺着包装找到真正描述问题的那层错误，例如被本地重新包装成 invalid_request 的上游凭据错误。
+// rootAPIError follows host wrappers back to the error that describes what
+// actually happened, e.g. an upstream credential error re-wrapped as a local
+// invalid request.
 func rootAPIError(apiErr *types.NewAPIError) *types.NewAPIError {
 	for {
 		var inner *types.NewAPIError
@@ -108,7 +106,8 @@ func classifyFailure(local bool, code, errorType string, status int) Outcome {
 		}
 		return OutcomeFailure
 	}
-	// 具体错误码优先于宽泛的协议类型：有些上游把凭据失效也报成 invalid_request_error。
+	// Specific codes take precedence over broad protocol types, because
+	// providers also report invalid credentials as invalid_request_error.
 	for _, value := range []string{code, errorType} {
 		switch value {
 		case "invalid_api_key", "api_key_invalid", "api_key_expired", "api_key_service_blocked", "invalid_authentication",
