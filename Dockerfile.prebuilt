@@ -11,8 +11,9 @@
 # 前端两份：web/classic（本站在用的旧版界面，默认主题）和 web/（上游新版界面，7-20 起从 web/default 挪到 web 根目录）。
 # Go 两个都 embed，缺任何一个都编译不过。
 
-FROM golang:1.26.1-alpine@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039 AS builder
-ENV GO111MODULE=on CGO_ENABLED=0
+# Go 镜像跟上游 Dockerfile 的 builder2 保持一致（rc.51 的 go.mod 要求 1.26.10；镜像自带 GOTOOLCHAIN=local，版本低了直接编译失败）
+FROM golang:1.26.10-alpine@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS builder
+ENV GO111MODULE=on CGO_ENABLED=0 GOWORK=off
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -22,15 +23,16 @@ ENV GOEXPERIMENT=greenteagc
 WORKDIR /build
 
 ADD go.mod go.sum ./
-# relaykit 是用 replace 引用的本地子模块（上游 rc.23 起），go mod download 解析依赖图时需要它的 go.mod
+# relaykit（rc.23 起）和 tokenkit（rc.43 起）是用 replace 引用的本地子模块，go mod download 解析依赖图时需要它们的 go.mod
 ADD relaykit/go.mod ./relaykit/go.mod
+ADD tokenkit/go.mod ./tokenkit/go.mod
 RUN go mod download
 
 # 两份 dist 随构建上下文一并进入（不在 .dockerignore 中），故无需 --from 阶段
 COPY . .
 RUN test -f ./web/classic/dist/index.html || (echo "web/classic/dist 缺失：请先在本地构建并上传" && exit 1)
 RUN test -f ./web/dist/index.html || (echo "web/dist 缺失：请先在本地构建并上传" && exit 1)
-RUN go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'" -o new-api
+RUN go build -pgo="$(go list -m -f '{{.Dir}}' github.com/MoeForge/moejs)/default.pgo" -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'" -o new-api
 
 FROM debian:bookworm-slim@sha256:f06537653ac770703bc45b4b113475bd402f451e85223f0f2837acbf89ab020a
 
@@ -41,6 +43,7 @@ RUN apt-get update \
 
 COPY --from=builder /build/new-api /
 COPY --from=builder /build/web/classic/public/lottery /web/classic/public/lottery
+COPY LICENSE NOTICE THIRD-PARTY-LICENSES.md /licenses/
 EXPOSE 3000
 WORKDIR /data
 ENTRYPOINT ["/new-api"]
