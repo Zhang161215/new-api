@@ -40,6 +40,7 @@ import {
   showError,
   showSuccess,
   showWarning,
+  reportRejectedSaves,
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 
@@ -104,6 +105,7 @@ export default function SettingsPerformance(props) {
     setLoading(true);
     Promise.all(requestQueue)
       .then((res) => {
+        if (reportRejectedSaves(res)) return;
         if (requestQueue.length === 1) {
           if (res.includes(undefined)) return;
         } else if (requestQueue.length > 1) {
@@ -186,7 +188,11 @@ export default function SettingsPerformance(props) {
   }
 
   async function cleanupLogFiles() {
-    if (logCleanupValue == null || isNaN(logCleanupValue) || logCleanupValue < 1) {
+    if (
+      logCleanupValue == null ||
+      isNaN(logCleanupValue) ||
+      logCleanupValue < 1
+    ) {
       showError(t('请输入有效的数值'));
       return;
     }
@@ -474,24 +480,24 @@ export default function SettingsPerformance(props) {
                   >
                     &nbsp;
                   </Text>
-                <Popconfirm
-                  title={t('确认清理日志文件？')}
-                  content={
-                    logCleanupMode === 'by_count'
-                      ? t(
-                          '将只保留最近 {{value}} 个日志文件，其余将被删除。',
-                          { value: logCleanupValue },
-                        )
-                      : t('将删除 {{value}} 天前的日志文件。', {
-                          value: logCleanupValue,
-                        })
-                  }
-                  onConfirm={cleanupLogFiles}
-                >
-                  <Button type='danger' loading={logCleanupLoading}>
-                    {t('清理日志文件')}
-                  </Button>
-                </Popconfirm>
+                  <Popconfirm
+                    title={t('确认清理日志文件？')}
+                    content={
+                      logCleanupMode === 'by_count'
+                        ? t(
+                            '将只保留最近 {{value}} 个日志文件，其余将被删除。',
+                            { value: logCleanupValue },
+                          )
+                        : t('将删除 {{value}} 天前的日志文件。', {
+                            value: logCleanupValue,
+                          })
+                    }
+                    onConfirm={cleanupLogFiles}
+                  >
+                    <Button type='danger' loading={logCleanupLoading}>
+                      {t('清理日志文件')}
+                    </Button>
+                  </Popconfirm>
                 </div>
               </Col>
             </Row>

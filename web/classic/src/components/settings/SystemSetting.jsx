@@ -261,6 +261,7 @@ const SystemSetting = () => {
         });
         if (!res.data.success) {
           showError(res.data.message);
+          setLoading(false);
           return;
         }
       }
@@ -282,6 +283,11 @@ const SystemSetting = () => {
         errorResults.forEach((res) => {
           showError(res.data.message);
         });
+        // 本站：有设置被拒绝时不再接着提示「更新成功」，也不把未生效的值写进本地状态
+        if (errorResults.length > 0) {
+          setLoading(false);
+          return;
+        }
       }
 
       showSuccess(t('更新成功'));

@@ -19,6 +19,7 @@ import {
   showSuccess,
   showWarning,
   toBoolean,
+  reportRejectedSaves,
 } from '../../../helpers';
 
 export default function SettingsAffiliateRebate(props) {
@@ -50,6 +51,7 @@ export default function SettingsAffiliateRebate(props) {
     setLoading(true);
     Promise.all(requestQueue)
       .then((res) => {
+        if (reportRejectedSaves(res)) return;
         if (requestQueue.length === 1) {
           if (res.includes(undefined)) return;
         } else if (requestQueue.length > 1) {

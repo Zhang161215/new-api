@@ -25,6 +25,7 @@ import {
   showError,
   showSuccess,
   showWarning,
+  reportRejectedSaves,
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 
@@ -57,6 +58,7 @@ export default function SettingsSensitiveWords(props) {
     setLoading(true);
     Promise.all(requestQueue)
       .then((res) => {
+        if (reportRejectedSaves(res)) return;
         if (requestQueue.length === 1) {
           if (res.includes(undefined)) return;
         } else if (requestQueue.length > 1) {

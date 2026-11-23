@@ -52,6 +52,7 @@ import {
   showWarning,
   toBoolean,
   verifyJSON,
+  reportRejectedSaves,
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 import {
@@ -841,6 +842,7 @@ export default function SettingsChannelAffinity(props) {
     setLoading(true);
     Promise.all(requestQueue)
       .then((res) => {
+        if (reportRejectedSaves(res)) return;
         if (requestQueue.length === 1) {
           if (res.includes(undefined)) return;
         } else if (requestQueue.length > 1) {

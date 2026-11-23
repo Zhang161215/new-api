@@ -25,12 +25,16 @@ import {
   showError,
   showSuccess,
   showWarning,
+  reportRejectedSaves,
 } from '../../../helpers';
 import { getQuotaPerUnit } from '../../../helpers/render';
 import { useTranslation } from 'react-i18next';
 
 // 后端存的是 quota，界面按金额展示与输入，这两个 key 需要来回换算。
-const AMOUNT_FIELDS = ['checkin_setting.min_quota', 'checkin_setting.max_quota'];
+const AMOUNT_FIELDS = [
+  'checkin_setting.min_quota',
+  'checkin_setting.max_quota',
+];
 // 多选星期，值是数组，不能走 Number() 转换，也不能用 !== 直接比较。
 const WEEKDAYS_FIELD = 'checkin_setting.double_weekdays';
 
@@ -110,6 +114,7 @@ export default function SettingsCheckin(props) {
     setLoading(true);
     Promise.all(requestQueue)
       .then((res) => {
+        if (reportRejectedSaves(res)) return;
         if (requestQueue.length === 1) {
           if (res.includes(undefined)) return;
         } else if (requestQueue.length > 1) {
@@ -141,7 +146,9 @@ export default function SettingsCheckin(props) {
         try {
           const parsed = JSON.parse(props.options[key] || '[]');
           if (Array.isArray(parsed)) {
-            arr = parsed.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6);
+            arr = parsed
+              .map(Number)
+              .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6);
           }
         } catch (e) {
           arr = [];

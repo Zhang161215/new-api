@@ -34,6 +34,7 @@ import {
   showSuccess,
   showWarning,
   verifyJSON,
+  reportRejectedSaves,
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 
@@ -74,6 +75,7 @@ export default function ModelRatioSettings(props) {
           setLoading(true);
           Promise.all(requestQueue)
             .then((res) => {
+              if (reportRejectedSaves(res)) return;
               if (res.includes(undefined)) {
                 return showError(
                   requestQueue.length > 1
