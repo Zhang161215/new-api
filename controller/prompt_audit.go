@@ -129,8 +129,8 @@ func TestPromptAuditNotify(c *gin.Context) {
 
 	targets := cfg.NotifyEmailList()
 	if len(targets) == 0 {
-		root := model.GetRootUser()
-		if root == nil || (root.Email == "" && root.GetSetting().NotificationEmail == "") {
+		root, err := service.GetRootUser()
+		if err != nil || (root.Email == "" && root.GetSetting().NotificationEmail == "") {
 			common.ApiErrorMsg(c, "未填写告警邮箱，且 root 用户也没有可用的通知邮箱")
 			return
 		}

@@ -116,19 +116,16 @@ func GetChannel(
 	if err != nil {
 		return nil, err
 	}
-	// 本站定制（A8）：按原名找不到渠道时，用规范化后的模型名再找一次（如 gemini thinking 预算后缀）
-	matchedModel := model
-	if len(abilities) == 0 {
-		normalizedModel := ratio_setting.FormatMatchingModelName(model)
-		if normalizedModel != "" && normalizedModel != model {
-			err = DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, normalizedModel, true).Order("priority DESC, weight DESC").Find(&abilities).Error
-			if err != nil {
-				return nil, err
-			}
-			matchedModel = normalizedModel
+	abilities = filterAbilitiesByConstraints(abilities, model, filters)
+	// Like the memory cache, retry with the routing name (for example without
+	// @ modifiers) when no channel serves the exact name.
+	if normalized := ratio_setting.RoutingMatchModelName(model); len(abilities) == 0 && normalized != "" && normalized != model {
+		err = DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, normalized, true).Order("priority DESC, weight DESC").Find(&abilities).Error
+		if err != nil {
+			return nil, err
 		}
+		abilities = filterAbilitiesByConstraints(abilities, model, filters)
 	}
-	abilities = filterAbilitiesByConstraints(abilities, matchedModel, filters)
 	if len(abilities) > 0 {
 		priorities := make([]int64, 0)
 		seen := make(map[int64]bool)

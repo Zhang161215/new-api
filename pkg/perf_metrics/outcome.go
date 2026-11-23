@@ -20,14 +20,16 @@ const (
 // ClassifyRelayOutcome 判断一次已结束的请求算不算健康样本。
 // 业务拒绝、客户端取消、用户侧参数/额度错误不进分母；与重试、禁用渠道、计费无关。
 // 移植自上游，流式请求结合协议终态（ResponseOutcome）判断：没等到终态就 EOF 的流算截断失败。
+// 本站：不采用 rc.47 的「ctx 已取消且不是正常结束的流一律忽略」——非流式成功响应写完后客户端断开，
+// ctx 也会被取消，按上游会把成功样本全丢掉；ctx 取消只在出错或流未收到 completed 时才算忽略（见下）。
 func ClassifyRelayOutcome(ctx context.Context, info *relaycommon.RelayInfo, apiErr *types.NewAPIError) Outcome {
 	if info == nil || info.PerformanceBusinessRejection {
 		return OutcomeIgnored
 	}
+	stream := info.StreamStatus.OutcomeSnapshot()
 	if apiErr != nil && errors.Is(apiErr, context.Canceled) {
 		return OutcomeIgnored
 	}
-	stream := info.StreamStatus.OutcomeSnapshot()
 	if stream.Response == relaycommon.ResponseOutcomeFailed {
 		return classifyFailure(false, stream.ErrorCode, stream.ErrorType, stream.ErrorStatus)
 	}

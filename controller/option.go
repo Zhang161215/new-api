@@ -86,7 +86,7 @@ func GetOptions(c *gin.Context) {
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
 		// 本站保留 classic 主题，theme.frontend 仍要返回给设置页（上游删 classic 后把它跳过了）
-		if k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" {
+		if k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" || k == "ResendKeyConfigured" {
 			continue
 		}
 		value := common.Interface2String(v)
@@ -106,6 +106,9 @@ func GetOptions(c *gin.Context) {
 			optionValues[k] = value
 		}
 	}
+	options = append(options, &model.Option{
+		Key: "ResendKeyConfigured", Value: strconv.FormatBool(strings.TrimSpace(common.OptionMap["ResendApiKey"]) != ""),
+	})
 	common.OptionMapRWMutex.Unlock()
 	// Display the same effective expressions used by pricing and settlement,
 	// including built-in defaults absent from persisted administrator options.

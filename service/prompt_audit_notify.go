@@ -11,11 +11,34 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
 
 // NotifyTypePromptAudit 用于站内通知频率限制的类型标识
 const NotifyTypePromptAudit = "prompt_audit"
+
+// NotifyRootUser 按 root 用户配置的通知方式（邮件/Webhook/Bark/Gotify）发一条通知。
+// 本站：上游 rc.47 删了这个函数和 model.GetRootUser（渠道通知改成按管理员开关分发），审核告警/自动封禁/审核失败仍只发 root。
+func NotifyRootUser(t string, subject string, content string) {
+	root, err := GetRootUser()
+	if err != nil {
+		common.SysLog(common.LogText("failed to load root user for notification: %s", err.Error()))
+		return
+	}
+	if err := NotifyUser(root.Id, root.Email, root.GetSetting(), dto.NewNotify(t, subject, content, nil)); err != nil {
+		common.SysLog(common.LogText("failed to notify root user: %s", err.Error()))
+	}
+}
+
+// GetRootUser 读 root 用户（审核告警的默认收件人）。上游 rc.47 删了 model.GetRootUser。
+func GetRootUser() (*model.User, error) {
+	var root model.User
+	if err := model.DB.Where("role = ?", common.RoleRootUser).First(&root).Error; err != nil {
+		return nil, err
+	}
+	return &root, nil
+}
 
 // PromptAuditNotifyEvent 一次命中告警所需的信息快照
 type PromptAuditNotifyEvent struct {

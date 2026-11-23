@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 )
 
@@ -53,7 +54,7 @@ func ValidateAccountEmail(email string) (string, error) {
 	return email, nil
 }
 
-func StartEmailBinding(identity AuthIdentity, authorization *model.AuthFlowAuthorization, email string) (*EmailBindingData, error) {
+func StartEmailBinding(identity AuthIdentity, authorization *model.AuthFlowAuthorization, email string, lang string) (*EmailBindingData, error) {
 	email, err := ValidateAccountEmail(email)
 	if err != nil {
 		return nil, err
@@ -80,19 +81,19 @@ func StartEmailBinding(identity AuthIdentity, authorization *model.AuthFlowAutho
 	if err != nil {
 		return nil, err
 	}
-	if err := sendEmailBindingCodes(state, codes); err != nil {
+	if err := sendEmailBindingCodes(lang, state, codes); err != nil {
 		// A partially delivered pair must not leave a usable change request.
 		_, _ = model.ConsumeAuthFlow(token, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeEmailBinding, UserId: identity.UserID, SessionId: identity.SessionID})
 		return nil, ErrEmailBindingDelivery
 	}
 	data := emailBindingData(token, flow, &state)
 	if state.CurrentEmail != "" && !requireOld {
-		data.NotificationWarning = NotifyAccountSecurityChange(state.CurrentEmail, "A change of your email address was requested") != nil
+		data.NotificationWarning = NotifyAccountSecurityChange(lang, state.CurrentEmail, i18n.MsgSecurityEventEmailChangeRequested) != nil
 	}
 	return data, nil
 }
 
-func ResendAccountEmailBinding(identity AuthIdentity, token string) (*EmailBindingData, error) {
+func ResendAccountEmailBinding(identity AuthIdentity, token string, lang string) (*EmailBindingData, error) {
 	_, state, err := model.GetEmailBinding(identity, token)
 	if err != nil {
 		return nil, err
@@ -118,7 +119,7 @@ func ResendAccountEmailBinding(identity AuthIdentity, token string) (*EmailBindi
 	if err != nil {
 		return nil, err
 	}
-	if err := sendEmailBindingCodes(*state, codes); err != nil {
+	if err := sendEmailBindingCodes(lang, *state, codes); err != nil {
 		_, _ = model.ConsumeAuthFlow(token, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeEmailBinding, UserId: identity.UserID, SessionId: identity.SessionID})
 		return nil, ErrEmailBindingDelivery
 	}
@@ -177,21 +178,21 @@ func generateEmailBindingCodes(requireOld bool) (emailBindingCodes, error) {
 	return codes, nil
 }
 
-func sendEmailBindingCodes(state model.EmailBindingState, codes emailBindingCodes) error {
-	// 本站：上游是英文模板，改成和注册验证邮件一致的中文
-	subject := fmt.Sprintf("%s邮箱验证邮件", common.SystemName)
-	content := fmt.Sprintf("<p>您好，你正在把此邮箱绑定到%s账户。</p>"+
-		"<p>您的验证码为: <strong>%s</strong></p>"+
-		"<p>验证码 10 分钟内有效。如果不是本人操作，请勿把验证码告诉任何人。</p>",
-		common.SystemName, html.EscapeString(codes.New))
+func sendEmailBindingCodes(lang string, state model.EmailBindingState, codes emailBindingCodes) error {
+	subject := i18n.Translate(lang, i18n.MsgEmailBindingSubject, map[string]any{"SystemName": common.SystemName})
+	minutes := map[string]any{"Minutes": int(model.EmailBindingTTL / time.Minute)}
+	content := fmt.Sprintf("<p>%s</p><p>%s</p><p>%s</p>",
+		i18n.Translate(lang, i18n.MsgEmailBindingNewIntro),
+		i18n.Translate(lang, i18n.MsgEmailBindingCode, map[string]any{"Code": html.EscapeString(codes.New)}),
+		i18n.Translate(lang, i18n.MsgEmailBindingNewValidity, minutes))
 	if err := common.SendEmail(subject, state.Email, content); err != nil {
 		return err
 	}
 	if codes.Old != "" {
-		content = fmt.Sprintf("<p>您好，有人申请把%s账户的邮箱从当前地址更换为新地址。</p>"+
-			"<p>确认更换的验证码为: <strong>%s</strong></p>"+
-			"<p>验证码 10 分钟内有效。如果不是本人操作，请勿把验证码告诉任何人，并尽快修改密码、联系管理员。</p>",
-			common.SystemName, html.EscapeString(codes.Old))
+		content = fmt.Sprintf("<p>%s</p><p>%s</p><p>%s</p>",
+			i18n.Translate(lang, i18n.MsgEmailBindingOldIntro),
+			i18n.Translate(lang, i18n.MsgEmailBindingCode, map[string]any{"Code": html.EscapeString(codes.Old)}),
+			i18n.Translate(lang, i18n.MsgEmailBindingOldValidity, minutes))
 		return common.SendEmail(subject, state.CurrentEmail, content)
 	}
 	return nil

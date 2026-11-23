@@ -91,14 +91,24 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			}
 			_ = common.UnmarshalJsonStr(data, &peek)
 			streamResponse.Type = peek.Type
-			sendResponsesStreamData(c, streamResponse, data)
+			// 本站：解析失败的块照样转发给客户端（上游 rc.47 删了 sendResponsesStreamData，直接写）
+			if data != "" {
+				_ = helper.ResponseChunkData(c, streamResponse, data)
+			}
 			return
 		}
 		if streamResponse.Response != nil {
 			data = string(rewriteSGLangResponsesCreatedAt(info, []byte(data), "response.created_at", streamResponse.Response.CreatedAt))
 		}
-		sendResponsesStreamData(c, streamResponse, data)
 		accumulator.Observe(&streamResponse, common.StringToByteSlice(data))
+		if err := helper.ResponseChunkData(c, streamResponse, data); err != nil {
+			sr.Stop(err)
+			return
+		}
+		if (streamResponse.Type == "response.completed" || streamResponse.Type == "response.done") &&
+			streamResponse.Response != nil && info.StreamStatus.ResponseOutcome() == string(relaycommon.ResponseOutcomeCompleted) {
+			sr.Done()
+		}
 	})
 
 	common.SetContextKey(c, constant.ContextKeyResponseStreamStatus, info.StreamStatus)
