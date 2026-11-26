@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,11 +24,15 @@ func abortWithOpenAiMessage(c *gin.Context, statusCode int, message string, code
 		Message:    message,
 		StatusCode: statusCode,
 	}) {
+		// 本站：带上 category / retryable，与转发链路的错误同一套字段（service/relay_error_contract.go）
+		contract := service.ClassifyLocalError(statusCode, types.ErrorCode(codeStr), message)
 		c.JSON(statusCode, gin.H{
 			"error": gin.H{
-				"message": common.MessageWithRequestId(message, c.GetString(common.RequestIdKey)),
-				"type":    "new_api_error",
-				"code":    codeStr,
+				"message":   common.MessageWithRequestId(message, c.GetString(common.RequestIdKey)),
+				"type":      "new_api_error",
+				"code":      codeStr,
+				"category":  contract.Category,
+				"retryable": contract.Retryable,
 			},
 		})
 	}

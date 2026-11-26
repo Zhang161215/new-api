@@ -338,7 +338,7 @@ func TestDistributeHidesTaskPluginDetailsButLogsDiagnostics(t *testing.T) {
 				require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
 				requestID := recorder.Header().Get(common.RequestIdKey)
 				require.NotEmpty(t, requestID)
-				assert.JSONEq(t, fmt.Sprintf(`{"error":{"message":%q,"type":"new_api_error","code":"model_not_found"}}`,
+				assert.JSONEq(t, fmt.Sprintf(`{"error":{"message":%q,"type":"new_api_error","code":"model_not_found","category":"no_available_channel","retryable":true}}`,
 					locale.message+" (request id: "+requestID+")"), recorder.Body.String())
 				assert.NotContains(t, recorder.Body.String(), "disable or override")
 				for _, key := range keys {
