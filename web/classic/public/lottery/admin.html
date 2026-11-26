@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light" />
     <meta name="theme-color" content="#f4f6fa" />
     <title>抽奖管理</title>
-    <link rel="stylesheet" href="./admin.css?v=a24" />
+    <link rel="stylesheet" href="./admin.css?v=a25" />
   </head>
   <body class="lz-admin" data-page="admin">
     <aside class="lz-ad-side">
@@ -289,6 +289,15 @@
                   </label>
                 </div>
               </div>
+              <div class="lz-ad-rule-limit">
+                <div class="lz-ad-rule-fields">
+                  <label>
+                    <span>防刷：同一用户多少小时内只按最高一笔送（0 = 不限）</span>
+                    <span class="lz-ad-rule-input"><input id="rule-window-hours" type="number" min="0" max="720" step="1" inputmode="numeric" /><em>小时</em></span>
+                  </label>
+                </div>
+                <p class="lz-ad-note">窗口内靠支付拿到的次数合计，不超过窗口内单笔能拿到的最高一档：连续充小额只送第一笔，之后充更多只补差额。三种发放方式都生效，例如填 24 就是每 24 小时算一轮。</p>
+              </div>
             </div>
             <aside class="lz-ad-rule-preview" aria-live="polite">
               <h3>试算</h3>
@@ -301,7 +310,7 @@
               </label>
             </aside>
           </div>
-          <p class="lz-ad-note">钱包充值、订阅购买、后台补单都按这条规则，每笔单独算，不跨单累计。美元支付按站点汇率 <span id="rule-usd-rate">7.3</span> 折成人民币。改规则只影响之后的支付，已发的次数不变。</p>
+          <p class="lz-ad-note">钱包充值、订阅购买、后台补单都按这条规则，每笔单独算、不跨单累计（设了防刷时长时，窗口内按最高一笔算）。美元支付按站点汇率 <span id="rule-usd-rate">7.3</span> 折成人民币。改规则只影响之后的支付，已发的次数不变。</p>
           <div class="lz-ad-rule-actions">
             <button type="button" class="lz-ad-btn" id="rule-save" disabled>保存规则</button>
             <button type="button" class="lz-ad-ghost" id="rule-reset" disabled>撤销修改</button>
@@ -591,6 +600,6 @@
       </div>
     </div>
 
-    <script src="./lottery.js?v=w82"></script>
+    <script src="./lottery.js?v=w83"></script>
   </body>
 </html>

@@ -416,6 +416,7 @@ function formatMoney(n) {
 const GRANT_MODES = ['per_payment', 'tiers', 'per_amount'];
 const RULE_MAX_TICKETS = 100;
 const RULE_MAX_TIERS = 10;
+const RULE_MAX_WINDOW_HOURS = 720;
 const RULE_SAMPLE_AMOUNTS = [6, 10, 30, 50, 100, 200, 500, 1000];
 
 function amountCents(value) {
@@ -433,6 +434,17 @@ function ruleTicketInt(value, fallback) {
   const n = Math.trunc(Number(value));
   if (!Number.isFinite(n) || n < 1) return fallback;
   return Math.min(RULE_MAX_TICKETS, n);
+}
+
+function ruleWindowInt(value) {
+  const n = Math.trunc(Number(value));
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(RULE_MAX_WINDOW_HOURS, n);
+}
+
+// 防刷窗口是从每笔到账往前滚动算的，一律写「N 小时」，避免被理解成自然日。
+function windowText(hours) {
+  return `${hours} 小时`;
 }
 
 // 接受接口返回的 snake_case 或本地草稿的 camelCase，兜成完整规则。
@@ -461,6 +473,7 @@ function normalizeGrantRule(raw, fallbackPer = 1) {
     stepAmount: step > 0 ? step : 10,
     stepTickets: ruleTicketInt(pick('step_tickets', 'stepTickets'), 1),
     maxTickets: ruleTicketInt(pick('max_tickets_per_payment', 'maxTickets'), 20),
+    windowHours: ruleWindowInt(pick('grant_window_hours', 'windowHours')),
   };
 }
 
@@ -473,6 +486,7 @@ function grantRulePayload(rule) {
     step_amount: rule.stepAmount,
     step_tickets: rule.stepTickets,
     max_tickets_per_payment: rule.maxTickets,
+    grant_window_hours: rule.windowHours,
   };
 }
 
@@ -497,6 +511,10 @@ function ticketsForAmount(rule, amount) {
 // 草稿校验：返回第一处错误 { field, message }，没有错误返回 null。field 对应输入框 id。
 function validateGrantDraft(draft) {
   const ticketOk = (n) => Number.isInteger(n) && n >= 1 && n <= RULE_MAX_TICKETS;
+  const w = draft.windowHours;
+  if (!Number.isInteger(w) || w < 0 || w > RULE_MAX_WINDOW_HOURS) {
+    return { field: 'rule-window-hours', message: `防刷时长要是 0–${RULE_MAX_WINDOW_HOURS} 的整数小时，不限就填 0` };
+  }
   if (draft.mode === 'per_payment') {
     if (!ticketOk(draft.ticketsPerPayment)) return { field: 'rule-per-tickets', message: `每笔送的次数要是 1–${RULE_MAX_TICKETS} 的整数` };
     if (!Number.isFinite(draft.minPayAmount) || draft.minPayAmount < 0) return { field: 'rule-min-amount', message: '起送金额不能为负数，不限就填 0' };
@@ -523,6 +541,12 @@ function validateGrantDraft(draft) {
 }
 
 function grantRuleSummary(rule) {
+  const base = grantRuleBaseSummary(rule);
+  if (!(rule.windowHours > 0)) return base;
+  return `${base}；同一用户 ${windowText(rule.windowHours)}内支付送的次数合计不超过单笔最高一档（连续小额只送一次，之后充更多补差额）`;
+}
+
+function grantRuleBaseSummary(rule) {
   if (rule.mode === 'tiers') {
     if (!rule.tiers.length) return '还没有设置金额档位';
     const parts = rule.tiers.map((t, i) => `${i ? '满' : '单笔实付满'} ${formatYuan(t.min)} 送 ${t.tickets} 次`);
@@ -536,6 +560,11 @@ function grantRuleSummary(rule) {
 }
 
 function grantRuleShort(rule) {
+  const base = grantRuleBaseShort(rule);
+  return rule.windowHours > 0 ? `${base} · ${windowText(rule.windowHours)}内按最高一笔送` : base;
+}
+
+function grantRuleBaseShort(rule) {
   if (rule.mode === 'tiers' && rule.tiers.length > 2) {
     const first = rule.tiers[0];
     const last = rule.tiers[rule.tiers.length - 1];
@@ -4635,6 +4664,7 @@ const RULE_FIELD_KEYS = {
   'rule-step-amount': 'stepAmount',
   'rule-step-tickets': 'stepTickets',
   'rule-step-cap': 'maxTickets',
+  'rule-window-hours': 'windowHours',
 };
 
 function cloneRule(rule) {
@@ -4649,6 +4679,11 @@ function readRuleNumber(el) {
 // 只比较当前模式真正生效的字段，切到别的模式看一眼再切回来不算改动。
 function effectiveRuleKey(rule) {
   if (!rule) return '';
+  const w = Number.isFinite(rule.windowHours) ? rule.windowHours : 'x';
+  return `${effectiveModeKey(rule)}|w${w}`;
+}
+
+function effectiveModeKey(rule) {
   if (rule.mode === 'tiers') {
     const tiers = rule.tiers.map((t) => `${amountCents(t.min)}:${t.tickets}`).sort();
     return `tiers|${tiers.join(',')}`;

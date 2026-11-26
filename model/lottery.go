@@ -347,12 +347,44 @@ func GrantLotteryTicketsForSuccessfulTopUp(tx *gorm.DB, userId int, tradeNo stri
 		if n <= 0 {
 			return nil
 		}
+		if hours := cfg.GrantWindowHours; hours > 0 {
+			n, err = lotteryTicketsAfterGrantWindow(db, userId, tradeNo, n, hours)
+			if err != nil || n <= 0 {
+				return err
+			}
+		}
 		return addLotteryTickets(db, userId, n, LotteryReasonPaymentGrant, LotteryRefTopUp, tradeNo)
 	}
 	if tx != nil {
 		return run(tx)
 	}
 	return DB.Transaction(run)
+}
+
+// lotteryTicketsAfterGrantWindow 扣掉防刷窗口内已经靠支付发过的次数。
+// 这样窗口内支付送的合计 = 窗口内单笔应发的最高值：连续充小额只送第一笔，之后充更多只补差额。
+// 先锁钱包，同一用户的并发回调排队算，不会各自按「还没发过」多发。
+func lotteryTicketsAfterGrantWindow(db *gorm.DB, userId int, tradeNo string, n, hours int) (int, error) {
+	if _, err := getOrCreateLotteryWallet(db, userId); err != nil {
+		return 0, err
+	}
+	var done int64
+	if err := db.Model(&LotteryTicketLog{}).
+		Where("reason = ? AND ref_type = ? AND ref_id = ?", LotteryReasonPaymentGrant, LotteryRefTopUp, tradeNo).
+		Count(&done).Error; err != nil {
+		return 0, err
+	}
+	if done > 0 {
+		return 0, nil // 同一笔重复回调
+	}
+	var granted int64
+	since := time.Now().Unix() - int64(hours)*3600
+	if err := db.Model(&LotteryTicketLog{}).
+		Where("user_id = ? AND reason = ? AND created_at > ?", userId, LotteryReasonPaymentGrant, since).
+		Select("COALESCE(SUM(delta), 0)").Scan(&granted).Error; err != nil {
+		return 0, err
+	}
+	return n - int(granted), nil
 }
 
 func AdminGrantLotteryTickets(userId, n int, refId string) error {

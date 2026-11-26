@@ -1389,3 +1389,11 @@ body.lz-admin .lz-dialog h2 {
     width: 100%;
   }
 }
+
+.lz-ad-rule-limit {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--ad-line, rgba(0, 0, 0, 0.12));
+}

@@ -1,6 +1,8 @@
 package model
 
 import (
+	"time"
+
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -72,6 +74,8 @@ func TestLotteryGrantRuleValidate(t *testing.T) {
 		{GrantMode: LotteryGrantModeTiers, AmountTiers: []LotteryAmountTier{{MinAmount: 10, Tickets: 1}, {MinAmount: 10.001, Tickets: 2}}},
 		{GrantMode: LotteryGrantModePerAmount, StepAmount: 0, StepTickets: 1, MaxTicketsPerPayment: 10},
 		{GrantMode: LotteryGrantModePerAmount, StepAmount: 10, StepTickets: 1, MaxTicketsPerPayment: 0},
+		{GrantMode: LotteryGrantModePerPayment, TicketsPerPayment: 1, GrantWindowHours: -1},
+		{GrantMode: LotteryGrantModePerPayment, TicketsPerPayment: 1, GrantWindowHours: 721},
 	}
 	for i, rule := range bad {
 		r := rule
@@ -138,13 +142,14 @@ func TestLotteryConfigLegacyRowKeepsPerPayment(t *testing.T) {
 	setupLotteryTables(t)
 	require.NoError(t, EnsureLotteryDefaults())
 	// 模拟旧版本建的行：新列全是空值，只有 tickets_per_payment。
-	require.NoError(t, DB.Exec("UPDATE lottery_configs SET grant_mode = NULL, min_pay_amount = NULL, amount_tiers = NULL, step_amount = NULL, step_tickets = NULL, max_tickets_per_payment = NULL, tickets_per_payment = 3 WHERE id = 1").Error)
+	require.NoError(t, DB.Exec("UPDATE lottery_configs SET grant_mode = NULL, min_pay_amount = NULL, amount_tiers = NULL, step_amount = NULL, step_tickets = NULL, max_tickets_per_payment = NULL, grant_window_hours = NULL, tickets_per_payment = 3 WHERE id = 1").Error)
 
 	cfg, err := GetLotteryConfig()
 	require.NoError(t, err)
 	require.Equal(t, LotteryGrantModePerPayment, cfg.GrantMode)
 	require.Equal(t, 3, cfg.TicketsPerPayment)
 	require.Equal(t, 3, cfg.TicketsForAmount(1))
+	require.Equal(t, 0, cfg.GrantWindowHours, "旧行没有防刷窗口，等于不限")
 
 	// 只改开关不动规则。
 	cfg, err = SaveLotteryConfig(false, true, nil)
@@ -160,4 +165,59 @@ func TestLotteryConfigLegacyRowKeepsPerPayment(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, again.Enabled)
 	require.Equal(t, LotteryGrantModePerPayment, again.GrantMode)
+}
+
+// 防刷窗口：同一用户窗口内靠支付拿到的次数合计不超过单笔最高一档。
+func TestGrantTicketsWindowLimitsRepeatedSmallTopUps(t *testing.T) {
+	setupLotteryTables(t)
+	require.NoError(t, EnsureLotteryDefaults())
+	tiers := []LotteryAmountTier{{MinAmount: 10, Tickets: 1}, {MinAmount: 50, Tickets: 2}, {MinAmount: 100, Tickets: 3}, {MinAmount: 200, Tickets: 5}}
+	_, err := SaveLotteryConfig(true, true, &LotteryGrantRule{GrantMode: LotteryGrantModeTiers, AmountTiers: tiers, GrantWindowHours: 24})
+	require.NoError(t, err)
+	cfg, err := GetLotteryConfig()
+	require.NoError(t, err)
+	require.Equal(t, 24, cfg.GrantWindowHours)
+
+	u := &User{Username: "lottery-window", Password: "x", Status: common.UserStatusEnabled, Role: common.RoleCommonUser, AffCode: "lw01"}
+	other := &User{Username: "lottery-window-2", Password: "x", Status: common.UserStatusEnabled, Role: common.RoleCommonUser, AffCode: "lw02"}
+	require.NoError(t, DB.Create(u).Error)
+	require.NoError(t, DB.Create(other).Error)
+	t.Cleanup(func() { DB.Unscoped().Where("id IN ?", []int{u.Id, other.Id}).Delete(&User{}) })
+	tickets := func(id int) int {
+		w, err := GetLotteryWallet(id)
+		require.NoError(t, err)
+		return w.Tickets
+	}
+	grant := func(id int, trade string, money float64) {
+		require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, id, trade, money, "alipay"))
+	}
+
+	grant(u.Id, "W-1", 10)
+	grant(u.Id, "W-2", 10)
+	grant(u.Id, "W-3", 10)
+	require.Equal(t, 1, tickets(u.Id), "连续充 ¥10 只送第一笔")
+	grant(u.Id, "W-4", 200)
+	require.Equal(t, 5, tickets(u.Id), "之后充 ¥200 补差额到 5 次")
+	grant(u.Id, "W-4", 200)
+	grant(u.Id, "W-5", 100)
+	require.Equal(t, 5, tickets(u.Id), "重复回调、窗口内更小的单都不再送")
+	grant(other.Id, "W-O", 10)
+	require.Equal(t, 1, tickets(other.Id), "按用户分开算")
+
+	var logs []LotteryTicketLog
+	require.NoError(t, DB.Where("user_id = ?", u.Id).Order("id").Find(&logs).Error)
+	require.Len(t, logs, 2, "补不出次数的单不记流水")
+	require.Equal(t, 4, logs[1].Delta)
+
+	// 窗口过去之后重新按单笔算。
+	require.NoError(t, DB.Model(&LotteryTicketLog{}).Where("user_id = ?", u.Id).Update("created_at", time.Now().Unix()-25*3600).Error)
+	grant(u.Id, "W-6", 10)
+	require.Equal(t, 6, tickets(u.Id))
+
+	// 关掉限制（0）恢复每笔都送。
+	_, err = SaveLotteryConfig(true, true, &LotteryGrantRule{GrantMode: LotteryGrantModeTiers, AmountTiers: tiers})
+	require.NoError(t, err)
+	grant(u.Id, "W-7", 10)
+	grant(u.Id, "W-8", 10)
+	require.Equal(t, 8, tickets(u.Id))
 }

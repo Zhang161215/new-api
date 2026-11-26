@@ -28,6 +28,8 @@ const (
 	lotteryDefaultPerAmountCap   = 20
 	lotteryDefaultPerAmountStep  = 10.0
 	lotteryDefaultPerAmountGrant = 1
+	// lotteryMaxGrantWindowHours 防刷窗口最长 30 天。
+	lotteryMaxGrantWindowHours = 720
 )
 
 type LotteryAmountTier struct {
@@ -45,6 +47,9 @@ type LotteryGrantRule struct {
 	StepAmount           float64             `json:"step_amount"`
 	StepTickets          int                 `json:"step_tickets"`
 	MaxTicketsPerPayment int                 `json:"max_tickets_per_payment"`
+	// GrantWindowHours 防刷窗口（小时，0 = 不限）：同一用户在窗口内靠支付拿到的次数合计，
+	// 不超过窗口内单笔能拿到的最高一档。连续充小额只送一次；之后充更多只补差额。对所有发放方式生效。
+	GrantWindowHours int `json:"grant_window_hours"`
 }
 
 func lotteryAmountCents(v float64) int64 {
@@ -83,6 +88,7 @@ func (r *LotteryGrantRule) normalize() {
 	}
 	r.StepTickets = clampLotteryTickets(r.StepTickets, lotteryDefaultPerAmountGrant)
 	r.MaxTicketsPerPayment = clampLotteryTickets(r.MaxTicketsPerPayment, lotteryDefaultPerAmountCap)
+	r.GrantWindowHours = min(max(r.GrantWindowHours, 0), lotteryMaxGrantWindowHours)
 
 	seen := make(map[int64]bool, len(r.AmountTiers))
 	tiers := make([]LotteryAmountTier, 0, len(r.AmountTiers))
@@ -145,6 +151,9 @@ func (r *LotteryGrantRule) Validate() error {
 		}
 	default:
 		return errors.New("未知的发放方式")
+	}
+	if r.GrantWindowHours < 0 || r.GrantWindowHours > lotteryMaxGrantWindowHours {
+		return fmt.Errorf("限制时长要在 0–%d 小时之间", lotteryMaxGrantWindowHours)
 	}
 	r.GrantMode = mode
 	r.normalize()
