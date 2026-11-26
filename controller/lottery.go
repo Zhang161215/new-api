@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -199,6 +200,7 @@ func GetLottery(c *gin.Context) {
 		"soldOut":             soldOut,
 		"tickets_per_payment": cfg.TicketsPerPayment,
 		"ticketsPerPayment":   cfg.TicketsPerPayment,
+		"grant_rule":          cfg.LotteryGrantRule,
 		"logged_in":           false,
 		"tickets":             0,
 		"payments":            0,
@@ -372,17 +374,20 @@ func GetLotteryAdminOverview(c *gin.Context) {
 		items = append(items, row)
 	}
 	common.ApiSuccess(c, gin.H{
-		"overview": overview,
-		"config":   cfg,
-		"prizes":   items,
+		"overview":          overview,
+		"config":            cfg,
+		"prizes":            items,
+		"usd_exchange_rate": operation_setting.USDExchangeRate,
 	})
 }
 
 func UpdateLotteryAdminConfig(c *gin.Context) {
 	var req struct {
-		Enabled           *bool `json:"enabled"`
-		BroadcastEnabled  *bool `json:"broadcast_enabled"`
-		TicketsPerPayment *int  `json:"tickets_per_payment"`
+		Enabled          *bool                   `json:"enabled"`
+		BroadcastEnabled *bool                   `json:"broadcast_enabled"`
+		Rule             *model.LotteryGrantRule `json:"rule"`
+		// 旧版管理页只传按笔次数：保持当前发放方式，只改按笔次数。
+		TicketsPerPayment *int `json:"tickets_per_payment"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ApiErrorMsg(c, "参数错误")
@@ -395,17 +400,19 @@ func UpdateLotteryAdminConfig(c *gin.Context) {
 	}
 	enabled := cfg.Enabled
 	broadcast := cfg.BroadcastEnabled
-	per := cfg.TicketsPerPayment
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
 	if req.BroadcastEnabled != nil {
 		broadcast = *req.BroadcastEnabled
 	}
-	if req.TicketsPerPayment != nil {
-		per = *req.TicketsPerPayment
+	rule := req.Rule
+	if rule == nil && req.TicketsPerPayment != nil {
+		legacy := cfg.LotteryGrantRule
+		legacy.TicketsPerPayment = *req.TicketsPerPayment
+		rule = &legacy
 	}
-	cfg, err = model.SaveLotteryConfig(enabled, per, broadcast)
+	cfg, err = model.SaveLotteryConfig(enabled, broadcast, rule)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -684,6 +691,9 @@ func AdminGrantLotteryTickets(c *gin.Context) {
 		UserId    int  `json:"user_id"`
 		Tickets   int  `json:"tickets"`
 		AsPayment bool `json:"as_payment"`
+		// as_payment 时按这笔金额套发放规则（默认按人民币）。
+		Amount        float64 `json:"amount"`
+		PaymentMethod string  `json:"payment_method"`
 	}
 	_ = c.ShouldBindJSON(&req)
 	userId := req.UserId
@@ -700,7 +710,7 @@ func AdminGrantLotteryTickets(c *gin.Context) {
 	var err error
 	if req.AsPayment {
 		tradeNo := fmt.Sprintf("SIM-%d-%d", userId, time.Now().UnixNano())
-		err = model.GrantLotteryTicketsForSuccessfulTopUp(nil, userId, tradeNo)
+		err = model.GrantLotteryTicketsForSuccessfulTopUp(nil, userId, tradeNo, req.Amount, req.PaymentMethod)
 	} else {
 		err = model.AdminGrantLotteryTickets(userId, n, "")
 	}

@@ -760,7 +760,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 			"method": logPaymentMethod,
 		}))
 		// 与钱包充值同一套幂等入账：同一 trade_no 只发一次次数，不改 users.quota。
-		if err := GrantLotteryTicketsForSuccessfulTopUp(nil, logUserId, tradeNo); err != nil {
+		if err := GrantLotteryTicketsForSuccessfulTopUp(nil, logUserId, tradeNo, logMoney, logPaymentMethod); err != nil {
 			common.SysLog(fmt.Sprintf("lottery ticket grant error (subscription trade %s): %v", tradeNo, err))
 		}
 	}

@@ -43,7 +43,7 @@ func fireLotteryTickets(topUp *TopUp) {
 	if topUp == nil || topUp.TradeNo == "" || topUp.UserId <= 0 {
 		return
 	}
-	if err := GrantLotteryTicketsForSuccessfulTopUp(nil, topUp.UserId, topUp.TradeNo); err != nil {
+	if err := GrantLotteryTicketsForSuccessfulTopUp(nil, topUp.UserId, topUp.TradeNo, topUp.Money, topUp.PaymentMethod); err != nil {
 		common.SysLog(fmt.Sprintf("lottery ticket grant error (topup #%d trade %s): %v", topUp.Id, topUp.TradeNo, err))
 	}
 }

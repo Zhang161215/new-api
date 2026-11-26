@@ -76,8 +76,8 @@ func TestGrantTicketsIdempotentByTradeNo(t *testing.T) {
 	require.NoError(t, DB.Create(u).Error)
 	t.Cleanup(func() { DB.Unscoped().Where("id = ?", u.Id).Delete(&User{}) })
 
-	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-100"))
-	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-100"))
+	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-100", 10, "alipay"))
+	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-100", 10, "alipay"))
 	wallet, err := GetLotteryWallet(u.Id)
 	require.NoError(t, err)
 	require.Equal(t, 1, wallet.Tickets)
@@ -90,14 +90,14 @@ func TestGrantTicketsIdempotentByTradeNo(t *testing.T) {
 func TestGrantTicketsWhileDrawDisabled(t *testing.T) {
 	setupLotteryTables(t)
 	require.NoError(t, EnsureLotteryDefaults())
-	_, err := SaveLotteryConfig(false, 1, true)
+	_, err := SaveLotteryConfig(false, true, nil)
 	require.NoError(t, err)
 
 	u := &User{Username: "lottery-closed-grant", Password: "x", Quota: 0, Status: common.UserStatusEnabled, Role: common.RoleCommonUser}
 	require.NoError(t, DB.Create(u).Error)
 	t.Cleanup(func() { DB.Unscoped().Where("id = ?", u.Id).Delete(&User{}) })
 
-	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-CLOSED"))
+	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-CLOSED", 10, "alipay"))
 	wallet, err := GetLotteryWallet(u.Id)
 	require.NoError(t, err)
 	require.Equal(t, 1, wallet.Tickets)
@@ -113,7 +113,7 @@ func TestLotteryBroadcastConfigPersists(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, cfg.BroadcastEnabled)
 
-	cfg, err = SaveLotteryConfig(true, 1, false)
+	cfg, err = SaveLotteryConfig(true, false, nil)
 	require.NoError(t, err)
 	require.False(t, cfg.BroadcastEnabled)
 	require.True(t, cfg.Enabled)
@@ -122,7 +122,7 @@ func TestLotteryBroadcastConfigPersists(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, again.BroadcastEnabled)
 
-	cfg, err = SaveLotteryConfig(false, 2, true)
+	cfg, err = SaveLotteryConfig(false, true, &LotteryGrantRule{GrantMode: LotteryGrantModePerPayment, TicketsPerPayment: 2})
 	require.NoError(t, err)
 	require.True(t, cfg.BroadcastEnabled)
 	require.False(t, cfg.Enabled)
@@ -143,7 +143,7 @@ func TestDrawLotteryRedeemsCodeNotDirectBalanceField(t *testing.T) {
 	keys, err := GenerateLotteryPrizeStock(&prize, 1, u.Id)
 	require.NoError(t, err)
 	require.Len(t, keys, 1)
-	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-DRAW"))
+	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-DRAW", 10, "alipay"))
 
 	result, err := DrawLottery(u.Id, u.Username)
 	require.NoError(t, err)
@@ -180,7 +180,7 @@ func TestDrawLotteryNoStockDoesNotConsumeTicket(t *testing.T) {
 		Enabled: true, RedemptionName: "lottery-empty",
 	}
 	require.NoError(t, CreateLotteryPrize(&prize))
-	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-EMPTY"))
+	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-EMPTY", 10, "alipay"))
 
 	_, err := DrawLottery(u.Id, u.Username)
 	require.ErrorIs(t, err, ErrLotterySoldOut)
@@ -207,7 +207,7 @@ func TestDrawLotteryPartialEmptyStockBlocks(t *testing.T) {
 	require.NoError(t, CreateLotteryPrize(&jackpot))
 	_, err := AddLotteryPrizeStock(&jackpot, []string{"JACKPOT-KEEP-01"}, 1)
 	require.NoError(t, err)
-	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-PARTIAL"))
+	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-PARTIAL", 10, "alipay"))
 
 	_, err = DrawLottery(u.Id, u.Username)
 	require.ErrorIs(t, err, ErrLotterySoldOut)
@@ -227,7 +227,7 @@ func TestDrawLotteryExtraTicketReturnsChance(t *testing.T) {
 
 	prize := LotteryPrize{Code: "again", Label: "再抽一次", Weight: 10, ExtraTicket: true, Enabled: true}
 	require.NoError(t, CreateLotteryPrize(&prize))
-	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-AGAIN"))
+	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-AGAIN", 10, "alipay"))
 
 	result, err := DrawLottery(u.Id, u.Username)
 	require.NoError(t, err)
@@ -288,7 +288,7 @@ func TestListAndDeleteLotteryPrizeCode(t *testing.T) {
 	u := &User{Username: "lottery-code", Password: "x", Quota: 0, Status: common.UserStatusEnabled, Role: common.RoleCommonUser}
 	require.NoError(t, DB.Create(u).Error)
 	t.Cleanup(func() { DB.Unscoped().Where("id = ?", u.Id).Delete(&User{}) })
-	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-CODE"))
+	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-CODE", 10, "alipay"))
 	result, err := DrawLottery(u.Id, u.Username)
 	require.NoError(t, err)
 	require.Equal(t, "KEEP-CODE-01", result.Draw.RedemptionKey)
@@ -370,7 +370,7 @@ func TestDrawLotterySecondDrawNeedsAnotherTicket(t *testing.T) {
 
 	prize := LotteryPrize{Code: "miss", Label: "谢谢参与", Weight: 10, Enabled: true}
 	require.NoError(t, CreateLotteryPrize(&prize))
-	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-TWICE"))
+	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-TWICE", 10, "alipay"))
 
 	_, err := DrawLottery(u.Id, u.Username)
 	require.NoError(t, err)
@@ -396,7 +396,7 @@ func TestListLotteryAdminTicketLogsAttachesTopUp(t *testing.T) {
 		Status:        common.TopUpStatusSuccess,
 		CreateTime:    1,
 	}).Error)
-	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-LEDGER-1"))
+	require.NoError(t, GrantLotteryTicketsForSuccessfulTopUp(nil, u.Id, "T-LEDGER-1", 10, "alipay"))
 
 	rows, total, err := ListLotteryAdminTicketLogs(LotteryListFilter{Page: 1, Size: 10, Keyword: "ledger"})
 	require.NoError(t, err)

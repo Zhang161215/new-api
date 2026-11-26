@@ -37,14 +37,16 @@ var (
 )
 
 // LotteryConfig 转盘全局配置，单行（id = 1）。
-// Enabled 只控制能不能抽：关闭后 DrawLottery 拒绝，充值仍按 TicketsPerPayment 送次数。
+// Enabled 只控制能不能抽：关闭后 DrawLottery 拒绝，充值仍按发放规则送次数。
 // BroadcastEnabled 控制 QQ 群中奖播报；关闭后不推群，期间中奖不补发。
+// LotteryGrantRule 是支付送次数规则（见 lottery_rule.go）。
 type LotteryConfig struct {
-	Id                int   `json:"id" gorm:"primaryKey"`
-	Enabled           bool  `json:"enabled" gorm:"default:true"`
-	BroadcastEnabled  bool  `json:"broadcast_enabled" gorm:"default:true"`
-	TicketsPerPayment int   `json:"tickets_per_payment" gorm:"default:1"`
-	UpdatedAt         int64 `json:"updated_at" gorm:"bigint"`
+	Id               int  `json:"id" gorm:"primaryKey"`
+	Enabled          bool `json:"enabled" gorm:"default:true"`
+	BroadcastEnabled bool `json:"broadcast_enabled" gorm:"default:true"`
+	LotteryGrantRule
+	AmountTiersRaw string `json:"-" gorm:"column:amount_tiers;type:text"`
+	UpdatedAt      int64  `json:"updated_at" gorm:"bigint"`
 }
 
 func (LotteryConfig) TableName() string { return "lottery_configs" }
@@ -135,7 +137,8 @@ func getLotteryConfig(tx *gorm.DB) (*LotteryConfig, error) {
 	var cfg LotteryConfig
 	err := lotteryDB(tx).First(&cfg, 1).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		cfg = LotteryConfig{Id: 1, Enabled: true, BroadcastEnabled: true, TicketsPerPayment: 1, UpdatedAt: time.Now().Unix()}
+		cfg = LotteryConfig{Id: 1, Enabled: true, BroadcastEnabled: true, UpdatedAt: time.Now().Unix()}
+		cfg.LotteryGrantRule.normalize()
 		if createErr := lotteryDB(tx).Create(&cfg).Error; createErr != nil {
 			return nil, createErr
 		}
@@ -144,12 +147,15 @@ func getLotteryConfig(tx *gorm.DB) (*LotteryConfig, error) {
 	return &cfg, err
 }
 
-func SaveLotteryConfig(enabled bool, ticketsPerPayment int, broadcastEnabled bool) (*LotteryConfig, error) {
-	if ticketsPerPayment < 1 {
-		ticketsPerPayment = 1
-	}
-	if ticketsPerPayment > 10 {
-		ticketsPerPayment = 10
+// SaveLotteryConfig 保存开关；rule 为 nil 时发放规则保持不变，否则先严格校验再整体替换。
+func SaveLotteryConfig(enabled bool, broadcastEnabled bool, rule *LotteryGrantRule) (*LotteryConfig, error) {
+	if rule != nil {
+		next := *rule
+		next.AmountTiers = append([]LotteryAmountTier(nil), rule.AmountTiers...)
+		if err := next.Validate(); err != nil {
+			return nil, err
+		}
+		rule = &next
 	}
 	cfg, err := GetLotteryConfig()
 	if err != nil {
@@ -157,7 +163,9 @@ func SaveLotteryConfig(enabled bool, ticketsPerPayment int, broadcastEnabled boo
 	}
 	cfg.Enabled = enabled
 	cfg.BroadcastEnabled = broadcastEnabled
-	cfg.TicketsPerPayment = ticketsPerPayment
+	if rule != nil {
+		cfg.LotteryGrantRule = *rule
+	}
 	cfg.UpdatedAt = time.Now().Unix()
 	if err := DB.Save(cfg).Error; err != nil {
 		return nil, err
@@ -297,9 +305,10 @@ func startOfWeekUnix() int64 {
 	return today.AddDate(0, 0, 1-wd).Unix()
 }
 
-// GrantLotteryTicketsForSuccessfulTopUp 充值成功后发放次数。同一 trade_no 只入账一次。
+// GrantLotteryTicketsForSuccessfulTopUp 按发放规则给一笔成功支付送次数；同一 trade_no 只发一次。
 // 不看抽奖开关：关闭转盘时充值仍送次数。不改 users.quota。
-func GrantLotteryTicketsForSuccessfulTopUp(tx *gorm.DB, userId int, tradeNo string) error {
+// money / paymentMethod 是订单实付与支付方式，按 LotteryPaidAmountCNY 折成人民币后套规则；算出 0 次不记流水。
+func GrantLotteryTicketsForSuccessfulTopUp(tx *gorm.DB, userId int, tradeNo string, money float64, paymentMethod string) error {
 	if tradeNo == "" {
 		return errors.New("empty trade no")
 	}
@@ -308,9 +317,9 @@ func GrantLotteryTicketsForSuccessfulTopUp(tx *gorm.DB, userId int, tradeNo stri
 		if err != nil {
 			return err
 		}
-		n := cfg.TicketsPerPayment
-		if n < 1 {
-			n = 1
+		n := cfg.TicketsForAmount(LotteryPaidAmountCNY(money, paymentMethod))
+		if n <= 0 {
+			return nil
 		}
 		return addLotteryTickets(db, userId, n, LotteryReasonPaymentGrant, LotteryRefTopUp, tradeNo)
 	}

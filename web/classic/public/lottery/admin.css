@@ -440,9 +440,13 @@ body.lz-admin {
 
 .lz-ad-rules-cfg {
   display: grid;
-  grid-template-columns: minmax(140px, 200px) minmax(180px, 260px) minmax(180px, 1fr);
+  grid-template-columns: minmax(140px, 200px) minmax(140px, 200px) minmax(0, 1fr);
   gap: 12px 20px;
   align-items: end;
+}
+
+.lz-ad-rules-cfg > .lz-ad-hint {
+  padding-bottom: 9px;
 }
 
 .lz-ad-rules-cfg label {
@@ -1168,4 +1172,219 @@ body.lz-admin .lz-dialog h2 {
 
 .lz-ad-no {
   color: var(--ad-muted);
+}
+
+/* 支付送次数规则 */
+.lz-ad-grant-rule input {
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--ad-line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ad-text);
+  font: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lz-ad-grant-rule input.is-invalid {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.12);
+}
+
+.lz-ad-rule-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.lz-ad-rule-head h2 {
+  margin: 0;
+}
+
+.lz-ad-rule-dirty {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 12px;
+}
+
+.lz-ad-rule-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 18px;
+  align-items: start;
+  margin-bottom: 14px;
+}
+
+.lz-ad-rule-pane {
+  display: grid;
+  gap: 14px;
+  justify-items: start;
+}
+
+.lz-ad-rule-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 22px;
+}
+
+.lz-ad-rule-fields label,
+.lz-ad-rule-try {
+  display: grid;
+  gap: 6px;
+  color: var(--ad-muted);
+  font-size: 13px;
+}
+
+.lz-ad-rule-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lz-ad-rule-input input {
+  width: 110px;
+}
+
+.lz-ad-rule-input em {
+  color: var(--ad-muted);
+  font-size: 13px;
+  font-style: normal;
+}
+
+.lz-ad-tier-table {
+  width: auto;
+  min-width: 360px;
+}
+
+.lz-ad-tier-table th:last-child,
+.lz-ad-tier-table td:last-child {
+  width: 64px;
+  text-align: right;
+}
+
+.lz-ad-tier-table .lz-ad-rule-input input {
+  width: 96px;
+}
+
+.lz-ad-tier-del {
+  border: 0;
+  background: transparent;
+  color: #be123c;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.lz-ad-tier-del:disabled {
+  color: var(--ad-muted);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lz-ad-rule-preview {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--ad-line);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.lz-ad-rule-preview h3 {
+  margin: 0;
+  color: var(--ad-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.lz-ad-rule-summary {
+  margin: 0;
+  color: var(--ad-text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.lz-ad-rule-summary.is-error {
+  color: #b91c1c;
+}
+
+.lz-ad-rule-samples {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lz-ad-rule-samples li {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--ad-line);
+}
+
+.lz-ad-rule-samples span {
+  color: var(--ad-muted);
+}
+
+.lz-ad-rule-samples strong {
+  color: var(--ad-accent);
+}
+
+.lz-ad-rule-samples li.is-zero strong {
+  color: var(--ad-muted);
+  font-weight: 500;
+}
+
+.lz-ad-rule-try {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 10px;
+}
+
+.lz-ad-rule-try > span:first-child {
+  grid-column: 1 / -1;
+}
+
+.lz-ad-rule-try strong {
+  color: var(--ad-text);
+  font-size: 14px;
+}
+
+.lz-ad-rule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.lz-ad-rule-actions .lz-ad-hint.is-error,
+.lz-ad-rules-cfg .lz-ad-hint.is-error,
+.lz-ad-toolbar .lz-ad-hint.is-error {
+  color: #b91c1c;
+}
+
+.lz-ad-rule-actions .lz-ad-hint.is-ok {
+  color: var(--ad-ok);
+}
+
+@media (max-width: 960px) {
+  .lz-ad-rule-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lz-ad-tier-table {
+    min-width: 0;
+    width: 100%;
+  }
 }

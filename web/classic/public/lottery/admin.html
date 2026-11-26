@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light" />
     <meta name="theme-color" content="#f4f6fa" />
     <title>抽奖管理</title>
-    <link rel="stylesheet" href="./admin.css?v=a22" />
+    <link rel="stylesheet" href="./admin.css?v=a23" />
   </head>
   <body class="lz-admin" data-page="admin">
     <aside class="lz-ad-side">
@@ -98,6 +98,7 @@
         <div class="lz-ad-card">
           <div class="lz-ad-toolbar">
             <button type="button" class="lz-ad-btn" id="add-prize">新增奖项</button>
+            <p class="lz-ad-hint" id="prize-msg"></p>
             <button type="button" class="lz-ad-ghost" id="reset-catalog">恢复默认奖项</button>
           </div>
           <div class="lz-ad-table-wrap">
@@ -199,7 +200,7 @@
       <section class="lz-ad-view" id="view-rules" hidden>
         <header class="lz-ad-hero">
           <h1>次数规则</h1>
-          <p>抽奖开关只控制能不能抽。群播报开关只控制中奖后是否推到 QQ 群，关掉期间抽中的不会补发。</p>
+          <p>活动开关、支付送次数规则，以及查用户次数和手动补发。</p>
         </header>
         <div class="lz-ad-card lz-ad-rules-cfg">
           <label>
@@ -216,15 +217,82 @@
               <option value="0">关闭</option>
             </select>
           </label>
-          <label>
-            <span>每笔成功支付发放次数</span>
-            <input id="cfg-tickets-per" type="number" min="1" max="10" step="1" value="1" />
-          </label>
-          <div class="lz-ad-rules-cfg-actions">
-            <button type="button" class="lz-ad-ghost" id="mock-pay">模拟一笔成功支付</button>
-            <p class="lz-ad-hint" id="mock-pay-msg"></p>
+          <p class="lz-ad-hint" id="cfg-rules-msg">关掉抽奖后不能抽，但支付仍会送次数；关掉播报期间抽中的不会补发。</p>
+        </div>
+        <div class="lz-ad-card lz-ad-grant-rule" id="grant-rule-card">
+          <div class="lz-ad-rule-head">
+            <h2>支付送次数</h2>
+            <span class="lz-ad-rule-dirty" id="rule-dirty" hidden>有未保存的修改</span>
           </div>
-          <p class="lz-ad-note">用户成功支付 1 笔充值 → +N 次；点击抽奖 → −1 次。关掉抽奖后不能抽，但充值仍会送次数。关掉播报后群里不再推中奖消息，期间抽中的也不会补发。模拟支付只补次数，不改账户额度。</p>
+          <div class="lz-ad-tabs" id="rule-mode-tabs" role="tablist" aria-label="发放方式">
+            <button type="button" data-mode="per_payment">按笔固定</button>
+            <button type="button" data-mode="tiers">金额阶梯</button>
+            <button type="button" data-mode="per_amount">每满金额</button>
+          </div>
+          <div class="lz-ad-rule-grid">
+            <div class="lz-ad-rule-edit">
+              <div class="lz-ad-rule-pane" data-pane="per_payment">
+                <p class="lz-ad-note">每笔成功支付送固定次数。设了起送金额后，单笔实付不到就不送。</p>
+                <div class="lz-ad-rule-fields">
+                  <label>
+                    <span>每笔送</span>
+                    <span class="lz-ad-rule-input"><input id="rule-per-tickets" type="number" min="1" max="100" step="1" inputmode="numeric" /><em>次</em></span>
+                  </label>
+                  <label>
+                    <span>起送金额（0 = 不限）</span>
+                    <span class="lz-ad-rule-input"><input id="rule-min-amount" type="number" min="0" step="0.01" inputmode="decimal" /><em>元</em></span>
+                  </label>
+                </div>
+              </div>
+              <div class="lz-ad-rule-pane" data-pane="tiers" hidden>
+                <p class="lz-ad-note">看单笔实付落在哪一档，只按命中的最高一档发，不叠加；低于最低档不送。</p>
+                <table class="lz-ad-table lz-ad-tier-table">
+                  <thead>
+                    <tr>
+                      <th>单笔实付满</th>
+                      <th>送</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="rule-tier-body"></tbody>
+                </table>
+                <button type="button" class="lz-ad-ghost" id="rule-tier-add">添加一档</button>
+              </div>
+              <div class="lz-ad-rule-pane" data-pane="per_amount" hidden>
+                <p class="lz-ad-note">单笔实付每满一份送一次，零头不算；单笔送的次数有上限。</p>
+                <div class="lz-ad-rule-fields">
+                  <label>
+                    <span>每满</span>
+                    <span class="lz-ad-rule-input"><input id="rule-step-amount" type="number" min="0.01" step="0.01" inputmode="decimal" /><em>元</em></span>
+                  </label>
+                  <label>
+                    <span>送</span>
+                    <span class="lz-ad-rule-input"><input id="rule-step-tickets" type="number" min="1" max="100" step="1" inputmode="numeric" /><em>次</em></span>
+                  </label>
+                  <label>
+                    <span>单笔最多</span>
+                    <span class="lz-ad-rule-input"><input id="rule-step-cap" type="number" min="1" max="100" step="1" inputmode="numeric" /><em>次</em></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <aside class="lz-ad-rule-preview" aria-live="polite">
+              <h3>试算</h3>
+              <p class="lz-ad-rule-summary" id="rule-summary"></p>
+              <ul class="lz-ad-rule-samples" id="rule-samples"></ul>
+              <label class="lz-ad-rule-try">
+                <span>单笔实付</span>
+                <span class="lz-ad-rule-input"><input id="rule-try-amount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="输入金额" /><em>元</em></span>
+                <strong id="rule-try-result">—</strong>
+              </label>
+            </aside>
+          </div>
+          <p class="lz-ad-note">钱包充值、订阅购买、后台补单都按这条规则，每笔单独算，不跨单累计。美元支付按站点汇率 <span id="rule-usd-rate">7.3</span> 折成人民币。改规则只影响之后的支付，已发的次数不变。</p>
+          <div class="lz-ad-rule-actions">
+            <button type="button" class="lz-ad-btn" id="rule-save" disabled>保存规则</button>
+            <button type="button" class="lz-ad-ghost" id="rule-reset" disabled>撤销修改</button>
+            <p class="lz-ad-hint" id="rule-msg"></p>
+          </div>
         </div>
         <div class="lz-ad-rules-split">
           <div class="lz-ad-card lz-ad-lookup">
@@ -509,6 +577,6 @@
       </div>
     </div>
 
-    <script src="./lottery.js?v=w78"></script>
+    <script src="./lottery.js?v=w79"></script>
   </body>
 </html>

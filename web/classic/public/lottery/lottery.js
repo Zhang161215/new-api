@@ -280,6 +280,7 @@ function emptyState() {
     tickets: 2,
     payments: 2,
     ticketsPerPayment: 1,
+    grantRule: normalizeGrantRule(null, 1),
     lotteryEnabled: true,
     broadcastEnabled: true,
     soldOut: false,
@@ -328,6 +329,7 @@ function loadState() {
     state.broadcastEnabled = state.broadcastEnabled !== false;
     state.weights = Object.fromEntries(state.prizeCatalog.map((item) => [item.id, item.weight]));
     state.ticketsPerPayment = Math.max(1, Math.min(10, Number(state.ticketsPerPayment) || 1));
+    state.grantRule = normalizeGrantRule(parsed.grantRule, state.ticketsPerPayment);
     if (state.today !== todayKey()) {
       state.today = todayKey();
       state.todayDraws = 0;
@@ -407,6 +409,143 @@ function pickWeighted(items) {
 
 function formatMoney(n) {
   return `$${Number(n).toFixed(2)}`;
+}
+
+// 支付送次数规则：与后端 model/lottery_rule.go 同一口径（金额按分算，单笔实付、折人民币）。
+const GRANT_MODES = ['per_payment', 'tiers', 'per_amount'];
+const RULE_MAX_TICKETS = 100;
+const RULE_MAX_TIERS = 10;
+const RULE_SAMPLE_AMOUNTS = [6, 10, 30, 50, 100, 200, 500, 1000];
+
+function amountCents(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.round(n * 100);
+}
+
+function formatYuan(value) {
+  const yuan = amountCents(value) / 100;
+  return `¥${Number.isInteger(yuan) ? yuan : yuan.toFixed(2).replace(/0$/, '')}`;
+}
+
+function ruleTicketInt(value, fallback) {
+  const n = Math.trunc(Number(value));
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return Math.min(RULE_MAX_TICKETS, n);
+}
+
+// 接受接口返回的 snake_case 或本地草稿的 camelCase，兜成完整规则。
+function normalizeGrantRule(raw, fallbackPer = 1) {
+  const src = raw || {};
+  const pick = (a, b) => (src[a] !== undefined ? src[a] : src[b]);
+  const mode = pick('grant_mode', 'mode');
+  const tiersIn = pick('amount_tiers', 'tiers');
+  const seen = new Set();
+  const tiers = (Array.isArray(tiersIn) ? tiersIn : [])
+    .map((t) => ({ min: amountCents(t?.min_amount ?? t?.min) / 100, tickets: ruleTicketInt(t?.tickets, 0) }))
+    .filter((t) => {
+      const key = amountCents(t.min);
+      if (key <= 0 || t.tickets < 1 || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => a.min - b.min)
+    .slice(0, RULE_MAX_TIERS);
+  const step = amountCents(pick('step_amount', 'stepAmount')) / 100;
+  return {
+    mode: GRANT_MODES.includes(mode) ? mode : 'per_payment',
+    ticketsPerPayment: ruleTicketInt(pick('tickets_per_payment', 'ticketsPerPayment'), ruleTicketInt(fallbackPer, 1)),
+    minPayAmount: amountCents(pick('min_pay_amount', 'minPayAmount')) / 100,
+    tiers,
+    stepAmount: step > 0 ? step : 10,
+    stepTickets: ruleTicketInt(pick('step_tickets', 'stepTickets'), 1),
+    maxTickets: ruleTicketInt(pick('max_tickets_per_payment', 'maxTickets'), 20),
+  };
+}
+
+function grantRulePayload(rule) {
+  return {
+    grant_mode: rule.mode,
+    tickets_per_payment: rule.ticketsPerPayment,
+    min_pay_amount: rule.minPayAmount,
+    amount_tiers: rule.tiers.map((t) => ({ min_amount: t.min, tickets: t.tickets })),
+    step_amount: rule.stepAmount,
+    step_tickets: rule.stepTickets,
+    max_tickets_per_payment: rule.maxTickets,
+  };
+}
+
+function ticketsForAmount(rule, amount) {
+  const cents = amountCents(amount);
+  if (rule.mode === 'tiers') {
+    let n = 0;
+    rule.tiers.forEach((t) => {
+      if (cents >= amountCents(t.min)) n = t.tickets;
+    });
+    return n;
+  }
+  if (rule.mode === 'per_amount') {
+    const step = amountCents(rule.stepAmount);
+    if (step <= 0) return 0;
+    return Math.min(rule.maxTickets, Math.floor(cents / step) * rule.stepTickets);
+  }
+  if (rule.minPayAmount > 0 && cents < amountCents(rule.minPayAmount)) return 0;
+  return rule.ticketsPerPayment;
+}
+
+// 草稿校验：返回第一处错误 { field, message }，没有错误返回 null。field 对应输入框 id。
+function validateGrantDraft(draft) {
+  const ticketOk = (n) => Number.isInteger(n) && n >= 1 && n <= RULE_MAX_TICKETS;
+  if (draft.mode === 'per_payment') {
+    if (!ticketOk(draft.ticketsPerPayment)) return { field: 'rule-per-tickets', message: `每笔送的次数要是 1–${RULE_MAX_TICKETS} 的整数` };
+    if (!Number.isFinite(draft.minPayAmount) || draft.minPayAmount < 0) return { field: 'rule-min-amount', message: '起送金额不能为负数，不限就填 0' };
+    return null;
+  }
+  if (draft.mode === 'tiers') {
+    if (!draft.tiers.length) return { field: 'rule-tier-add', message: '金额阶梯至少要有一档' };
+    if (draft.tiers.length > RULE_MAX_TIERS) return { field: 'rule-tier-add', message: `金额阶梯最多 ${RULE_MAX_TIERS} 档` };
+    const seen = new Set();
+    for (let i = 0; i < draft.tiers.length; i += 1) {
+      const t = draft.tiers[i];
+      const cents = amountCents(t.min);
+      if (cents <= 0) return { field: `tier-${i}-min`, message: `第 ${i + 1} 档金额要大于 0` };
+      if (!ticketOk(t.tickets)) return { field: `tier-${i}-tickets`, message: `第 ${i + 1} 档次数要是 1–${RULE_MAX_TICKETS} 的整数` };
+      if (seen.has(cents)) return { field: `tier-${i}-min`, message: `${formatYuan(t.min)} 这一档重复了` };
+      seen.add(cents);
+    }
+    return null;
+  }
+  if (amountCents(draft.stepAmount) <= 0) return { field: 'rule-step-amount', message: '「每满」金额要大于 0' };
+  if (!ticketOk(draft.stepTickets)) return { field: 'rule-step-tickets', message: `每满一份送的次数要是 1–${RULE_MAX_TICKETS} 的整数` };
+  if (!ticketOk(draft.maxTickets)) return { field: 'rule-step-cap', message: `单笔最多次数要是 1–${RULE_MAX_TICKETS} 的整数` };
+  return null;
+}
+
+function grantRuleSummary(rule) {
+  if (rule.mode === 'tiers') {
+    if (!rule.tiers.length) return '还没有设置金额档位';
+    const parts = rule.tiers.map((t, i) => `${i ? '满' : '单笔实付满'} ${formatYuan(t.min)} 送 ${t.tickets} 次`);
+    return `${parts.join('，')}${rule.tiers.length > 1 ? '（按最高一档，不叠加）' : ''}`;
+  }
+  if (rule.mode === 'per_amount') {
+    return `单笔实付每满 ${formatYuan(rule.stepAmount)} 送 ${rule.stepTickets} 次，单笔最多 ${rule.maxTickets} 次`;
+  }
+  if (rule.minPayAmount > 0) return `单笔实付满 ${formatYuan(rule.minPayAmount)} 送 ${rule.ticketsPerPayment} 次`;
+  return `每笔成功支付送 ${rule.ticketsPerPayment} 次`;
+}
+
+function grantRuleShort(rule) {
+  if (rule.mode === 'tiers' && rule.tiers.length > 2) {
+    const first = rule.tiers[0];
+    const last = rule.tiers[rule.tiers.length - 1];
+    return `单笔满 ${formatYuan(first.min)} 起送，最高 ${last.tickets} 次`;
+  }
+  if (rule.mode === 'tiers' && rule.tiers.length) {
+    return rule.tiers.map((t) => `满 ${formatYuan(t.min)} 送 ${t.tickets} 次`).join('，');
+  }
+  if (rule.mode === 'per_amount') return `每满 ${formatYuan(rule.stepAmount)} 送 ${rule.stepTickets} 次`;
+  if (rule.minPayAmount > 0) return `单笔满 ${formatYuan(rule.minPayAmount)} = ${rule.ticketsPerPayment} 次`;
+  return `成功支付 1 笔 = ${rule.ticketsPerPayment} 次`;
 }
 
 function escapeHtml(value) {
@@ -743,6 +882,7 @@ function mapApiState(data) {
     tickets: data.tickets || 0,
     payments: data.payments || 0,
     ticketsPerPayment: data.tickets_per_payment || data.ticketsPerPayment || 1,
+    grantRule: normalizeGrantRule(data.grant_rule, data.tickets_per_payment || data.ticketsPerPayment || 1),
     lotteryEnabled: (data.draw_enabled ?? data.drawEnabled ?? data.enabled) !== false,
     soldOut: Boolean(data.sold_out || data.soldOut),
     todayDraws: data.today_draws || data.todayDraws || 0,
@@ -888,34 +1028,6 @@ const LotteryClient = {
     apiState = mapApiState(data || {});
     return apiState;
   },
-  async grantFromPayment() {
-    if (this.mode !== 'api') {
-      await wait(180);
-      const local = loadState();
-      const per = Math.max(1, Number(local.ticketsPerPayment) || 1);
-      const refId = `TOPUP-${Date.now().toString().slice(-8)}`;
-      local.tickets += per;
-      local.payments = (local.payments || 0) + 1;
-      local.ticketLog = local.ticketLog || [];
-      local.ticketLog.unshift({
-        id: `pay-${Date.now()}`,
-        delta: per,
-        reason: 'payment_grant',
-        refType: 'topup',
-        refId,
-        balanceAfter: local.tickets,
-        at: Date.now(),
-      });
-      saveState(local);
-      return { tickets: local.tickets, refId };
-    }
-    const data = await lotteryRequest('/api/lottery/admin/grant-tickets', {
-      method: 'POST',
-      body: JSON.stringify({ tickets: 1, as_payment: true }),
-    });
-    await this.getState();
-    return { tickets: data.tickets, refId: 'admin-grant' };
-  },
   async grantTickets(userId, tickets) {
     const n = Math.max(1, Math.min(100, Number(tickets) || 1));
     const uid = Math.max(0, Number(userId) || 0);
@@ -1051,6 +1163,8 @@ const LotteryClient = {
       lotteryEnabled: (data.config?.draw_enabled ?? data.config?.enabled) !== false,
       broadcastEnabled: (data.config?.broadcast_enabled ?? data.config?.broadcastEnabled) !== false,
       ticketsPerPayment: data.config?.tickets_per_payment || 1,
+      grantRule: normalizeGrantRule(data.config, data.config?.tickets_per_payment || 1),
+      usdExchangeRate: Number(data.usd_exchange_rate) || 0,
       overview: data.overview,
     };
     return apiState;
@@ -1104,25 +1218,21 @@ const LotteryClient = {
   async deleteCode(id) {
     await lotteryRequest(`/api/lottery/admin/codes/${id}`, { method: 'DELETE' });
   },
-  async saveConfig(enabled, ticketsPerPayment, broadcastEnabled) {
-    const live = apiState || {};
-    const onFlag = enabled !== false;
-    const perPay = Number(ticketsPerPayment) || live.ticketsPerPayment || 1;
-    const broadcast = broadcastEnabled !== undefined
-      ? Boolean(broadcastEnabled)
-      : live.broadcastEnabled !== false;
+  // 只传要改的项：开关单独改不会动规则，保存规则也不会顺带改开关。
+  async saveConfig({ enabled, broadcastEnabled, rule } = {}) {
+    const payload = {};
+    if (enabled !== undefined) payload.enabled = enabled !== false;
+    if (broadcastEnabled !== undefined) payload.broadcast_enabled = broadcastEnabled !== false;
+    if (rule) payload.rule = grantRulePayload(rule);
     const data = await lotteryRequest('/api/lottery/admin/config', {
       method: 'PUT',
-      body: JSON.stringify({
-        enabled: onFlag,
-        tickets_per_payment: perPay,
-        broadcast_enabled: broadcast,
-      }),
+      body: JSON.stringify(payload),
     });
-    if (apiState) {
-      apiState.lotteryEnabled = onFlag;
-      apiState.ticketsPerPayment = perPay;
-      apiState.broadcastEnabled = broadcast;
+    if (apiState && data) {
+      apiState.lotteryEnabled = data.enabled !== false;
+      apiState.broadcastEnabled = data.broadcast_enabled !== false;
+      apiState.ticketsPerPayment = data.tickets_per_payment || apiState.ticketsPerPayment || 1;
+      apiState.grantRule = normalizeGrantRule(data, apiState.ticketsPerPayment);
     }
     return data;
   },
@@ -1600,14 +1710,14 @@ function setupFeedMarquee(list) {
 
 function renderPersonal(state) {
   const root = $('me-stats');
-  const per = state.ticketsPerPayment || 1;
+  const rule = state.grantRule || normalizeGrantRule(null, state.ticketsPerPayment || 1);
   if (root) {
     root.innerHTML = `
       <div class="lz-w-balance">
         <div>
           <p class="lz-w-balance-k">可抽次数</p>
           <p class="lz-w-balance-v"><strong>${state.tickets ?? 0}</strong><span>次</span></p>
-          <p class="lz-w-balance-hint">成功支付 1 笔 = ${per} 次</p>
+          <p class="lz-w-balance-hint">${escapeHtml(grantRuleShort(rule))}</p>
         </div>
       </div>
       <ul class="lz-w-meta">
@@ -1619,7 +1729,7 @@ function renderPersonal(state) {
   }
   const note = $('dock-note-text');
   if (note) {
-    note.textContent = `成功支付 1 笔，获得 ${per} 次抽奖；每次抽取消耗 1 次。奖项内容由后台配置。`;
+    note.textContent = `支付送次数：${grantRuleSummary(rule)}。每次抽取消耗 1 次，奖项内容由后台配置。`;
   }
   scheduleSidePanelSync();
 }
@@ -2404,33 +2514,6 @@ function closeConfig() {
   if (modal) modal.hidden = true;
 }
 
-function setWeight(id, value) {
-  const state = loadState();
-  const weight = Math.max(0, Math.min(999, Number(value) || 0));
-  state.weights[id] = weight;
-  if (Array.isArray(state.prizeCatalog)) {
-    const item = state.prizeCatalog.find((prize) => prize.id === id);
-    if (item) item.weight = weight;
-  }
-  saveState(state);
-  renderPrizes();
-  syncWheelPrizes();
-  setBusy(false, state.tickets);
-  const list = prizes();
-  const editor = $('weight-editor');
-  if (!editor) return;
-  editor.querySelectorAll('.lz-weight-row').forEach((row) => {
-    const range = row.querySelector('input[type="range"]');
-    const number = row.querySelector('input[type="number"]');
-    const out = row.querySelector('output');
-    const prize = list.find((item) => item.id === range.dataset.id);
-    if (!prize) return;
-    if (document.activeElement !== range) range.value = String(prize.weight);
-    if (document.activeElement !== number) number.value = String(prize.weight);
-    out.textContent = oddsPercent(prize.weight, list);
-  });
-}
-
 function setDrawIn(seconds) {
   const state = loadState();
   state.timed.drawAt = Date.now() + seconds * 1000;
@@ -2973,35 +3056,6 @@ async function renderLedgerTable() {
   renderPager($('hist-ledger-pager'), pageInfo, (next) => {
     histLedgerPage = next;
     renderLedgerTable();
-  });
-}
-
-async function bootSettings() {
-  renderWeightEditor();
-  const state = loadState();
-  const per = $('cfg-tickets-per');
-  if (per) per.value = String(state.ticketsPerPayment || 1);
-  setText('cfg-per-pay', String(state.ticketsPerPayment || 1));
-  on('cfg-tickets-per', 'input', (event) => {
-    const next = loadState();
-    next.ticketsPerPayment = Math.max(1, Math.min(10, Number(event.target.value) || 1));
-    saveState(next);
-    setText('cfg-per-pay', String(next.ticketsPerPayment));
-  });
-  on('weight-editor', 'input', (event) => {
-    const id = event.target.dataset.id;
-    if (id) setWeight(id, event.target.value);
-  });
-  on('reset-weights', 'click', () => {
-    const next = loadState();
-    next.weights = emptyState().weights;
-    saveState(next);
-    renderWeightEditor();
-  });
-  on('mock-pay', 'click', async () => {
-    const res = await LotteryClient.grantFromPayment();
-    const msg = $('mock-pay-msg');
-    if (msg) msg.textContent = `已入账 ${res.refId}，当前次数 ${res.tickets}`;
   });
 }
 
@@ -3652,7 +3706,7 @@ async function importPendingCodeFiles() {
   }
 }
 
-function askConfirm({ title = '确认删除', text = '确定删除吗？', ok = '删除' } = {}) {
+function askConfirm({ title = '确认删除', text = '确定删除吗？', ok = '删除', danger = true } = {}) {
   const modal = $('confirm-modal');
   const titleEl = $('confirm-title');
   const textEl = $('confirm-text');
@@ -3662,6 +3716,7 @@ function askConfirm({ title = '确认删除', text = '确定删除吗？', ok = 
   if (titleEl) titleEl.textContent = title;
   if (textEl) textEl.textContent = text;
   okBtn.textContent = ok;
+  okBtn.classList.toggle('is-danger', danger);
   modal.hidden = false;
   okBtn.focus();
   return new Promise((resolve) => {
@@ -3837,9 +3892,9 @@ function patchAdminPrize(index, field, value, refresh) {
       LotteryClient.savePrize(item).then((saved) => {
         apiState.prizeCatalog[index] = { ...item, ...saved };
         renderAdminPrizes();
+        setPrizeMsg(`已保存「${item.label || ''}」`);
       }).catch((err) => {
-        const msg = $('mock-pay-msg');
-        if (msg) msg.textContent = err.message;
+        setPrizeMsg(`保存失败：${err.message || '未知错误'}`, true);
       });
     }, 400);
     return;
@@ -4366,14 +4421,6 @@ function syncEnabledControls(onFlag) {
   document.querySelector('.lz-ad-hero-row')?.classList.toggle('is-off', !onFlag);
 }
 
-function currentBroadcastEnabled() {
-  return ($('cfg-broadcast-overview')?.value || $('cfg-broadcast')?.value || '1') !== '0';
-}
-
-function currentLotteryEnabled() {
-  return ($('cfg-enabled-overview')?.value || $('cfg-enabled')?.value || '1') !== '0';
-}
-
 function syncBroadcastControls(onFlag) {
   const value = onFlag ? '1' : '0';
   ['cfg-broadcast', 'cfg-broadcast-overview'].forEach((id) => {
@@ -4383,6 +4430,269 @@ function syncBroadcastControls(onFlag) {
   const label = $('cfg-broadcast-label');
   if (label) label.textContent = onFlag ? '播报开启' : '播报关闭';
   document.querySelector('.lz-ad-mini-switch.is-broadcast')?.classList.toggle('is-off', !onFlag);
+}
+
+function setPrizeMsg(text, isError = false) {
+  const el = $('prize-msg');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('is-error', isError);
+}
+
+function setConfigMsg(text, isError = false) {
+  ['cfg-enabled-msg', 'cfg-rules-msg'].forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('is-error', isError);
+  });
+}
+
+// ---- 支付送次数规则编辑器：草稿 ruleDraft 与已保存 ruleSaved 分开，点「保存规则」才提交 ----
+let ruleSaved = null;
+let ruleDraft = null;
+let ruleUsdRate = 0;
+let ruleSaving = false;
+
+const RULE_DEFAULT_TIERS = [
+  { min: 10, tickets: 1 },
+  { min: 50, tickets: 3 },
+  { min: 100, tickets: 6 },
+];
+
+const RULE_FIELD_KEYS = {
+  'rule-per-tickets': 'ticketsPerPayment',
+  'rule-min-amount': 'minPayAmount',
+  'rule-step-amount': 'stepAmount',
+  'rule-step-tickets': 'stepTickets',
+  'rule-step-cap': 'maxTickets',
+};
+
+function cloneRule(rule) {
+  return { ...rule, tiers: rule.tiers.map((t) => ({ ...t })) };
+}
+
+function readRuleNumber(el) {
+  if (!el || String(el.value).trim() === '') return NaN;
+  return Number(el.value);
+}
+
+// 只比较当前模式真正生效的字段，切到别的模式看一眼再切回来不算改动。
+function effectiveRuleKey(rule) {
+  if (!rule) return '';
+  if (rule.mode === 'tiers') {
+    const tiers = rule.tiers.map((t) => `${amountCents(t.min)}:${t.tickets}`).sort();
+    return `tiers|${tiers.join(',')}`;
+  }
+  if (rule.mode === 'per_amount') {
+    return `per_amount|${amountCents(rule.stepAmount)}|${rule.stepTickets}|${rule.maxTickets}`;
+  }
+  return `per_payment|${rule.ticketsPerPayment}|${Number.isFinite(rule.minPayAmount) ? amountCents(rule.minPayAmount) : 'x'}`;
+}
+
+function ruleIsDirty() {
+  return Boolean(ruleDraft && ruleSaved) && effectiveRuleKey(ruleDraft) !== effectiveRuleKey(ruleSaved);
+}
+
+function setRuleMsg(text, tone = '') {
+  const el = $('rule-msg');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('is-error', tone === 'error');
+  el.classList.toggle('is-ok', tone === 'ok');
+}
+
+function renderTierRows() {
+  const body = $('rule-tier-body');
+  if (!body || !ruleDraft) return;
+  const tiers = ruleDraft.tiers;
+  const num = (v) => (Number.isFinite(v) ? String(v) : '');
+  body.innerHTML = tiers.length
+    ? tiers
+        .map(
+          (t, i) => `<tr>
+      <td><span class="lz-ad-rule-input"><input id="tier-${i}-min" data-tier="${i}" data-tf="min" type="number" min="0.01" step="0.01" inputmode="decimal" aria-label="第 ${i + 1} 档金额" value="${num(t.min)}" /><em>元</em></span></td>
+      <td><span class="lz-ad-rule-input"><input id="tier-${i}-tickets" data-tier="${i}" data-tf="tickets" type="number" min="1" max="${RULE_MAX_TICKETS}" step="1" inputmode="numeric" aria-label="第 ${i + 1} 档次数" value="${num(t.tickets)}" /><em>次</em></span></td>
+      <td><button type="button" class="lz-ad-tier-del" data-tier-del="${i}"${tiers.length <= 1 ? ' disabled' : ''}>删除</button></td>
+    </tr>`,
+        )
+        .join('')
+    : '<tr><td colspan="3">还没有档位，点「添加一档」</td></tr>';
+  const add = $('rule-tier-add');
+  if (add) add.disabled = tiers.length >= RULE_MAX_TIERS;
+}
+
+function refreshRulePreview() {
+  if (!ruleDraft) return;
+  const err = validateGrantDraft(ruleDraft);
+  const dirty = ruleIsDirty();
+  const dirtyEl = $('rule-dirty');
+  if (dirtyEl) dirtyEl.hidden = !dirty;
+  const save = $('rule-save');
+  if (save) save.disabled = !dirty || Boolean(err) || ruleSaving;
+  const reset = $('rule-reset');
+  if (reset) reset.disabled = !dirty || ruleSaving;
+  document.querySelectorAll('#grant-rule-card input.is-invalid').forEach((el) => el.classList.remove('is-invalid'));
+
+  const summary = $('rule-summary');
+  const samples = $('rule-samples');
+  const tryOut = $('rule-try-result');
+  if (err) {
+    const bad = $(err.field);
+    if (bad && bad.tagName === 'INPUT') bad.classList.add('is-invalid');
+    if (summary) {
+      summary.textContent = err.message;
+      summary.classList.add('is-error');
+    }
+    if (samples) samples.innerHTML = '';
+    if (tryOut) tryOut.textContent = '—';
+    return;
+  }
+  const rule = normalizeGrantRule(ruleDraft);
+  if (summary) {
+    summary.textContent = grantRuleSummary(rule);
+    summary.classList.remove('is-error');
+  }
+  if (samples) {
+    samples.innerHTML = RULE_SAMPLE_AMOUNTS.map((amount) => {
+      const n = ticketsForAmount(rule, amount);
+      return `<li class="${n ? '' : 'is-zero'}"><span>${formatYuan(amount)}</span><strong>${n ? `${n} 次` : '不送'}</strong></li>`;
+    }).join('');
+  }
+  if (tryOut) {
+    const amount = readRuleNumber($('rule-try-amount'));
+    if (!Number.isFinite(amount) || amount < 0) {
+      tryOut.textContent = '—';
+    } else {
+      const n = ticketsForAmount(rule, amount);
+      tryOut.textContent = n ? `送 ${n} 次` : '不送';
+    }
+  }
+}
+
+function renderRuleEditor() {
+  if (!ruleDraft) return;
+  document.querySelectorAll('#rule-mode-tabs [data-mode]').forEach((btn) => {
+    const active = btn.dataset.mode === ruleDraft.mode;
+    btn.classList.toggle('is-on', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  document.querySelectorAll('#grant-rule-card [data-pane]').forEach((pane) => {
+    pane.hidden = pane.dataset.pane !== ruleDraft.mode;
+  });
+  Object.entries(RULE_FIELD_KEYS).forEach(([id, key]) => {
+    const el = $(id);
+    if (el) el.value = Number.isFinite(ruleDraft[key]) ? String(ruleDraft[key]) : '';
+  });
+  renderTierRows();
+  setText('rule-usd-rate', ruleUsdRate > 0 ? String(ruleUsdRate) : '—');
+  refreshRulePreview();
+}
+
+async function saveGrantRule() {
+  const err = validateGrantDraft(ruleDraft);
+  if (err) {
+    setRuleMsg(err.message, 'error');
+    $(err.field)?.focus();
+    return;
+  }
+  const rule = normalizeGrantRule(ruleDraft);
+  const ok = await askConfirm({
+    title: '保存发放规则',
+    text: `保存后，之后每笔成功支付按「${grantRuleSummary(rule)}」发放次数。已经发出的次数不变。`,
+    ok: '保存',
+    danger: false,
+  });
+  if (!ok) return;
+  ruleSaving = true;
+  refreshRulePreview();
+  setRuleMsg('保存中…');
+  try {
+    if (LotteryClient.mode === 'api') {
+      await LotteryClient.saveConfig({ rule });
+      ruleSaved = cloneRule(apiState.grantRule);
+    } else {
+      const next = loadState();
+      next.grantRule = rule;
+      next.ticketsPerPayment = rule.ticketsPerPayment;
+      saveState(next);
+      ruleSaved = cloneRule(rule);
+    }
+    ruleDraft = cloneRule(ruleSaved);
+    ruleSaving = false;
+    renderRuleEditor();
+    setRuleMsg('已保存，之后的支付按新规则发放。', 'ok');
+  } catch (e) {
+    ruleSaving = false;
+    refreshRulePreview();
+    setRuleMsg(e.message || '保存失败', 'error');
+  }
+}
+
+function initGrantRuleEditor(state) {
+  if (!$('grant-rule-card')) return;
+  ruleSaved = cloneRule(state.grantRule || normalizeGrantRule(null, state.ticketsPerPayment || 1));
+  ruleDraft = cloneRule(ruleSaved);
+  ruleUsdRate = Number(state.usdExchangeRate) || 0;
+
+  document.querySelectorAll('#rule-mode-tabs [data-mode]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (ruleDraft.mode === btn.dataset.mode) return;
+      ruleDraft.mode = btn.dataset.mode;
+      if (ruleDraft.mode === 'tiers' && !ruleDraft.tiers.length) {
+        ruleDraft.tiers = RULE_DEFAULT_TIERS.map((t) => ({ ...t }));
+      }
+      setRuleMsg('');
+      renderRuleEditor();
+    });
+  });
+  Object.entries(RULE_FIELD_KEYS).forEach(([id, key]) => {
+    on(id, 'input', (event) => {
+      ruleDraft[key] = readRuleNumber(event.target);
+      refreshRulePreview();
+    });
+  });
+  on('rule-tier-body', 'input', (event) => {
+    const i = Number(event.target.dataset.tier);
+    const field = event.target.dataset.tf;
+    if (!ruleDraft.tiers[i] || (field !== 'min' && field !== 'tickets')) return;
+    ruleDraft.tiers[i][field] = readRuleNumber(event.target);
+    refreshRulePreview();
+  });
+  on('rule-tier-body', 'click', (event) => {
+    const btn = event.target.closest('[data-tier-del]');
+    if (!btn || ruleDraft.tiers.length <= 1) return;
+    ruleDraft.tiers.splice(Number(btn.dataset.tierDel), 1);
+    renderTierRows();
+    refreshRulePreview();
+  });
+  on('rule-tier-add', 'click', () => {
+    if (ruleDraft.tiers.length >= RULE_MAX_TIERS) return;
+    const top = ruleDraft.tiers.reduce(
+      (acc, t) => (Number.isFinite(t.min) && t.min > (acc?.min ?? 0) ? t : acc),
+      null,
+    );
+    ruleDraft.tiers.push({
+      min: top ? Math.round(top.min * 200) / 100 : 10,
+      tickets: top && Number.isInteger(top.tickets) ? Math.min(RULE_MAX_TICKETS, top.tickets + 1) : 1,
+    });
+    renderTierRows();
+    refreshRulePreview();
+    $(`tier-${ruleDraft.tiers.length - 1}-min`)?.focus();
+  });
+  on('rule-try-amount', 'input', refreshRulePreview);
+  on('rule-reset', 'click', () => {
+    ruleDraft = cloneRule(ruleSaved);
+    setRuleMsg('');
+    renderRuleEditor();
+  });
+  on('rule-save', 'click', saveGrantRule);
+  window.addEventListener('beforeunload', (event) => {
+    if (!ruleIsDirty()) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+  renderRuleEditor();
 }
 
 async function persistLotteryEnabled(onFlag) {
@@ -4404,19 +4714,18 @@ async function persistLotteryEnabled(onFlag) {
     }
   }
   syncEnabledControls(onFlag);
-  const msg = $('cfg-enabled-msg');
   try {
     if (LotteryClient.mode === 'api') {
-      await LotteryClient.saveConfig(onFlag, Number($('cfg-tickets-per')?.value) || 1, currentBroadcastEnabled());
+      await LotteryClient.saveConfig({ enabled: onFlag });
     } else {
       const next = loadState();
       next.lotteryEnabled = onFlag;
       saveState(next);
     }
-    if (msg) msg.textContent = onFlag ? '抽奖已开启。' : '抽奖已关闭。充值仍会送次数。';
+    setConfigMsg(onFlag ? '抽奖已开启。' : '抽奖已关闭。支付仍会送次数。');
   } catch (err) {
     syncEnabledControls(prev);
-    if (msg) msg.textContent = err.message || '保存失败';
+    setConfigMsg(err.message || '保存失败', true);
   }
 }
 
@@ -4439,23 +4748,18 @@ async function persistBroadcastEnabled(onFlag) {
     }
   }
   syncBroadcastControls(onFlag);
-  const msg = $('cfg-enabled-msg');
   try {
     if (LotteryClient.mode === 'api') {
-      await LotteryClient.saveConfig(
-        currentLotteryEnabled(),
-        Number($('cfg-tickets-per')?.value) || 1,
-        onFlag,
-      );
+      await LotteryClient.saveConfig({ broadcastEnabled: onFlag });
     } else {
       const next = loadState();
       next.broadcastEnabled = onFlag;
       saveState(next);
     }
-    if (msg) msg.textContent = onFlag ? '抽奖播报已开启。' : '抽奖播报已关闭。关掉期间抽中的不会补发。';
+    setConfigMsg(onFlag ? '抽奖播报已开启。' : '抽奖播报已关闭。关掉期间抽中的不会补发。');
   } catch (err) {
     syncBroadcastControls(prev);
-    if (msg) msg.textContent = err.message || '保存失败';
+    setConfigMsg(err.message || '保存失败', true);
   }
 }
 
@@ -4487,10 +4791,11 @@ async function bootAdmin() {
   renderAdminDashboard();
   renderAdminPrizes();
   const state = LotteryClient.mode === 'api' ? apiState : loadState();
-  const per = $('cfg-tickets-per');
   syncEnabledControls(state.lotteryEnabled !== false);
   syncBroadcastControls(state.broadcastEnabled !== false);
-  if (per) per.value = String(state.ticketsPerPayment || 1);
+  initGrantRuleEditor(state);
+  // 「恢复默认奖项」只在本地演示模式有效，线上模式隐藏，避免点了没反应。
+  if (LotteryClient.mode === 'api' && $('reset-catalog')) $('reset-catalog').hidden = true;
   fillPrizeOptions('admin-prize-filter');
   refreshUsers();
 
@@ -4530,7 +4835,8 @@ async function bootAdmin() {
   });
   on('add-prize', 'click', async () => {
     if (LotteryClient.mode === 'api') {
-      await LotteryClient.savePrize({
+      try {
+        await LotteryClient.savePrize({
         id: `p${Date.now()}`,
         label: '$1.00',
         short: '1.00',
@@ -4539,8 +4845,12 @@ async function bootAdmin() {
         quota: 1,
         extraTicket: false,
         enabled: true,
-      });
-      await LotteryClient.loadAdmin();
+        });
+        await LotteryClient.loadAdmin();
+        setPrizeMsg('已新增奖项');
+      } catch (err) {
+        setPrizeMsg(`新增失败：${err.message || '未知错误'}`, true);
+      }
       renderAdminPrizes();
       fillPrizeOptions('admin-prize-filter');
       return;
@@ -4621,25 +4931,6 @@ async function bootAdmin() {
   on('cfg-enabled-overview', 'change', (event) => persistLotteryEnabled(event.target.value !== '0'));
   on('cfg-broadcast', 'change', (event) => persistBroadcastEnabled(event.target.value !== '0'));
   on('cfg-broadcast-overview', 'change', (event) => persistBroadcastEnabled(event.target.value !== '0'));
-  on('cfg-tickets-per', 'input', async (event) => {
-    const perPay = Math.max(1, Math.min(10, Number(event.target.value) || 1));
-    const onFlag = currentLotteryEnabled();
-    if (LotteryClient.mode === 'api') {
-      await LotteryClient.saveConfig(onFlag, perPay, currentBroadcastEnabled());
-      return;
-    }
-    const next = loadState();
-    next.ticketsPerPayment = perPay;
-    saveState(next);
-  });
-  on('mock-pay', 'click', async () => {
-    const res = await LotteryClient.grantFromPayment();
-    const msg = $('mock-pay-msg');
-    if (msg) msg.textContent = LotteryClient.mode === 'api'
-      ? `已按支付入账补发，剩余 ${res.tickets} 次（不改余额）`
-      : `已入账 ${res.refId}，当前次数 ${res.tickets}`;
-    renderAdminTickets();
-  });
   on('wallet-q-btn', 'click', () => {
     adminWalletPage = 1;
     renderWalletLookup();
