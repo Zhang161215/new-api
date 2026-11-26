@@ -27,6 +27,7 @@ import {
   buildBuckets,
   formatInt,
   formatTokens,
+  last24hStart,
   summarize,
   timeSeries,
 } from '../../helpers/dashboardStats';
@@ -47,7 +48,7 @@ export default function OverviewTab({
   const [loading, setLoading] = useState(true);
   const [range] = useState(() => {
     const end = Math.floor(Date.now() / 1000);
-    return { start: end - 86400, end };
+    return { start: last24hStart(end), end };
   });
 
   useEffect(() => {

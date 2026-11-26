@@ -32,6 +32,9 @@ const num = (value) => {
 
 const pad2 = (n) => String(n).padStart(2, '0');
 
+// 近 24 小时的起点对齐到整点：quota_data 按整点记录，起点落在小时中间时那一小时整行会被筛掉，第一根柱子总是空的
+export const last24hStart = (now) => Math.ceil((now - 86400) / 3600) * 3600;
+
 // ========== 时间分桶 ==========
 export function bucketStart(ts, granularity) {
   const d = new Date(ts * 1000);

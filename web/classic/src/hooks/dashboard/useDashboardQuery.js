@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API, showError } from '../../helpers';
-import { buildBuckets } from '../../helpers/dashboardStats';
+import { buildBuckets, last24hStart } from '../../helpers/dashboardStats';
 
 const PRESET_KEY = 'dashboard_range_preset';
 const LEGACY_GRANULARITY_KEY = 'data_export_default_time';
@@ -46,7 +46,7 @@ export function presetRange(key) {
   if (preset.key === '24h') {
     return {
       preset: preset.key,
-      start: now - 86400,
+      start: last24hStart(now),
       end: now,
       granularity: 'hour',
     };
