@@ -158,7 +158,7 @@ func TestTransferAllAffQuotaAndApproveSkipped(t *testing.T) {
 
 	invitee := newAffTestUser(t, "tr-invitee", "tri1", u.Id, 0)
 	skipped := &AffRebate{InviterId: u.Id, InviteeId: invitee.Id, TopUpId: 77, TopUpMoney: 10, RebateAmount: 1000, RebateMoney: 0.2}
-	require.NoError(t, CreateSkippedAffRebate(skipped, AffRebateSkipSameIP, AffRebateSameIPReason))
+	require.NoError(t, CreateSkippedAffRebate(skipped, AffRebateSkipSameIP, AffRebateSameIPReason, "9.9.9.9"))
 	got, err := GetAffRebateById(skipped.Id)
 	require.NoError(t, err)
 	require.Equal(t, AffRebateStatusRevoked, got.Status)
@@ -186,8 +186,49 @@ func TestTransferAllAffQuotaAndApproveSkipped(t *testing.T) {
 	require.Zero(t, fresh.AffQuota)
 	require.Equal(t, quotaBefore+1000, fresh.Quota)
 
+	// 补发后被管理员撤销的记录不能再补发（否则能绕回去）
+	require.NoError(t, RevokeAffRebateById(skipped.Id, 1, "复核后确认是小号"))
+	require.Error(t, ApproveSkippedAffRebateById(skipped.Id, 1))
+
 	items, total, err := ListAffRebates(ListAffRebatesQuery{SkipReason: "any"}, 1, 20)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, total)
 	require.Equal(t, skipped.Id, items[0].Id)
+}
+
+func TestInviteCodeSquatCap(t *testing.T) {
+	setupAffInviteTables(t)
+	u := newAffTestUser(t, "squat", "sq01", 0, 0)
+	var last *AffInviteCode
+	for i := 0; i < AffInviteCodeMaxRecordsPerUser; i++ {
+		c, err := CreateUserInviteCode(u.Id, fmt.Sprintf("squat-%03d", i))
+		require.NoError(t, err)
+		require.NoError(t, DeleteUserInviteCode(u.Id, c.Id))
+		last = c
+	}
+	_, err := CreateUserInviteCode(u.Id, "squat-new")
+	require.ErrorIs(t, err, ErrInviteCodeQuota, "累计占位到上限后不能再建新码")
+	again, err := CreateUserInviteCode(u.Id, last.Code)
+	require.NoError(t, err, "重新启用自己删掉的码不受上限影响")
+	require.Equal(t, last.Id, again.Id)
+}
+
+func TestIsUniqueViolation(t *testing.T) {
+	require.True(t, isUniqueViolation(fmt.Errorf(`错误: 重复键违反唯一约束"idx_aff_invite_codes_code_key" (SQLSTATE 23505)`)))
+	require.True(t, isUniqueViolation(fmt.Errorf("Error 1062 (23000): Duplicate entry 'x' for key 'idx'")))
+	require.True(t, isUniqueViolation(fmt.Errorf("UNIQUE constraint failed: aff_invite_codes.code_key")))
+	require.False(t, isUniqueViolation(fmt.Errorf("connection refused")))
+}
+
+func TestUserNetworkIPs(t *testing.T) {
+	setupAffInviteTables(t)
+	require.NoError(t, DB.AutoMigrate(&UserSession{}))
+	t.Cleanup(func() { DB.Exec("DELETE FROM user_sessions") })
+	u := newAffTestUser(t, "netips", "net1", 0, 0)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", u.Id).Update("register_ip", "1.2.3.4").Error)
+	for i, ip := range []string{"5.6.7.8", "5.6.7.8", "", "2408:8207::1"} {
+		require.NoError(t, DB.Create(&UserSession{SID: fmt.Sprintf("s-%d", i), UserID: u.Id, UserAuthVersion: 1, Status: "active",
+			RefreshHash: fmt.Sprintf("%064d", i), LoginMethod: "password", IP: ip, LastActiveAt: 1, ExpiresAt: 2}).Error)
+	}
+	require.ElementsMatch(t, []string{"1.2.3.4", "5.6.7.8", "2408:8207::1"}, UserNetworkIPs(u.Id))
 }

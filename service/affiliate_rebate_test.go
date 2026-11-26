@@ -152,3 +152,36 @@ func TestSameRegisterNetwork(t *testing.T) {
 	require.True(t, isSharedEgressIP("10.8.9.9", "10.8.0.0/16；"))
 	require.False(t, isSharedEgressIP("10.9.0.1", "10.8.0.0/16"))
 }
+
+func TestAffiliateRebateLoginIPOverlapSkipped(t *testing.T) {
+	setupAffRebateTest(t)
+	ips := map[int][]string{}
+	prev := userNetworkIPs
+	userNetworkIPs = func(id int) []string { return ips[id] }
+	t.Cleanup(func() { userNetworkIPs = prev })
+
+	inviter := affUser(t, "inv-login", "1.1.1.1", 0)
+	alt := affUser(t, "ee-login", "2.2.2.2", inviter.Id)
+	friend := affUser(t, "ee-friend", "3.3.3.3", inviter.Id)
+	viaLine := affUser(t, "ee-line", "4.4.4.4", inviter.Id)
+	ips[inviter.Id] = []string{"1.1.1.1", "9.9.9.9", "45.129.8.33"}
+	ips[alt.Id] = []string{"2.2.2.2", "9.9.9.9"}         // 注册换了 IP，但登录 IP 和邀请人一样
+	ips[friend.Id] = []string{"3.3.3.3"}                 // 真实好友
+	ips[viaLine.Id] = []string{"4.4.4.4", "45.129.8.33"} // 只在共享出口上重合
+
+	affTopUp(t, alt.Id, 50)
+	affTopUp(t, friend.Id, 50)
+	affTopUp(t, viaLine.Id, 50)
+	status := func(invitee int) (string, string) {
+		var r model.AffRebate
+		require.NoError(t, model.DB.Where("invitee_id = ?", invitee).First(&r).Error)
+		return r.Status, r.SkipIP
+	}
+	st, hit := status(alt.Id)
+	require.Equal(t, model.AffRebateStatusRevoked, st)
+	require.Equal(t, "9.9.9.9", hit)
+	st, _ = status(friend.Id)
+	require.Equal(t, model.AffRebateStatusPending, st)
+	st, _ = status(viaLine.Id)
+	require.Equal(t, model.AffRebateStatusPending, st, "共享出口上的重合不算")
+}

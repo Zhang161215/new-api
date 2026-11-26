@@ -76,21 +76,38 @@ func isSharedEgressIP(ip string, list string) bool {
 	return false
 }
 
-// isSameIPInvite 被邀人与邀请人注册 IP 相同（且不在共享出口名单里）视为非真实邀请。
-func isSameIPInvite(inviter, invitee *model.User) bool {
+// userNetworkIPs 可替换，便于单测。
+var userNetworkIPs = model.UserNetworkIPs
+
+// sameIPInvite 被邀人与邀请人出现过同一个 IP（注册 IP 或登录 IP，IPv6 按 /64，共享出口名单除外）视为非真实邀请。
+// 返回命中的 IP（邀请人一侧的），没命中返回空串。
+func sameIPInvite(inviter, invitee *model.User) string {
 	if !common.AffiliateRebateSameIPCheck || inviter == nil || invitee == nil {
-		return false
+		return ""
 	}
-	if !sameRegisterNetwork(inviter.RegisterIP, invitee.RegisterIP) {
-		return false
+	shared := common.AffiliateRebateSharedIPs
+	inviterIPs := userNetworkIPs(inviter.Id)
+	inviteeIPs := userNetworkIPs(invitee.Id)
+	for _, a := range inviterIPs {
+		if isSharedEgressIP(a, shared) {
+			continue
+		}
+		for _, b := range inviteeIPs {
+			if isSharedEgressIP(b, shared) {
+				continue
+			}
+			if sameRegisterNetwork(a, b) {
+				return strings.TrimSpace(a)
+			}
+		}
 	}
-	return !isSharedEgressIP(invitee.RegisterIP, common.AffiliateRebateSharedIPs)
+	return ""
 }
 
 // TriggerAffiliateRebate 在 top_up 成功 commit 后调用。
 // 幂等：依赖 (aff_rebates.top_up_id) 唯一索引 + Go 端 SELECT 双保险。
 // 默认被邀人每笔成功充值都返利；关掉 AffiliateRebateEveryTopUp 时只返首充。
-// 被邀人与邀请人同 IP 注册时不返利，只留一条 revoked 记录（skip_reason=same_ip）供管理员复核。
+// 被邀人与邀请人同 IP（注册或登录）时不返利，只留一条 revoked 记录（skip_reason=same_ip）供管理员复核。
 func TriggerAffiliateRebate(topUp *model.TopUp) error {
 	if topUp == nil {
 		return nil
@@ -162,13 +179,13 @@ func TriggerAffiliateRebate(topUp *model.TopUp) error {
 		CreatedAt:    now,
 	}
 
-	// 6. 同 IP 注册：判为非真实邀请，留痕不发
-	if isSameIPInvite(inviter, invitee) {
-		if err := model.CreateSkippedAffRebate(rebate, model.AffRebateSkipSameIP, model.AffRebateSameIPReason); err != nil {
+	// 6. 同 IP（注册或登录）：判为非真实邀请，留痕不发
+	if hit := sameIPInvite(inviter, invitee); hit != "" {
+		if err := model.CreateSkippedAffRebate(rebate, model.AffRebateSkipSameIP, model.AffRebateSameIPReason, hit); err != nil {
 			common.SysLog(fmt.Sprintf("create skipped aff_rebate failed (topup #%d): %v", topUp.Id, err))
 			return err
 		}
-		common.SysLog(fmt.Sprintf("affiliate rebate skipped (same register ip): inviter #%d invitee #%d topup #%d", inviter.Id, invitee.Id, topUp.Id))
+		common.SysLog(fmt.Sprintf("affiliate rebate skipped (same ip %s): inviter #%d invitee #%d topup #%d", hit, inviter.Id, invitee.Id, topUp.Id))
 		return nil
 	}
 

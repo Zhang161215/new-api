@@ -152,7 +152,8 @@ func TransferAllAffiliateQuota(c *gin.Context) {
 
 func isInviteCodeUserError(err error) bool {
 	return errors.Is(err, model.ErrInviteCodeInvalid) || errors.Is(err, model.ErrInviteCodeTaken) ||
-		errors.Is(err, model.ErrInviteCodeLimit) || errors.Is(err, model.ErrInviteCodeMissing)
+		errors.Is(err, model.ErrInviteCodeLimit) || errors.Is(err, model.ErrInviteCodeMissing) ||
+		errors.Is(err, model.ErrInviteCodeQuota)
 }
 
 // AdminApproveAffiliateRebate 管理员复核：被系统判为同 IP 的返利确认是真实邀请，补发到账。

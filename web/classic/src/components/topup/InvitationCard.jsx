@@ -317,7 +317,9 @@ const InvitationCard = ({
                 <div className='flex items-start gap-2'>
                   <Badge dot type='success' />
                   <Text type='tertiary' className='text-sm'>
-                    {t('与邀请人同一网络注册的账号视为非真实邀请，不计返利。')}
+                    {t(
+                      '与邀请人在同一网络注册或登录过的账号视为非真实邀请，不计返利。',
+                    )}
                   </Text>
                 </div>
               )}

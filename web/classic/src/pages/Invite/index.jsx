@@ -246,7 +246,9 @@ const Invite = () => {
   ];
   const notes = [];
   if (overview?.same_ip_check) {
-    notes.push(t('与邀请人同一网络注册的账号视为非真实邀请，不计返利。'));
+    notes.push(
+      t('与邀请人在同一网络注册或登录过的账号视为非真实邀请，不计返利。'),
+    );
   }
   notes.push(t('仅钱包充值计返利，订阅套餐不计。'));
   (overview?.extra_rules || '')

@@ -210,7 +210,7 @@ const AffiliateRebatesTable = () => {
         if (v === 'revoked' && r.skip_reason) {
           return (
             <Tooltip
-              content={`${r.revoke_reason || ''}${r.register_ip ? ` · IP ${r.register_ip}` : ''}`}
+              content={`${r.revoke_reason || ''}${r.skip_ip ? ` · 命中 IP ${r.skip_ip}` : ''}${r.register_ip ? ` · 被邀人注册 IP ${r.register_ip}` : ''}`}
             >
               <Tag color='orange'>{t('同 IP · 不计返利')}</Tag>
             </Tooltip>
@@ -222,7 +222,7 @@ const AffiliateRebatesTable = () => {
           return (
             <Space spacing={4}>
               {tag}
-              <Tooltip content={r.register_ip ? `IP ${r.register_ip}` : ''}>
+              <Tooltip content={r.skip_ip ? `命中 IP ${r.skip_ip}` : ''}>
                 <Tag color='blue'>{t('人工补发')}</Tag>
               </Tooltip>
             </Space>
@@ -262,7 +262,7 @@ const AffiliateRebatesTable = () => {
               {t('提前到账')}
             </Button>
           )}
-          {r.status === 'revoked' && r.skip_reason && (
+          {r.status === 'revoked' && r.skip_reason && !r.operator_id && (
             <Button size='small' type='primary' onClick={() => onApprove(r)}>
               {t('补发返利')}
             </Button>

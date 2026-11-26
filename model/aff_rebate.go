@@ -25,7 +25,7 @@ const (
 const AffRebateSkipSameIP = "same_ip"
 
 // AffRebateSameIPReason 同 IP 跳过时写入 revoke_reason 的文案（用户端返利记录可见，不带具体 IP）。
-const AffRebateSameIPReason = "同 IP 注册，非真实邀请，不计返利"
+const AffRebateSameIPReason = "与邀请人同 IP（注册或登录），非真实邀请，不计返利"
 
 // AffRebate 表示一条邀请充值返利记录。
 // 每一笔触发返利的被邀人充值（默认每笔，首充模式下只有首笔）生成且仅生成一条。
@@ -45,6 +45,7 @@ type AffRebate struct {
 	RevokeReason string  `json:"revoke_reason" gorm:"type:varchar(255)"`
 	OperatorId   int     `json:"operator_id"`                         // 管理员操作时记录
 	SkipReason   string  `json:"skip_reason" gorm:"type:varchar(32)"` // 系统判定不返利的原因（same_ip）；管理员撤销的为空
+	SkipIP       string  `json:"-" gorm:"type:varchar(64)"`           // 同 IP 跳过时命中的 IP，只给管理员看
 }
 
 func (AffRebate) TableName() string {
@@ -97,10 +98,11 @@ func CreatePendingAffRebate(rebate *AffRebate) error {
 
 // CreateSkippedAffRebate 记录一条系统判定不返利的记录（状态 revoked），不改任何额度。
 // 留痕便于管理员复核；误判时可用 ApproveSkippedAffRebateById 补发。
-func CreateSkippedAffRebate(rebate *AffRebate, skipReason, reason string) error {
+func CreateSkippedAffRebate(rebate *AffRebate, skipReason, reason, skipIP string) error {
 	now := time.Now().Unix()
 	rebate.Status = AffRebateStatusRevoked
 	rebate.SkipReason = skipReason
+	rebate.SkipIP = skipIP
 	rebate.RevokeReason = reason
 	rebate.RevokedAt = now
 	if rebate.CreatedAt == 0 {
@@ -117,14 +119,15 @@ func ApproveSkippedAffRebateById(id int, operatorId int) error {
 		if err := lockForUpdate(tx).Where("id = ?", id).First(&r).Error; err != nil {
 			return err
 		}
-		if r.Status != AffRebateStatusRevoked || r.SkipReason == "" {
-			return errors.New("只有被系统判定不返利的记录可以补发")
+		// operator_id 非 0 说明管理员动过（补发后又撤销），不允许再补发绕回去
+		if r.Status != AffRebateStatusRevoked || r.SkipReason == "" || r.OperatorId != 0 {
+			return errors.New("只有被系统判定不返利、且未被管理员处理过的记录可以补发")
 		}
 		if r.RebateAmount <= 0 {
 			return errors.New("返利额度为 0，无需补发")
 		}
 		now := time.Now().Unix()
-		res := tx.Model(&AffRebate{}).Where("id = ? AND status = ?", r.Id, AffRebateStatusRevoked).Updates(map[string]interface{}{
+		res := tx.Model(&AffRebate{}).Where("id = ? AND status = ? AND operator_id = 0", r.Id, AffRebateStatusRevoked).Updates(map[string]interface{}{
 			"status":      AffRebateStatusReleased,
 			"released_at": now,
 			"operator_id": operatorId,
@@ -218,8 +221,8 @@ func ListInviterRebates(inviterId int, page, pageSize int) (items []*AffRebate, 
 // 成功则返回 true；如果状态已不是 pending（被并发抢占），返回 false。
 func ReleaseAffRebateById(id int, operatorId int) (bool, error) {
 	var released bool
+	var r AffRebate
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		var r AffRebate
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", id).First(&r).Error; err != nil {
 			return err
 		}
@@ -247,13 +250,16 @@ func ReleaseAffRebateById(id int, operatorId int) (bool, error) {
 			return err
 		}
 		released = true
+		return nil
+	})
+	// 事务提交后再记日志：日志库可能和主库共用连接池
+	if err == nil && released {
 		RecordLog(r.InviterId, LogTypeAffiliateRebate, common.NewMessage("邀请返利 ${{rebate}} 已到账（被邀人 #{{invitee}} 充值 ${{topup}}）", map[string]any{
 			"rebate":  fmt.Sprintf("%.2f", r.RebateMoney),
 			"invitee": r.InviteeId,
 			"topup":   fmt.Sprintf("%.2f", r.TopUpMoney),
 		}))
-		return nil
-	})
+	}
 	return released, err
 }
 
@@ -286,8 +292,8 @@ func ReleaseDueAffRebates(batch int) (int, error) {
 // pending → 仅扣 aff_pending_quota。
 // released → 优先扣 aff_quota，不足继续扣 quota（允许变负，主人决策）；同时回退 aff_history。
 func RevokeAffRebateById(id int, operatorId int, reason string) error {
-	return DB.Transaction(func(tx *gorm.DB) error {
-		var r AffRebate
+	var r AffRebate
+	err := DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", id).First(&r).Error; err != nil {
 			return err
 		}
@@ -346,10 +352,14 @@ func RevokeAffRebateById(id int, operatorId int, reason string) error {
 			return err
 		}
 
-		RecordLog(r.InviterId, LogTypeAffiliateRebate, common.NewMessage("邀请返利 ${{rebate}} 已被撤销（原因：{{reason}}）", map[string]any{
-			"rebate": fmt.Sprintf("%.2f", r.RebateMoney),
-			"reason": reason,
-		}))
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	RecordLog(r.InviterId, LogTypeAffiliateRebate, common.NewMessage("邀请返利 ${{rebate}} 已被撤销（原因：{{reason}}）", map[string]any{
+		"rebate": fmt.Sprintf("%.2f", r.RebateMoney),
+		"reason": reason,
+	}))
+	return nil
 }

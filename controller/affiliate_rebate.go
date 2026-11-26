@@ -163,7 +163,8 @@ func AdminListAffiliateRebates(c *gin.Context) {
 			entry["invitee_username"] = inviteeName
 		}
 		if r.SkipReason != "" {
-			// 本站：同 IP 跳过的记录带上注册 IP，方便管理员判断是不是共享出口误判
+			// 本站：同 IP 跳过的记录带上命中的 IP，方便管理员判断是不是共享出口误判
+			entry["skip_ip"] = r.SkipIP
 			var invitee model.User
 			if err := model.DB.Unscoped().Select("register_ip").First(&invitee, "id = ?", r.InviteeId).Error; err == nil {
 				entry["register_ip"] = invitee.RegisterIP

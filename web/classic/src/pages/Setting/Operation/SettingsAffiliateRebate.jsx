@@ -184,10 +184,10 @@ export default function SettingsAffiliateRebate(props) {
           <Row gutter={16}>
             <Col xs={24} sm={12} md={8}>
               <Form.Switch
-                label={t('同 IP 注册不返利')}
+                label={t('同 IP 不返利')}
                 field={'AffiliateRebateSameIPCheck'}
                 extraText={t(
-                  '被邀人与邀请人注册 IP 相同（IPv6 按 /64）视为非真实邀请：记一条「不计返利」，可在邀请奖励管理里人工补发',
+                  '被邀人与邀请人的注册 IP 或登录 IP 有重合（IPv6 按 /64）视为非真实邀请：记一条「不计返利」，可在邀请奖励管理里人工补发',
                 )}
                 onChange={(value) =>
                   setInputs({ ...inputs, AffiliateRebateSameIPCheck: value })

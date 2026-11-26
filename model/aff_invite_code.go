@@ -18,6 +18,10 @@ import (
 
 const AffInviteCodeMaxPerUser = 9
 
+// AffInviteCodeMaxRecordsPerUser 每人累计能占用的自定义码（含已删除的）。删掉的码会一直占位，
+// 不设上限的话反复建删可以无限占坑、撑大表；本人重新启用旧码不受这个限制。
+const AffInviteCodeMaxRecordsPerUser = 30
+
 var affInviteCodePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{4,32}$`)
 
 var (
@@ -25,6 +29,7 @@ var (
 	ErrInviteCodeTaken   = errors.New("该邀请码已被占用，换一个试试")
 	ErrInviteCodeLimit   = errors.New("最多只能创建 9 个自定义邀请码")
 	ErrInviteCodeMissing = errors.New("邀请码不存在或已删除")
+	ErrInviteCodeQuota   = errors.New("自定义邀请码累计创建次数已达上限（含已删除的），可以重新启用之前删除的码")
 )
 
 // affInviteCodesReady 表迁移完成后置位。新用户生成默认码时据此决定要不要避开自定义码
@@ -106,6 +111,13 @@ func CreateUserInviteCode(userId int, raw string) (*AffInviteCode, error) {
 			created = existing
 			return nil
 		case errors.Is(err, gorm.ErrRecordNotFound):
+			var total int64
+			if err := tx.Model(&AffInviteCode{}).Where("user_id = ?", userId).Count(&total).Error; err != nil {
+				return err
+			}
+			if total >= AffInviteCodeMaxRecordsPerUser {
+				return ErrInviteCodeQuota
+			}
 			created = AffInviteCode{UserId: userId, Code: code, CodeKey: key, CreatedAt: time.Now().Unix()}
 			return tx.Create(&created).Error
 		default:
@@ -113,7 +125,7 @@ func CreateUserInviteCode(userId int, raw string) (*AffInviteCode, error) {
 		}
 	})
 	if err != nil {
-		if !errors.Is(err, ErrInviteCodeLimit) && !errors.Is(err, ErrInviteCodeTaken) && isUniqueViolation(err) {
+		if !errors.Is(err, ErrInviteCodeLimit) && !errors.Is(err, ErrInviteCodeTaken) && !errors.Is(err, ErrInviteCodeQuota) && isUniqueViolation(err) {
 			return nil, ErrInviteCodeTaken // 并发抢同一个码
 		}
 		return nil, err
@@ -187,8 +199,29 @@ func isUniqueViolation(err error) bool {
 	if errors.Is(err, gorm.ErrDuplicatedKey) {
 		return true
 	}
+	// PG 的报错文案随服务器 locale 变（中文是「重复键违反唯一约束」），所以同时认 SQLSTATE / MySQL 错误码
 	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "unique") || strings.Contains(msg, "duplicate")
+	return strings.Contains(msg, "23505") || strings.Contains(msg, "1062") ||
+		strings.Contains(msg, "unique") || strings.Contains(msg, "duplicate")
+}
+
+// UserNetworkIPs 一个用户出现过的 IP：注册 IP + 登录会话 IP（会话表按过期清理，所以是近期的）。
+func UserNetworkIPs(userId int) []string {
+	ips := make([]string, 0, 4)
+	var u User
+	if err := DB.Unscoped().Select("register_ip").First(&u, "id = ?", userId).Error; err == nil && strings.TrimSpace(u.RegisterIP) != "" {
+		ips = append(ips, strings.TrimSpace(u.RegisterIP))
+	}
+	var sessionIPs []string
+	if err := DB.Model(&UserSession{}).Where("user_id = ? AND ip <> ''", userId).
+		Distinct().Limit(200).Pluck("ip", &sessionIPs).Error; err == nil {
+		for _, ip := range sessionIPs {
+			if ip = strings.TrimSpace(ip); ip != "" {
+				ips = append(ips, ip)
+			}
+		}
+	}
+	return ips
 }
 
 // ---------- 邀请返利页统计 ----------
