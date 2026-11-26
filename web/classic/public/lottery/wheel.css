@@ -737,12 +737,32 @@ body.is-soldout .lz-w-spin {
   animation: lz-w-whirl 0.55s linear infinite;
 }
 
+/* 起转蓄力：先回拉 12°，再按二次缓入加速 182°，末速度 ≈ 654°/s，正好接上匀速段（360°/0.55s） */
+.lz-w-css-face.is-whirling.is-windup {
+  --lead: 170deg;
+  animation: lz-w-windup 0.72s both, lz-w-whirl 0.55s linear 0.72s infinite;
+}
+
+@keyframes lz-w-windup {
+  0% {
+    transform: rotate(var(--from, 0deg));
+    animation-timing-function: cubic-bezier(0.3, 0, 0.4, 1);
+  }
+  24% {
+    transform: rotate(calc(var(--from, 0deg) - 12deg));
+    animation-timing-function: cubic-bezier(0.33, 0, 0.67, 0.33);
+  }
+  100% {
+    transform: rotate(calc(var(--from, 0deg) + var(--lead, 0deg)));
+  }
+}
+
 @keyframes lz-w-whirl {
   from {
-    transform: rotate(var(--from, 0deg));
+    transform: rotate(calc(var(--from, 0deg) + var(--lead, 0deg)));
   }
   to {
-    transform: rotate(calc(var(--from, 0deg) + 360deg));
+    transform: rotate(calc(var(--from, 0deg) + var(--lead, 0deg) + 360deg));
   }
 }
 
@@ -2011,5 +2031,247 @@ body.has-flash :is(.lz-w-panel, .lz-w-balance, .lz-w-meta li, .lz-w-note).is-fla
   body.has-flash :is(.lz-w-panel, .lz-w-balance, .lz-w-meta li, .lz-w-note)::before,
   body.has-flash :is(.lz-w-panel, .lz-w-balance, .lz-w-meta li, .lz-w-note)::after {
     transition: none;
+  }
+}
+
+/* ---- 转盘本体动效（fx.js）：速度模糊、落点高亮、外圈流光、次数滚动 ---- */
+.lz-w-css-prize {
+  transition: filter 0.22s ease, opacity 0.22s ease;
+}
+
+.lz-w-css-face[data-speed='mid'] .lz-w-css-prize {
+  filter: blur(0.7px);
+}
+
+.lz-w-css-face[data-speed='fast'] .lz-w-css-prize {
+  filter: blur(1.6px);
+  opacity: 0.82;
+}
+
+/* 中奖奖品：图标弹起后停在略大的尺寸，文字跟着提亮 */
+.lz-w-css-prize.is-won img {
+  animation: lz-w-prize-pop 0.9s cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
+  filter: drop-shadow(0 0 10px rgba(255, 214, 110, 0.85)) drop-shadow(0 2px 4px rgba(40, 70, 120, 0.25));
+}
+
+.lz-w-css-prize.is-won span {
+  color: #1f3f86;
+  animation: lz-w-prize-label 0.9s ease-out both;
+}
+
+@keyframes lz-w-prize-pop {
+  0% { transform: scale(1) rotate(0deg); }
+  28% { transform: scale(1.34) rotate(-7deg); }
+  52% { transform: scale(1.12) rotate(4deg); }
+  74% { transform: scale(1.2) rotate(-1deg); }
+  100% { transform: scale(1.18) rotate(0deg); }
+}
+
+@keyframes lz-w-prize-label {
+  0%, 100% { transform: scale(1); }
+  35% { transform: scale(1.14); }
+}
+
+/* 落点：指针正下方那一格（固定在盘面顶部，不跟着转）闪亮，其余扇区压暗 */
+.lz-w-land {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.lz-w-land.is-on {
+  opacity: 1;
+  transition-duration: 0.18s;
+}
+
+.lz-w-land.is-on.is-fade {
+  opacity: 0;
+  transition-duration: 0.9s;
+}
+
+.lz-w-land i {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+
+.lz-w-land-dim {
+  background: rgba(22, 44, 104, 0.18);
+  -webkit-mask: conic-gradient(from calc(-180deg / var(--n, 6)), transparent 0 calc(360deg / var(--n, 6)), #000 0);
+  mask: conic-gradient(from calc(-180deg / var(--n, 6)), transparent 0 calc(360deg / var(--n, 6)), #000 0);
+}
+
+.lz-w-land-hit {
+  background: radial-gradient(circle closest-side, transparent 30%, rgba(255, 249, 226, 0.28) 52%, rgba(255, 236, 168, 0.62) 86%, rgba(255, 210, 100, 0.85) 100%);
+  -webkit-mask: conic-gradient(from calc(-180deg / var(--n, 6)), #000 0 calc(360deg / var(--n, 6)), transparent 0);
+  mask: conic-gradient(from calc(-180deg / var(--n, 6)), #000 0 calc(360deg / var(--n, 6)), transparent 0);
+}
+
+.lz-w-land.is-on .lz-w-land-hit {
+  animation: lz-w-land-flash 0.18s ease-in-out 5 alternate both;
+}
+
+.lz-w-land[data-kind='jackpot'] .lz-w-land-dim {
+  background: rgba(18, 36, 90, 0.28);
+}
+
+.lz-w-land[data-kind='jackpot'] .lz-w-land-hit {
+  background: radial-gradient(circle closest-side, rgba(255, 246, 210, 0.2) 24%, rgba(255, 228, 140, 0.55) 56%, rgba(255, 200, 80, 0.95) 100%);
+}
+
+.lz-w-land[data-kind='miss'] .lz-w-land-dim {
+  background: rgba(22, 44, 104, 0.1);
+}
+
+.lz-w-land[data-kind='miss'] .lz-w-land-hit {
+  background: radial-gradient(circle closest-side, transparent 30%, rgba(236, 242, 255, 0.4) 70%, rgba(214, 226, 250, 0.6) 100%);
+}
+
+.lz-w-land[data-kind='miss'].is-on .lz-w-land-hit {
+  animation: none;
+}
+
+@keyframes lz-w-land-flash {
+  from { opacity: 0.3; }
+  to { opacity: 1; }
+}
+
+/* 外圈流光：压在外圈 PNG 上用 screen 混合，只照亮金色灯珠环那一圈 */
+.lz-w-rim {
+  position: absolute;
+  left: 50%;
+  top: 47.1%;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  mix-blend-mode: plus-lighter;
+  -webkit-mask: radial-gradient(circle closest-side, transparent 61.5%, #000 63.5%, #000 71%, transparent 73.5%);
+  mask: radial-gradient(circle closest-side, transparent 61.5%, #000 63.5%, #000 71%, transparent 73.5%);
+}
+
+.lz-w-rim i {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.lz-w-rim-idle {
+  background: conic-gradient(transparent 0 262deg, rgba(255, 196, 90, 0.22) 312deg, rgba(255, 228, 150, 0.62) 348deg, rgba(255, 252, 236, 1) 358deg, transparent 360deg);
+  animation: lz-w-rim-turn 6.5s linear infinite;
+}
+
+.lz-w-rim-fast {
+  background: repeating-conic-gradient(transparent 0 58deg, rgba(255, 200, 96, 0.3) 96deg, rgba(255, 236, 170, 0.75) 114deg, rgba(255, 252, 236, 1) 119deg, transparent 120deg);
+  animation: lz-w-rim-turn 0.9s linear infinite;
+}
+
+.lz-w-rim-all {
+  background: rgba(255, 226, 150, 0.6);
+}
+
+.lz-w-rim.is-gold .lz-w-rim-all {
+  background: rgba(255, 206, 100, 0.85);
+}
+
+.lz-w-ornament:not(.is-spinning) .lz-w-rim-idle,
+.lz-w-ornament.is-spinning .lz-w-rim-fast {
+  opacity: 1;
+}
+
+.lz-w-rim.is-blink .lz-w-rim-all {
+  animation: lz-w-rim-blink 0.22s steps(1, end) 6 both;
+}
+
+.lz-w-rim.is-blink .lz-w-rim-fast {
+  opacity: 0;
+}
+
+@keyframes lz-w-rim-turn {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes lz-w-rim-blink {
+  0% { opacity: 1; }
+  50% { opacity: 0.15; }
+}
+
+/* 可抽次数：数字滚动 + 飘出 −1 / +N */
+.lz-w-balance-v {
+  position: relative;
+}
+
+.lz-w-balance-v strong {
+  display: inline-block;
+}
+
+.lz-w-balance-v strong.is-roll-down {
+  animation: lz-w-roll-down 0.42s cubic-bezier(0.2, 0.8, 0.3, 1.2) both;
+}
+
+.lz-w-balance-v strong.is-roll-up {
+  animation: lz-w-roll-up 0.42s cubic-bezier(0.2, 0.8, 0.3, 1.2) both;
+}
+
+@keyframes lz-w-roll-down {
+  0% { transform: translateY(-55%); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes lz-w-roll-up {
+  0% { transform: translateY(55%); opacity: 0; }
+  60% { color: #16a34a; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+.lz-w-balance-delta {
+  position: absolute;
+  left: 3.4em;
+  top: 0.1em;
+  font-size: 15px;
+  font-style: normal;
+  font-weight: 800;
+  pointer-events: none;
+  animation: lz-w-delta-float 1.1s ease-out both;
+}
+
+.lz-w-balance-delta.is-minus {
+  color: #f0614f;
+}
+
+.lz-w-balance-delta.is-plus {
+  color: #16a34a;
+}
+
+@keyframes lz-w-delta-float {
+  0% { transform: translateY(6px); opacity: 0; }
+  18% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(-18px); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lz-w-css-prize,
+  .lz-w-land,
+  .lz-w-rim i {
+    transition: none;
+  }
+
+  .lz-w-rim {
+    display: none;
+  }
+
+  .lz-w-land.is-on .lz-w-land-hit,
+  .lz-w-css-prize.is-won img,
+  .lz-w-css-prize.is-won span {
+    animation: none;
   }
 }

@@ -281,6 +281,8 @@
       ux,
       uy,
       strength,
+      // 绑定生成时的那批颗粒：波纹途中若重排（面板重绘、提示条出现）会换新颗粒，长度和 dist 对不上
+      grains: topo.grains,
     };
     if (!restart) requestAnimationFrame(drawPulse);
   }
@@ -300,11 +302,11 @@
     const eased = 1 - (1 - t) ** 2.2;
     const front = eased * (p.maxR + p.band * 2.4);
     const fade = 1 - t * 0.55;
-    const g = topo.grains;
+    const g = p.grains;
     const buckets = ALPHA_BUCKETS.map(() => []);
     for (let i = 0; i < g.x.length; i += 1) {
       const phase = (front - p.dist[i]) / p.band;
-      if (phase <= 0 || phase >= 2.2) continue;
+      if (!(phase > 0 && phase < 2.2)) continue;
       let disp;
       let glow;
       if (phase <= 1) {
@@ -413,7 +415,269 @@
     }, { passive: true });
   }
 
+  // ---------------- 转盘本体动效 ----------------
+  // 拨片：盘面每转过一条分隔线，指针被顶一下并“嗒”一声；慢下来时拨动幅度更大。
+  // 速度模糊：快转时奖品图标和文字发虚，慢下来逐级清晰。
+  // 落点：中奖扇区闪亮、其余扇区压暗、奖品图标弹起；外圈流光在待机 / 转动 / 开奖三种状态下不同。
+  // 次数：点下去立刻 −1 并滚动，避免等开奖完才变。
+  // 音效跟随右上角音乐开关（关掉就全静音），用 WebAudio 现合成，不加载额外文件。
+  const SOUND_KEY = 'synai996.lottery.bgm';
+  const ornament = document.querySelector('.lz-w-ornament');
+  const disc = document.querySelector('.lz-w-disc');
+  const outer = document.querySelector('.lz-w-wheel-outer');
+  const hubArt = document.querySelector('.lz-w-spin-art');
+  const face = () => document.getElementById('wheel-face');
+
+  let rim = null;
+  let land = null;
+  if (ornament && outer) {
+    rim = document.createElement('div');
+    rim.className = 'lz-w-rim';
+    rim.setAttribute('aria-hidden', 'true');
+    rim.innerHTML = '<i class="lz-w-rim-idle"></i><i class="lz-w-rim-fast"></i><i class="lz-w-rim-all"></i>';
+    outer.after(rim);
+  }
+  if (disc) {
+    land = document.createElement('div');
+    land.className = 'lz-w-land';
+    land.setAttribute('aria-hidden', 'true');
+    land.innerHTML = '<i class="lz-w-land-dim"></i><i class="lz-w-land-hit"></i>';
+    disc.append(land);
+  }
+
+  // ---- 音效 ----
+  let actx = null;
+  function soundOn() {
+    try {
+      return localStorage.getItem(SOUND_KEY) !== 'off';
+    } catch (e) {
+      return true;
+    }
+  }
+  function audio() {
+    if (!soundOn()) return null;
+    if (!actx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      try {
+        actx = new AC();
+      } catch (e) {
+        return null;
+      }
+    }
+    if (actx.state === 'suspended') actx.resume().catch(() => {});
+    return actx;
+  }
+  function tone(freq, { at = 0, dur = 0.3, gain = 0.08, type = 'sine', slide = 0 } = {}) {
+    const ctx = audio();
+    if (!ctx) return;
+    const t = ctx.currentTime + at;
+    const osc = ctx.createOscillator();
+    const amp = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    if (slide) osc.frequency.exponentialRampToValueAtTime(freq * slide, t + dur);
+    amp.gain.setValueAtTime(0.0001, t);
+    amp.gain.exponentialRampToValueAtTime(gain, t + 0.006);
+    amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(amp).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + dur + 0.03);
+  }
+  const sfx = {
+    tick(speed) {
+      // 越慢越低、越响一点，像拨片被顶得更狠
+      const slow = Math.max(0, Math.min(1, 1 - speed / 700));
+      tone(2300 - slow * 700, { dur: 0.035, gain: 0.035 + slow * 0.035, type: 'triangle', slide: 0.7 });
+    },
+    start() {
+      tone(330, { dur: 0.32, gain: 0.05, type: 'triangle', slide: 2.2 });
+    },
+    win() {
+      [1046.5, 1318.5, 1568].forEach((f, i) => tone(f, { at: i * 0.085, dur: 0.38, gain: 0.07 }));
+    },
+    jackpot() {
+      [784, 1046.5, 1318.5, 1568, 2093].forEach((f, i) => tone(f, { at: i * 0.075, dur: 0.5, gain: 0.075 }));
+      tone(2093, { at: 0.42, dur: 0.9, gain: 0.05, type: 'triangle' });
+    },
+    miss() {
+      tone(523, { dur: 0.22, gain: 0.05 });
+      tone(392, { at: 0.13, dur: 0.34, gain: 0.05 });
+    },
+  };
+
+  // ---- 转动监视：读盘面实时角度，算速度、过线 ----
+  const spin = { raf: 0, prev: null, prevT: 0, turned: 0, vel: 0, lastTick: 0, segs: 6, speed: '', until: 0 };
+
+  function faceAngle(el) {
+    const m = getComputedStyle(el).transform;
+    const v = m && m.startsWith('matrix(') ? m.slice(7, -1).split(',') : null;
+    return v ? (Math.atan2(Number(v[1]), Number(v[0])) * 180) / Math.PI : 0;
+  }
+
+  function setSpeed(el, level) {
+    if (spin.speed === level) return;
+    spin.speed = level;
+    if (level) el.dataset.speed = level;
+    else delete el.dataset.speed;
+  }
+
+  function flick(speed) {
+    if (!hubArt || speed > 520) return;
+    const deg = 2.5 + 4 * (1 - speed / 520);
+    hubArt.animate(
+      [{ transform: 'rotate(0deg)' }, { transform: `rotate(${deg.toFixed(1)}deg)`, offset: 0.3 }, { transform: 'rotate(0deg)' }],
+      { duration: 210, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' },
+    );
+  }
+
+  function watch(now) {
+    const el = face();
+    if (!el || now > spin.until) {
+      stopWatch();
+      return;
+    }
+    const a = faceAngle(el);
+    if (spin.prev !== null) {
+      const d = ((a - spin.prev + 540) % 360) - 180;
+      const dt = Math.max(1, now - spin.prevT);
+      const seg = 360 / spin.segs;
+      const before = spin.turned;
+      spin.turned += d;
+      spin.vel = spin.vel * 0.55 + Math.abs((d / dt) * 1000) * 0.45;
+      if (Math.floor(spin.turned / seg) !== Math.floor(before / seg) && now - spin.lastTick > 38) {
+        spin.lastTick = now;
+        sfx.tick(spin.vel);
+        flick(spin.vel);
+      }
+    }
+    spin.prev = a;
+    spin.prevT = now;
+    setSpeed(el, spin.vel > 560 ? 'fast' : spin.vel > 280 ? 'mid' : '');
+    spin.raf = requestAnimationFrame(watch);
+  }
+
+  function stopWatch() {
+    cancelAnimationFrame(spin.raf);
+    spin.raf = 0;
+    const el = face();
+    if (el) {
+      spin.speed = 'x';
+      setSpeed(el, '');
+    }
+  }
+
+  function clearLand() {
+    window.clearTimeout(clearLand.tid);
+    land?.classList.remove('is-on', 'is-fade');
+    rim?.classList.remove('is-blink', 'is-gold');
+    face()?.querySelectorAll('.lz-w-css-prize.is-won').forEach((node) => node.classList.remove('is-won'));
+  }
+
+  function spinStart(segs) {
+    clearLand();
+    if (reducedMotion()) return;
+    audio();
+    sfx.start();
+    spin.segs = Math.max(1, Number(segs) || 6);
+    spin.prev = null;
+    spin.turned = 0;
+    spin.vel = 0;
+    spin.until = performance.now() + 20000;
+    if (!spin.raf) spin.raf = requestAnimationFrame(watch);
+  }
+
+  function spinEnd() {
+    stopWatch();
+  }
+
+  // kind: 'jackpot' | 'win' | 'miss'；返回的 Promise 在“让人看清落点”的时间后结束
+  function landOn(index, segs, kind) {
+    clearLand();
+    const n = Math.max(1, Number(segs) || 6);
+    if (land) {
+      land.style.setProperty('--n', String(n));
+      land.dataset.kind = kind;
+      void land.offsetWidth;
+      land.classList.add('is-on');
+      clearLand.tid = window.setTimeout(() => land.classList.add('is-fade'), 3600);
+    }
+    if (reducedMotion()) return Promise.resolve();
+    face()?.querySelectorAll('.lz-w-css-prize')[index]?.classList.add('is-won');
+    if (kind !== 'miss' && rim) {
+      void rim.offsetWidth;
+      rim.classList.add('is-blink');
+      rim.classList.toggle('is-gold', kind === 'jackpot');
+    }
+    sfx[kind]?.();
+    const hold = kind === 'jackpot' ? 0 : kind === 'miss' ? 420 : 640;
+    return new Promise((resolve) => window.setTimeout(resolve, hold));
+  }
+
+  // ---- 次数滚动 ----
+  const ticketView = { last: null, observer: null };
+
+  function balanceStrong() {
+    return document.querySelector('#me-stats .lz-w-balance-v strong');
+  }
+
+  function rollTicket(el, from, to) {
+    if (!el || from === to || reducedMotion()) return;
+    const holder = el.parentElement;
+    el.classList.remove('is-roll-up', 'is-roll-down');
+    void el.offsetWidth;
+    el.classList.add(to < from ? 'is-roll-down' : 'is-roll-up');
+    if (!holder) return;
+    holder.querySelector('.lz-w-balance-delta')?.remove();
+    const chip = document.createElement('i');
+    chip.className = `lz-w-balance-delta ${to < from ? 'is-minus' : 'is-plus'}`;
+    chip.textContent = `${to < from ? '−' : '+'}${Math.abs(to - from)}`;
+    chip.setAttribute('aria-hidden', 'true');
+    holder.append(chip);
+    chip.addEventListener('animationend', () => chip.remove(), { once: true });
+  }
+
+  function watchTickets() {
+    const root = document.getElementById('me-stats');
+    if (!root || ticketView.observer) return;
+    const read = () => {
+      const el = balanceStrong();
+      if (!el) return;
+      const value = Number(el.textContent);
+      if (!Number.isFinite(value)) return;
+      if (ticketView.last !== null && value !== ticketView.last) rollTicket(el, ticketView.last, value);
+      ticketView.last = value;
+    };
+    ticketView.observer = new MutationObserver(read);
+    ticketView.observer.observe(root, { childList: true });
+    read();
+  }
+
+  // 点下去就先扣 1，开奖后面板重绘时数字一致就不会再滚一次
+  function spend() {
+    const el = balanceStrong();
+    const value = Number(el?.textContent);
+    if (!el || !Number.isFinite(value) || value < 1) return;
+    el.textContent = String(value - 1);
+    rollTicket(el, value, value - 1);
+    ticketView.last = value - 1;
+  }
+
+  // 抽奖失败：把乐观扣掉的数字悄悄还原
+  function unspend(tickets) {
+    const el = balanceStrong();
+    const value = Number(tickets);
+    if (!el || !Number.isFinite(value)) return;
+    el.classList.remove('is-roll-up', 'is-roll-down');
+    el.parentElement?.querySelector('.lz-w-balance-delta')?.remove();
+    el.textContent = String(value);
+    ticketView.last = value;
+  }
+
+  watchTickets();
+  if (!ticketView.observer) document.addEventListener('DOMContentLoaded', watchTickets, { once: true });
+
   initTopo();
   initPointer();
-  window.LotteryFx = { pulse };
+  window.LotteryFx = { pulse, spinStart, spinEnd, landOn, spend, unspend };
 })();

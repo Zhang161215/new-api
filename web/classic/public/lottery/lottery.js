@@ -1432,6 +1432,9 @@ const LotteryClient = {
 let drawing = false;
 let wheelAngle = 0;
 let wheelBuiltKey = '';
+// 起转蓄力（先回拉再加速）时长，和 wheel.css 的 lz-w-windup 保持一致
+const WHEEL_WINDUP_MS = 720;
+let wheelSpinStartedAt = 0;
 
 function prizeIconSrc(prize, index = 0) {
   if (prize.tier === 'legend' || Number(prize.quota) >= 10) return './assets/ui/prize-grand.png';
@@ -1485,7 +1488,7 @@ function freezeWheelFace() {
   const face = wheelFace();
   if (!face) return 0;
   const deg = matrixToDeg(getComputedStyle(face).transform);
-  face.classList.remove('is-whirling');
+  face.classList.remove('is-whirling', 'is-windup');
   face.style.animation = 'none';
   face.style.transition = 'none';
   wheelAngle = deg;
@@ -1920,7 +1923,9 @@ function startWheelSpin() {
   freezeWheelFace();
   face.style.removeProperty('animation');
   void face.offsetWidth;
-  face.classList.add('is-whirling');
+  face.classList.add('is-whirling', 'is-windup');
+  wheelSpinStartedAt = performance.now();
+  window.LotteryFx?.spinStart(prizes().length);
   return true;
 }
 
@@ -1940,13 +1945,17 @@ async function spinTo(prize, { alreadyPlaying = false } = {}) {
     return;
   }
   if (!alreadyPlaying) startWheelSpin();
-  await wait(alreadyPlaying ? 280 : 160);
+  // 蓄力没走完就开始减速会顿一下：至少等回拉 + 加速结束，再匀速转一小段
+  const sinceStart = performance.now() - wheelSpinStartedAt;
+  await wait(Math.max(alreadyPlaying ? 280 : 160, WHEEL_WINDUP_MS + 140 - sinceStart));
   freezeWheelFace();
   void face.offsetWidth;
   let delta = (targetMod - (wheelAngle % 360) + 360) % 360;
   if (delta < 45) delta += 360;
   const duration = isJackpotPrize(prize) ? 5600 : 4200;
-  wheelAngle += 360 * (isJackpotPrize(prize) ? 8 : 6) + delta;
+  // 先略过扇区中心几度，再被拨片顶回中心；幅度不超过扇区宽的 12%，不会越界到相邻奖项
+  const overshoot = Math.min(4, (360 / n) * 0.12);
+  wheelAngle += 360 * (isJackpotPrize(prize) ? 8 : 6) + delta + overshoot;
   face.style.transition = `transform ${duration}ms cubic-bezier(${isJackpotPrize(prize) ? '0.12, 0.72, 0.08, 1' : '0.33, 0.33, 0.12, 1'})`;
   face.style.setProperty('--from', `${wheelAngle}deg`);
   face.style.transform = `rotate(${wheelAngle}deg)`;
@@ -1961,7 +1970,13 @@ async function spinTo(prize, { alreadyPlaying = false } = {}) {
       face.addEventListener('transitionend', onEnd);
     }),
   ]);
+  wheelAngle -= overshoot;
+  face.style.transition = 'transform 460ms cubic-bezier(0.3, 0, 0.2, 1)';
+  face.style.setProperty('--from', `${wheelAngle}deg`);
+  face.style.transform = `rotate(${wheelAngle}deg)`;
+  await wait(480);
   face.style.transition = 'none';
+  window.LotteryFx?.spinEnd();
 }
 
 function dialogTone(prize) {
@@ -2139,17 +2154,23 @@ async function onDraw() {
   bumpDrawButton();
   window.LotteryFx?.pulse(1);
   setBusy(true, snapshot.tickets);
+  window.LotteryFx?.spend();
   const spinning = startWheelSpin();
   try {
     const result = await LotteryClient.draw();
-    const prize = prizes().find((item) => item.id === result.prizeId);
+    const list = prizes();
+    const prize = list.find((item) => item.id === result.prizeId);
     if (!prize) throw new Error('NO_PRIZE');
     await spinTo(prize, { alreadyPlaying: spinning });
     // 中奖再从转盘中心推一圈更强的波；大奖最强。
     if (Number(prize.quota) > 0 || prize.extraTicket) {
       window.LotteryFx?.pulse(isJackpotPrize(prize) ? 2.4 : 1.6);
     }
-    await playJackpotFx(prize);
+    const landKind = { 'is-jackpot': 'jackpot', 'is-miss': 'miss' }[dialogTone(prize)] || 'win';
+    await Promise.all([
+      window.LotteryFx?.landOn(list.indexOf(prize), list.length, landKind),
+      playJackpotFx(prize),
+    ]);
     const fresh = await LotteryClient.getState();
     syncWheelPrizes();
     renderStats(fresh);
@@ -2158,6 +2179,8 @@ async function onDraw() {
     setBusy(false, fresh.tickets);
   } catch (err) {
     if (spinning) freezeWheelFace();
+    window.LotteryFx?.spinEnd();
+    window.LotteryFx?.unspend(readState().tickets);
     setBusy(false, readState().tickets);
     if (err.message === 'NO_TICKETS') {
       showDrawHint('次数不足');
@@ -2565,8 +2588,8 @@ function bootBgm() {
     btn.classList.toggle('is-off', !wanted);
     btn.classList.toggle('is-waiting', wanted && !playing);
     btn.setAttribute('aria-pressed', wanted ? 'true' : 'false');
-    btn.setAttribute('aria-label', wanted ? '关闭背景音乐' : '开启背景音乐');
-    btn.title = wanted ? (playing ? '关闭背景音乐' : '点击页面后播放') : '开启背景音乐';
+    btn.setAttribute('aria-label', wanted ? '关闭音乐和音效' : '开启音乐和音效');
+    btn.title = wanted ? (playing ? '关闭音乐和音效' : '点击页面后播放') : '开启音乐和音效';
   };
 
   const playIfWanted = async () => {
