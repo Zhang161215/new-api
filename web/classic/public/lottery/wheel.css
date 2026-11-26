@@ -1938,3 +1938,78 @@ body.lz-w-app .lz-weight-row input[type='number'] {
     -webkit-mask-image: none;
   }
 }
+
+/* ---- 氛围效果（fx.js）：等高线背景 + 卡片手电筒 ---- */
+body.lz-w-app.has-topo {
+  isolation: isolate;
+  background:
+    radial-gradient(ellipse 70% 40% at 50% -6%, rgba(90, 168, 255, 0.22), transparent 58%),
+    linear-gradient(180deg, #f7fbff 0%, #e8f0ff 100%);
+}
+
+.lz-topo {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  display: block;
+  pointer-events: none;
+}
+
+.lz-topo-bright {
+  opacity: 0;
+  transition: opacity 0.45s ease;
+  -webkit-mask-image: radial-gradient(var(--topo-r, 220px) circle at var(--mx, -999px) var(--my, -999px), #000 0%, rgba(0, 0, 0, 0.45) 42%, transparent 72%);
+  mask-image: radial-gradient(var(--topo-r, 220px) circle at var(--mx, -999px) var(--my, -999px), #000 0%, rgba(0, 0, 0, 0.45) 42%, transparent 72%);
+}
+
+.lz-topo-bright.is-on {
+  opacity: 1;
+}
+
+body.has-flash :is(.lz-w-panel, .lz-w-balance, .lz-w-meta li, .lz-w-note) {
+  position: relative;
+  isolation: isolate;
+}
+
+body.has-flash :is(.lz-w-panel, .lz-w-balance, .lz-w-meta li, .lz-w-note)::before,
+body.has-flash :is(.lz-w-panel, .lz-w-balance, .lz-w-meta li, .lz-w-note)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+/* 卡面：淡蓝光斑，压在内容下面，峰值也不影响文字 */
+body.has-flash :is(.lz-w-panel, .lz-w-balance, .lz-w-meta li, .lz-w-note)::before {
+  z-index: -1;
+  background: radial-gradient(var(--flash-r, 255px) circle at var(--fx, -999px) var(--fy, -999px), rgba(47, 109, 255, 0.075), transparent 70%);
+}
+
+/* 边框：同一光源的亮核，遮成 1px 一圈，只有靠近指针的那段亮 */
+body.has-flash :is(.lz-w-panel, .lz-w-balance, .lz-w-meta li, .lz-w-note)::after {
+  z-index: 2;
+  padding: 1px;
+  background: radial-gradient(var(--flash-r, 255px) circle at var(--fx, -999px) var(--fy, -999px), rgba(47, 109, 255, 0.9), rgba(26, 167, 196, 0.45) 36%, transparent 68%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+/* :is() 取参数里最高的特异性（.lz-w-meta li 是 0,1,1），点亮规则必须同样带上 :is(...) 才压得住上面的 opacity: 0 */
+body.has-flash :is(.lz-w-panel, .lz-w-balance, .lz-w-meta li, .lz-w-note).is-flash-lit::before,
+body.has-flash :is(.lz-w-panel, .lz-w-balance, .lz-w-meta li, .lz-w-note).is-flash-lit::after {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lz-topo-bright,
+  body.has-flash :is(.lz-w-panel, .lz-w-balance, .lz-w-meta li, .lz-w-note)::before,
+  body.has-flash :is(.lz-w-panel, .lz-w-balance, .lz-w-meta li, .lz-w-note)::after {
+    transition: none;
+  }
+}

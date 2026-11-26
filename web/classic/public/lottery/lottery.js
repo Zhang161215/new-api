@@ -2137,6 +2137,7 @@ async function onDraw() {
   const toast = $('draw-toast');
   if (toast) toast.hidden = true;
   bumpDrawButton();
+  window.LotteryFx?.pulse(1);
   setBusy(true, snapshot.tickets);
   const spinning = startWheelSpin();
   try {
@@ -2144,6 +2145,10 @@ async function onDraw() {
     const prize = prizes().find((item) => item.id === result.prizeId);
     if (!prize) throw new Error('NO_PRIZE');
     await spinTo(prize, { alreadyPlaying: spinning });
+    // 中奖再从转盘中心推一圈更强的波；大奖最强。
+    if (Number(prize.quota) > 0 || prize.extraTicket) {
+      window.LotteryFx?.pulse(isJackpotPrize(prize) ? 2.4 : 1.6);
+    }
     await playJackpotFx(prize);
     const fresh = await LotteryClient.getState();
     syncWheelPrizes();
