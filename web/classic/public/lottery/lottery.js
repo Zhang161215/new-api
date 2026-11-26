@@ -4,8 +4,9 @@
  * 对接约定：
  *   转盘  GET /api/lottery          POST /api/lottery/draw
  *   记录  GET /api/lottery/history  GET /api/lottery/tickets
+ *   兑换  POST /api/lottery/draws/:id/redeem（一键兑换自己没入账的中奖码）
  *   管理  /api/lottery/admin/*
- *   额度奖从奖品库提取兑换码发放，不直接改 users.quota
+ *   额度奖从奖品库提取兑换码发放；「中奖自动入账」开着时服务端同一事务里按兑换流程入账
  *   无后端时回退 mock（localStorage）
  */
 
@@ -841,6 +842,8 @@ function mapDraw(row) {
     win: Boolean(row.win || row.is_win),
     extraTicket: Boolean(row.extraTicket || row.extra_ticket),
     redemptionKey: row.redemption_key || row.redemptionKey || '',
+    // true 已入账 / false 待兑换 / null 未知（本地预览或老接口）
+    redeemed: typeof row.redeemed === 'boolean' ? row.redeemed : null,
     at: Number(row.at) || Date.now(),
   };
 }
@@ -883,6 +886,7 @@ function mapApiState(data) {
     payments: data.payments || 0,
     ticketsPerPayment: data.tickets_per_payment || data.ticketsPerPayment || 1,
     grantRule: normalizeGrantRule(data.grant_rule, data.tickets_per_payment || data.ticketsPerPayment || 1),
+    autoRedeem: data.auto_redeem !== false,
     lotteryEnabled: (data.draw_enabled ?? data.drawEnabled ?? data.enabled) !== false,
     soldOut: Boolean(data.sold_out || data.soldOut),
     todayDraws: data.today_draws || data.todayDraws || 0,
@@ -1127,7 +1131,14 @@ const LotteryClient = {
       awardedQuota: data.awardedQuota || data.quota_awarded || 0,
       extraTicket: Boolean(data.extraTicket || data.extra_ticket),
       redemptionKey: data.redemption_key || data.redemptionKey || '',
+      redeemed: data.redeemed === true,
+      drawId: Number(data.draw_id || data.draw?.draw_id) || 0,
     };
+  },
+  async redeemDraw(drawId) {
+    if (this.mode !== 'api') throw new Error('本地预览不能兑换');
+    const data = await lotteryRequest(`/api/lottery/draws/${Number(drawId)}/redeem`, { method: 'POST' });
+    return { quota: Number(data.quota_amount) || 0 };
   },
   async listDraws({ page = 1, filter = 'all', prize = '', from = '', to = '' } = {}) {
     if (this.mode !== 'api') return null;
@@ -1162,6 +1173,7 @@ const LotteryClient = {
       prizeCatalog: catalog,
       lotteryEnabled: (data.config?.draw_enabled ?? data.config?.enabled) !== false,
       broadcastEnabled: (data.config?.broadcast_enabled ?? data.config?.broadcastEnabled) !== false,
+      autoRedeem: data.config?.auto_redeem !== false,
       ticketsPerPayment: data.config?.tickets_per_payment || 1,
       grantRule: normalizeGrantRule(data.config, data.config?.tickets_per_payment || 1),
       usdExchangeRate: Number(data.usd_exchange_rate) || 0,
@@ -1219,10 +1231,11 @@ const LotteryClient = {
     await lotteryRequest(`/api/lottery/admin/codes/${id}`, { method: 'DELETE' });
   },
   // 只传要改的项：开关单独改不会动规则，保存规则也不会顺带改开关。
-  async saveConfig({ enabled, broadcastEnabled, rule } = {}) {
+  async saveConfig({ enabled, broadcastEnabled, autoRedeem, rule } = {}) {
     const payload = {};
     if (enabled !== undefined) payload.enabled = enabled !== false;
     if (broadcastEnabled !== undefined) payload.broadcast_enabled = broadcastEnabled !== false;
+    if (autoRedeem !== undefined) payload.auto_redeem = autoRedeem !== false;
     if (rule) payload.rule = grantRulePayload(rule);
     const data = await lotteryRequest('/api/lottery/admin/config', {
       method: 'PUT',
@@ -1231,6 +1244,7 @@ const LotteryClient = {
     if (apiState && data) {
       apiState.lotteryEnabled = data.enabled !== false;
       apiState.broadcastEnabled = data.broadcast_enabled !== false;
+      apiState.autoRedeem = data.auto_redeem !== false;
       apiState.ticketsPerPayment = data.tickets_per_payment || apiState.ticketsPerPayment || 1;
       apiState.grantRule = normalizeGrantRule(data, apiState.ticketsPerPayment);
     }
@@ -1826,17 +1840,63 @@ function renderHistory(history) {
       const li = document.createElement('li');
       const t = new Date(row.at);
       const extra = PAGE === 'wheel'
-        ? `<span class="label">${escapeHtml(row.label)}</span>${
-            row.redemptionKey
-              ? `<button type="button" class="lz-w-copy-code" data-copy="${escapeHtml(row.redemptionKey)}" title="点击复制兑换码"><code>${escapeHtml(row.redemptionKey)}</code></button>`
-              : '<span class="lz-w-code-none">—</span>'
-          }<time datetime="${t.toISOString()}">${clock(row.at)}</time>`
+        ? `<span class="label">${escapeHtml(row.label)}</span>${drawCodeCell(row)}<time datetime="${t.toISOString()}">${clock(row.at)}</time>`
         : `<span>${escapeHtml(row.label)}</span><time datetime="${t.toISOString()}">${clock(row.at)}</time>`;
       li.innerHTML = extra;
       return li;
     }),
   );
   scheduleSidePanelSync();
+}
+
+// 抽奖记录里的兑换码格：已入账只标状态；待兑换给「兑换」按钮，码仍可点复制；状态未知时保持原样只给复制。
+function drawCodeCell(row, { table = false } = {}) {
+  const key = row.redemptionKey;
+  if (!key) return table ? '—' : '<span class="lz-w-code-none">—</span>';
+  const copy = `<button type="button" class="lz-w-copy-code" data-copy="${escapeHtml(key)}" title="点击复制兑换码"><code>${escapeHtml(key)}</code></button>`;
+  if (row.redeemed === true) {
+    return table
+      ? `<span class="lz-w-code-cell"><span class="lz-w-code-done">已入账</span><code class="lz-w-code-used">${escapeHtml(key)}</code></span>`
+      : '<span class="lz-w-code-done">已入账</span>';
+  }
+  if (row.redeemed === false && row.drawId) {
+    const btn = `<button type="button" class="lz-w-redeem-mini" data-redeem="${Number(row.drawId)}">兑换</button>`;
+    return table ? `<span class="lz-w-code-cell">${btn}${copy}</span>` : btn;
+  }
+  return copy;
+}
+
+// 一键兑换（记录列表里的「兑换」按钮共用）：成功后刷新面板和列表。
+async function redeemDrawFromList(btn) {
+  const drawId = Number(btn?.dataset.redeem);
+  if (!drawId || btn.disabled) return;
+  btn.disabled = true;
+  const idle = btn.textContent;
+  btn.textContent = '兑换中…';
+  try {
+    const { quota } = await LotteryClient.redeemDraw(drawId);
+    btn.textContent = '已入账';
+    btn.classList.add('is-done');
+    showDrawHint(quota ? `${formatMoney(quota)} 已入账到余额` : '已入账到余额');
+    const fresh = await LotteryClient.getState().catch(() => null);
+    if (fresh && PAGE === 'wheel') {
+      renderStats(fresh);
+      renderHistory(fresh.history);
+    }
+    if (PAGE === 'history') renderDrawTable();
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = PAGE === 'wheel' ? idle : '重试';
+    btn.title = err.message || '兑换失败，请稍后再试';
+    showDrawHint(err.message || '兑换失败，请稍后再试');
+  }
+}
+
+function onRedeemListClick(event) {
+  const btn = event.target.closest('[data-redeem]');
+  if (!btn) return;
+  event.preventDefault();
+  redeemDrawFromList(btn);
 }
 
 function renderTicketPips(tickets) {
@@ -2050,27 +2110,90 @@ function openResult(prize, result = {}) {
     chip.textContent = Number(prize.quota) >= 10 ? '头奖' : '大奖';
   }
   const code = result.redemptionKey || '';
-  const codeWrap = $('result-code-wrap');
   const codeBtn = $('result-code-btn');
   const codeText = $('result-code-text');
-  if (codeWrap && codeBtn && codeText) {
-    const showCode = Boolean(code);
-    codeWrap.hidden = !showCode;
+  if (codeBtn && codeText) {
     codeBtn.dataset.copy = code;
     codeText.textContent = code;
     markCopied(codeBtn, false);
   }
-  $('result-desc').textContent = prize.extraTicket
-    ? '抽奖次数已返还 1 次，可继续抽取。'
-      : code
-      ? '请复制兑换码，到充值页「兑换」自行入账。抽中不会直接加额度。'
+  const redeemBtn = $('result-redeem');
+  if (redeemBtn) {
+    redeemBtn.dataset.drawId = String(result.drawId || '');
+    redeemBtn.dataset.amount = String(Number(result.awardedQuota || prize.quota) || 0);
+    redeemBtn.disabled = false;
+    redeemBtn.textContent = '一键兑换到余额';
+  }
+  if (result.redeemed) {
+    showResultCredited(Number(result.awardedQuota || prize.quota) || 0);
+  } else if (code) {
+    showResultPending(code, Boolean(result.drawId) && LotteryClient.mode === 'api');
+  } else {
+    setResultCodeState({ code: false, credit: false, redeem: false });
+    $('result-desc').textContent = prize.extraTicket
+      ? '抽奖次数已返还 1 次，可继续抽取。'
       : prize.quota
         ? LotteryClient.mode === 'api'
           ? '请到充值页用兑换码入账。'
           : '额度将在对接后通过兑换码入账。现在只是 UI 预览。'
         : '本次未中奖，次数已消耗。';
+  }
   modal.hidden = false;
-  $('result-close').focus();
+  ($('result-redeem')?.hidden === false ? $('result-redeem') : $('result-close')).focus();
+}
+
+function setResultCodeState({ code, credit, redeem, creditLabel = '已自动入账' }) {
+  const codeWrap = $('result-code-wrap');
+  if (codeWrap) codeWrap.hidden = !code;
+  const creditWrap = $('result-credit');
+  if (creditWrap) creditWrap.hidden = !credit;
+  const creditK = $('result-credit-k');
+  if (creditK) creditK.textContent = creditLabel;
+  const redeemBtn = $('result-redeem');
+  if (redeemBtn) redeemBtn.hidden = !redeem;
+  $('result-close')?.classList.toggle('is-secondary', Boolean(redeem));
+  const desc = $('result-desc');
+  desc?.classList.remove('is-error');
+}
+
+function showResultCredited(amount, { manual = false } = {}) {
+  setResultCodeState({ code: false, credit: true, redeem: false, creditLabel: manual ? '已兑换入账' : '已自动入账' });
+  const amountEl = $('result-credit-amount');
+  if (amountEl) amountEl.textContent = amount ? formatMoney(amount) : '';
+  $('result-desc').textContent = '额度已加到账户余额，可以直接使用。';
+}
+
+function showResultPending(code, canRedeem) {
+  setResultCodeState({ code: true, credit: false, redeem: canRedeem });
+  $('result-desc').textContent = canRedeem
+    ? '点「一键兑换到余额」直接入账，也可以复制兑换码到充值页兑换。'
+    : '请复制兑换码，到充值页「兑换」入账。';
+}
+
+async function onResultRedeem() {
+  const btn = $('result-redeem');
+  const drawId = Number(btn?.dataset.drawId);
+  if (!btn || !drawId || btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = '兑换中…';
+  try {
+    const { quota } = await LotteryClient.redeemDraw(drawId);
+    showResultCredited(quota || Number(btn.dataset.amount) || 0, { manual: true });
+    $('result-close')?.focus();
+    const fresh = await LotteryClient.getState().catch(() => null);
+    if (fresh) {
+      renderStats(fresh);
+      renderHistory(fresh.history);
+    }
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = '重试兑换';
+    const desc = $('result-desc');
+    if (desc) {
+      desc.textContent = `${err.message || '兑换失败'}。也可以复制兑换码到充值页兑换。`;
+      desc.classList.add('is-error');
+    }
+  }
 }
 
 async function copyText(value) {
@@ -2676,7 +2799,11 @@ async function bootWheel() {
   });
   on('result-close', 'click', closeResult);
   on('result-code-btn', 'click', onCopyClick);
-  $('history-list')?.addEventListener('click', onCopyClick);
+  on('result-redeem', 'click', onResultRedeem);
+  $('history-list')?.addEventListener('click', (event) => {
+    if (event.target.closest('[data-redeem]')) onRedeemListClick(event);
+    else onCopyClick(event);
+  });
   window.addEventListener('resize', () => {
     window.clearTimeout(scheduleSidePanelSync.tid);
     scheduleSidePanelSync.tid = window.setTimeout(scheduleSidePanelSync, 180);
@@ -3023,8 +3150,7 @@ async function renderDrawTable() {
       const tr = document.createElement('tr');
       const result = row.win ? escapeHtml(row.label) : '未中奖';
       const quota = row.extraTicket ? '+1 次' : row.quota ? formatMoney(row.quota) : '—';
-      const code = row.redemptionKey ? escapeHtml(row.redemptionKey) : '—';
-      tr.innerHTML = `<td>${dayClock(row.at)}</td><td class="${row.win ? 'lz-w-win' : 'lz-w-miss'}">${result}</td><td>${quota}</td><td>${code}</td>`;
+      tr.innerHTML = `<td>${dayClock(row.at)}</td><td class="${row.win ? 'lz-w-win' : 'lz-w-miss'}">${result}</td><td>${quota}</td><td>${drawCodeCell(row, { table: true })}</td>`;
       return tr;
     }),
   );
@@ -3111,6 +3237,10 @@ async function bootHistory() {
   on('hist-ledger-reset', 'click', () => {
     resetFields(['hist-ledger-filter', 'hist-ledger-from', 'hist-ledger-to']);
     applyLedger();
+  });
+  document.querySelector('#draw-table')?.addEventListener('click', (event) => {
+    if (event.target.closest('[data-redeem]')) onRedeemListClick(event);
+    else onCopyClick(event);
   });
   renderDrawTable();
   renderLedgerTable();
@@ -4460,6 +4590,17 @@ function syncBroadcastControls(onFlag) {
   document.querySelector('.lz-ad-mini-switch.is-broadcast')?.classList.toggle('is-off', !onFlag);
 }
 
+function syncAutoRedeemControls(onFlag) {
+  const value = onFlag ? '1' : '0';
+  ['cfg-auto-redeem', 'cfg-auto-redeem-overview'].forEach((id) => {
+    const el = $(id);
+    if (el) el.value = value;
+  });
+  const label = $('cfg-auto-redeem-label');
+  if (label) label.textContent = onFlag ? '自动入账' : '手动兑换';
+  document.querySelector('.lz-ad-mini-switch.is-auto-redeem')?.classList.toggle('is-off', !onFlag);
+}
+
 function setPrizeMsg(text, isError = false) {
   const el = $('prize-msg');
   if (!el) return;
@@ -4791,6 +4932,40 @@ async function persistBroadcastEnabled(onFlag) {
   }
 }
 
+async function persistAutoRedeem(onFlag) {
+  const live = LotteryClient.mode === 'api' ? apiState : loadState();
+  const prev = live?.autoRedeem !== false;
+  if (onFlag === prev) {
+    syncAutoRedeemControls(onFlag);
+    return;
+  }
+  if (!onFlag) {
+    const ok = await askConfirm({
+      title: '关闭中奖自动入账',
+      text: '关闭后中奖只发兑换码，用户要自己点「兑换」或到充值页兑换才入账。已经入账的不受影响。确定关闭？',
+      ok: '关闭自动入账',
+    });
+    if (!ok) {
+      syncAutoRedeemControls(true);
+      return;
+    }
+  }
+  syncAutoRedeemControls(onFlag);
+  try {
+    if (LotteryClient.mode === 'api') {
+      await LotteryClient.saveConfig({ autoRedeem: onFlag });
+    } else {
+      const next = loadState();
+      next.autoRedeem = onFlag;
+      saveState(next);
+    }
+    setConfigMsg(onFlag ? '中奖自动入账已开启：抽中后额度直接加到用户余额。' : '中奖自动入账已关闭：中奖只发兑换码，用户自己兑换。');
+  } catch (err) {
+    syncAutoRedeemControls(prev);
+    setConfigMsg(err.message || '保存失败', true);
+  }
+}
+
 async function bootAdmin() {
   await LotteryClient.connect();
   if (LotteryClient.mode === 'api') {
@@ -4821,6 +4996,7 @@ async function bootAdmin() {
   const state = LotteryClient.mode === 'api' ? apiState : loadState();
   syncEnabledControls(state.lotteryEnabled !== false);
   syncBroadcastControls(state.broadcastEnabled !== false);
+  syncAutoRedeemControls(state.autoRedeem !== false);
   initGrantRuleEditor(state);
   // 「恢复默认奖项」只在本地演示模式有效，线上模式隐藏，避免点了没反应。
   if (LotteryClient.mode === 'api' && $('reset-catalog')) $('reset-catalog').hidden = true;
@@ -4959,6 +5135,8 @@ async function bootAdmin() {
   on('cfg-enabled-overview', 'change', (event) => persistLotteryEnabled(event.target.value !== '0'));
   on('cfg-broadcast', 'change', (event) => persistBroadcastEnabled(event.target.value !== '0'));
   on('cfg-broadcast-overview', 'change', (event) => persistBroadcastEnabled(event.target.value !== '0'));
+  on('cfg-auto-redeem', 'change', (event) => persistAutoRedeem(event.target.value !== '0'));
+  on('cfg-auto-redeem-overview', 'change', (event) => persistAutoRedeem(event.target.value !== '0'));
   on('wallet-q-btn', 'click', () => {
     adminWalletPage = 1;
     renderWalletLookup();

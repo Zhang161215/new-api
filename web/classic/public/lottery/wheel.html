@@ -15,8 +15,8 @@
         } catch (e) {}
       })();
     </script>
-    <link rel="preload" as="style" href="./wheel.css?v=w58" />
-    <link rel="preload" as="script" href="./lottery.js?v=w81" />
+    <link rel="preload" as="style" href="./wheel.css?v=w59" />
+    <link rel="preload" as="script" href="./lottery.js?v=w82" />
     <link rel="preload" as="audio" href="./assets/bgm.mp3?v=b1" />
     <link rel="preload" as="image" href="./assets/ui/wheel-outer.png" fetchpriority="high" />
     <link rel="preload" as="image" href="./assets/ui/title.png?v=t6" fetchpriority="high" />
@@ -28,8 +28,8 @@
     <link rel="preload" as="image" href="./assets/ui/prize-extra.png" />
     <link rel="preload" as="image" href="./assets/ui/prize-ticket.png" />
     <link rel="stylesheet" href="./lottery.css" />
-    <link rel="stylesheet" href="./wheel.css?v=w58" />
-    <script defer src="./lottery.js?v=w81"></script>
+    <link rel="stylesheet" href="./wheel.css?v=w59" />
+    <script defer src="./lottery.js?v=w82"></script>
     <script defer src="./fx.js?v=f3"></script>
   </head>
   <body class="lz-w-app" data-page="wheel">
@@ -165,7 +165,12 @@
             <span class="lz-w-copy-tip">复制</span>
           </button>
         </div>
+        <div class="lz-w-result-credit" id="result-credit" hidden>
+          <span class="lz-w-result-credit-icon" aria-hidden="true"></span>
+          <span><span id="result-credit-k">已自动入账</span> <strong id="result-credit-amount"></strong></span>
+        </div>
         <p id="result-desc"></p>
+        <button class="lz-w-spin lz-w-spin-plain" id="result-redeem" type="button" hidden>一键兑换到余额</button>
         <button class="lz-w-spin lz-w-spin-plain" id="result-close" type="button">继续抽取</button>
       </div>
     </div>

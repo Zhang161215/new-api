@@ -186,11 +186,12 @@ body.lz-admin {
 }
 
 .lz-ad-activity.is-off + .lz-ad-hint,
-.lz-ad-hero-row.is-off .lz-ad-mini-switch:not(.is-broadcast) {
+.lz-ad-hero-row.is-off .lz-ad-mini-switch:not(.is-broadcast):not(.is-auto-redeem) {
   color: #b45309;
 }
 
-.lz-ad-mini-switch.is-broadcast.is-off {
+.lz-ad-mini-switch.is-broadcast.is-off,
+.lz-ad-mini-switch.is-auto-redeem.is-off {
   color: #b45309;
 }
 

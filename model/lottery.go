@@ -34,16 +34,22 @@ var (
 	ErrLotterySoldOut           = errors.New("有奖品库存不足，请联系站长补货")
 	ErrLotteryCodeNotRedeemable = errors.New("抽奖库存兑换码需抽中后再到兑换页兑换")
 	ErrLotteryCodeNotYours      = errors.New("这不是你的抽奖兑换码")
+	ErrLotteryCodeRedeemed      = errors.New("这张兑换码已经兑换过了")
+	ErrLotteryCodeExpired       = errors.New("这张兑换码已过期")
+	ErrLotteryDrawNotFound      = errors.New("找不到这条抽奖记录")
+	ErrLotteryDrawNoCode        = errors.New("这次抽奖没有兑换码可兑换")
 )
 
 // LotteryConfig 转盘全局配置，单行（id = 1）。
 // Enabled 只控制能不能抽：关闭后 DrawLottery 拒绝，充值仍按发放规则送次数。
 // BroadcastEnabled 控制 QQ 群中奖播报；关闭后不推群，期间中奖不补发。
+// AutoRedeem 控制中奖后是否立刻按兑换码流程入账（见 lottery_redeem.go）；关闭后回到用户自己兑换。
 // LotteryGrantRule 是支付送次数规则（见 lottery_rule.go）。
 type LotteryConfig struct {
 	Id               int  `json:"id" gorm:"primaryKey"`
 	Enabled          bool `json:"enabled" gorm:"default:true"`
 	BroadcastEnabled bool `json:"broadcast_enabled" gorm:"default:true"`
+	AutoRedeem       bool `json:"auto_redeem" gorm:"default:true"`
 	LotteryGrantRule
 	AmountTiersRaw string `json:"-" gorm:"column:amount_tiers;type:text"`
 	UpdatedAt      int64  `json:"updated_at" gorm:"bigint"`
@@ -137,7 +143,7 @@ func getLotteryConfig(tx *gorm.DB) (*LotteryConfig, error) {
 	var cfg LotteryConfig
 	err := lotteryDB(tx).First(&cfg, 1).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		cfg = LotteryConfig{Id: 1, Enabled: true, BroadcastEnabled: true, UpdatedAt: time.Now().Unix()}
+		cfg = LotteryConfig{Id: 1, Enabled: true, BroadcastEnabled: true, AutoRedeem: true, UpdatedAt: time.Now().Unix()}
 		cfg.LotteryGrantRule.normalize()
 		if createErr := lotteryDB(tx).Create(&cfg).Error; createErr != nil {
 			return nil, createErr
@@ -147,8 +153,21 @@ func getLotteryConfig(tx *gorm.DB) (*LotteryConfig, error) {
 	return &cfg, err
 }
 
+// LotteryConfigUpdate 只改非 nil 的项：开关单独改不会动规则，保存规则也不会顺带改开关。
+type LotteryConfigUpdate struct {
+	Enabled          *bool
+	BroadcastEnabled *bool
+	AutoRedeem       *bool
+	Rule             *LotteryGrantRule
+}
+
 // SaveLotteryConfig 保存开关；rule 为 nil 时发放规则保持不变，否则先严格校验再整体替换。
 func SaveLotteryConfig(enabled bool, broadcastEnabled bool, rule *LotteryGrantRule) (*LotteryConfig, error) {
+	return UpdateLotteryConfig(LotteryConfigUpdate{Enabled: &enabled, BroadcastEnabled: &broadcastEnabled, Rule: rule})
+}
+
+func UpdateLotteryConfig(u LotteryConfigUpdate) (*LotteryConfig, error) {
+	rule := u.Rule
 	if rule != nil {
 		next := *rule
 		next.AmountTiers = append([]LotteryAmountTier(nil), rule.AmountTiers...)
@@ -161,8 +180,15 @@ func SaveLotteryConfig(enabled bool, broadcastEnabled bool, rule *LotteryGrantRu
 	if err != nil {
 		return nil, err
 	}
-	cfg.Enabled = enabled
-	cfg.BroadcastEnabled = broadcastEnabled
+	if u.Enabled != nil {
+		cfg.Enabled = *u.Enabled
+	}
+	if u.BroadcastEnabled != nil {
+		cfg.BroadcastEnabled = *u.BroadcastEnabled
+	}
+	if u.AutoRedeem != nil {
+		cfg.AutoRedeem = *u.AutoRedeem
+	}
 	if rule != nil {
 		cfg.LotteryGrantRule = *rule
 	}

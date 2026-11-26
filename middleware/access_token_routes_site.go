@@ -7,11 +7,12 @@ import "fmt"
 // 只影响作用域访问令牌；浏览器会话不受影响，旧版访问令牌（过渡期内）对非 session 规则照常放行。
 var siteAccessTokenRouteRules = map[string]accessTokenRouteRule{
 	// 抽奖（用户）
-	"GET /api/lottery":             accessTokenAnyRule,
-	"GET /api/lottery/history":     accessTokenScopeRule("wallet:read"),
-	"GET /api/lottery/tickets":     accessTokenScopeRule("wallet:read"),
-	"POST /api/lottery/draw":       accessTokenScopeRule("wallet:write"),
-	"POST /api/lottery/notice/ack": accessTokenScopeRule("wallet:write"),
+	"GET /api/lottery":                   accessTokenAnyRule,
+	"GET /api/lottery/history":           accessTokenScopeRule("wallet:read"),
+	"GET /api/lottery/tickets":           accessTokenScopeRule("wallet:read"),
+	"POST /api/lottery/draw":             accessTokenScopeRule("wallet:write"),
+	"POST /api/lottery/draws/:id/redeem": accessTokenScopeRule("wallet:write"),
+	"POST /api/lottery/notice/ack":       accessTokenScopeRule("wallet:write"),
 
 	// 抽奖（管理）
 	"GET /api/lottery/admin/overview":          accessTokenScopeRule("billing:read"),

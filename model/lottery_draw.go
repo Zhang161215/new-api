@@ -501,7 +501,7 @@ func LotteryWarehouseEmpty(prizes []LotteryPrize) bool {
 }
 
 // takeLotteryRedemption 从奖品库锁一张未使用兑换码发给中奖用户，不改额度。
-// 用户拿到码后去兑换页自行兑换。used_user_id 先记下归属，status 仍是未使用。
+// used_user_id 先记下归属，status 仍是未使用；之后由自动入账（redeemLotteryCodeTx）或用户自己兑换。
 func takeLotteryRedemption(tx *gorm.DB, name string, userId int) (*Redemption, error) {
 	if strings.TrimSpace(name) == "" {
 		return nil, ErrLotteryNoStock
@@ -534,6 +534,9 @@ type LotteryDrawResult struct {
 	Draw   *LotteryDraw
 	Prize  *LotteryPrize
 	Wallet *LotteryWallet
+	// Redeemed 为 true 表示兑换码已在同一事务里按兑换流程入账（RedeemedQuota 为入账额度）。
+	Redeemed      bool
+	RedeemedQuota int
 }
 
 func DrawLottery(userId int, username string) (*LotteryDrawResult, error) {
@@ -577,6 +580,7 @@ func DrawLottery(userId int, username string) (*LotteryDrawResult, error) {
 			return pickErr
 		}
 		var code *Redemption
+		redeemedQuota := 0
 		if picked.NeedsRedemption() {
 			taken, takeErr := takeLotteryRedemption(tx, picked.RedemptionName, userId)
 			if errors.Is(takeErr, ErrLotteryNoStock) {
@@ -586,6 +590,18 @@ func DrawLottery(userId int, username string) (*LotteryDrawResult, error) {
 				return takeErr
 			}
 			code = taken
+			if cfg.AutoRedeem {
+				// 仍然是先发码、再走兑换入账：额度只来自库存里的兑换码，和用户手动兑换同一套校验。
+				// 余额已到上限时不算失败，码留在用户名下，之后可以一键兑换。
+				quota, redeemErr := redeemLotteryCodeTx(tx, taken.Id, userId)
+				switch {
+				case redeemErr == nil:
+					redeemedQuota = quota
+				case errors.Is(redeemErr, ErrTopUpQuotaLimitExceeded), errors.Is(redeemErr, ErrInvalidTopUpQuota):
+				default:
+					return redeemErr
+				}
+			}
 		}
 		prize := picked
 
@@ -623,11 +639,14 @@ func DrawLottery(userId int, username string) (*LotteryDrawResult, error) {
 				return err
 			}
 		}
-		result = &LotteryDrawResult{Draw: draw, Prize: prize, Wallet: wallet}
+		result = &LotteryDrawResult{Draw: draw, Prize: prize, Wallet: wallet, Redeemed: redeemedQuota > 0, RedeemedQuota: redeemedQuota}
 		return nil
 	})
 	if err != nil {
 		return nil, err
+	}
+	if result.Redeemed {
+		afterLotteryRedeem(userId, result.RedeemedQuota, result.Draw.RedemptionId)
 	}
 	return result, nil
 }

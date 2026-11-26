@@ -142,6 +142,26 @@ func lotteryDrawDTO(d model.LotteryDraw, includeCode bool) gin.H {
 	return item
 }
 
+// lotteryDrawDTOs 批量转 DTO，并给带兑换码的记录标 redeemed（码已兑换 = 已入账）。
+func lotteryDrawDTOs(rows []model.LotteryDraw, includeCode bool) []gin.H {
+	ids := make([]int, 0, len(rows))
+	for _, row := range rows {
+		if row.RedemptionId > 0 {
+			ids = append(ids, row.RedemptionId)
+		}
+	}
+	redeemed := model.LotteryRedeemedCodeIds(ids)
+	items := make([]gin.H, 0, len(rows))
+	for _, row := range rows {
+		item := lotteryDrawDTO(row, includeCode)
+		if row.RedemptionId > 0 {
+			item["redeemed"] = redeemed[row.RedemptionId]
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
 func lotteryLogDTO(row model.LotteryTicketLog) gin.H {
 	return gin.H{
 		"id":            row.Id,
@@ -201,6 +221,7 @@ func GetLottery(c *gin.Context) {
 		"tickets_per_payment": cfg.TicketsPerPayment,
 		"ticketsPerPayment":   cfg.TicketsPerPayment,
 		"grant_rule":          cfg.LotteryGrantRule,
+		"auto_redeem":         cfg.AutoRedeem,
 		"logged_in":           false,
 		"tickets":             0,
 		"payments":            0,
@@ -240,11 +261,7 @@ func GetLottery(c *gin.Context) {
 			data["todayDraws"] = n
 		}
 		if draws, _, err := model.ListLotteryDraws(model.LotteryListFilter{UserId: userId, Page: 1, Size: 8}); err == nil {
-			history := make([]gin.H, 0, len(draws))
-			for _, row := range draws {
-				history = append(history, lotteryDrawDTO(row, true))
-			}
-			data["history"] = history
+			data["history"] = lotteryDrawDTOs(draws, true)
 		}
 		if logs, _, err := model.ListLotteryTicketLogs(model.LotteryListFilter{UserId: userId, Page: 1, Size: 8}); err == nil {
 			items := make([]gin.H, 0, len(logs))
@@ -291,7 +308,37 @@ func DrawLottery(c *gin.Context) {
 		"win":            result.Draw.IsWin,
 		"redemption_key": strings.TrimSpace(result.Draw.RedemptionKey),
 		"redemptionKey":  strings.TrimSpace(result.Draw.RedemptionKey),
-		"draw":           lotteryDrawDTO(*result.Draw, true),
+		"redeemed":       result.Redeemed,
+		"draw_id":        result.Draw.Id,
+		"draw":           drawWithRedeemed(lotteryDrawDTO(*result.Draw, true), result),
+	})
+}
+
+func drawWithRedeemed(item gin.H, result *model.LotteryDrawResult) gin.H {
+	if result.Draw.RedemptionId > 0 {
+		item["redeemed"] = result.Redeemed
+	}
+	return item
+}
+
+// RedeemLotteryDraw 一键兑换自己某次中奖的兑换码（自动入账关闭时，或之前没兑换的码）。
+func RedeemLotteryDraw(c *gin.Context) {
+	userId := lotteryUserID(c)
+	if userId <= 0 {
+		common.ApiErrorMsg(c, "请先登录")
+		return
+	}
+	drawId, _ := strconv.Atoi(c.Param("id"))
+	quota, err := model.RedeemLotteryDraw(userId, drawId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"draw_id":      drawId,
+		"redeemed":     true,
+		"quota":        quota,
+		"quota_amount": float64(quota) / common.QuotaPerUnit,
 	})
 }
 
@@ -316,11 +363,7 @@ func GetLotteryHistory(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	items := make([]gin.H, 0, len(rows))
-	for _, row := range rows {
-		items = append(items, lotteryDrawDTO(row, true))
-	}
-	common.ApiSuccess(c, gin.H{"items": items, "total": total, "page": page, "page_size": size})
+	common.ApiSuccess(c, gin.H{"items": lotteryDrawDTOs(rows, true), "total": total, "page": page, "page_size": size})
 }
 
 func GetLotteryTicketLog(c *gin.Context) {
@@ -385,6 +428,7 @@ func UpdateLotteryAdminConfig(c *gin.Context) {
 	var req struct {
 		Enabled          *bool                   `json:"enabled"`
 		BroadcastEnabled *bool                   `json:"broadcast_enabled"`
+		AutoRedeem       *bool                   `json:"auto_redeem"`
 		Rule             *model.LotteryGrantRule `json:"rule"`
 		// 旧版管理页只传按笔次数：保持当前发放方式，只改按笔次数。
 		TicketsPerPayment *int `json:"tickets_per_payment"`
@@ -398,21 +442,18 @@ func UpdateLotteryAdminConfig(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	enabled := cfg.Enabled
-	broadcast := cfg.BroadcastEnabled
-	if req.Enabled != nil {
-		enabled = *req.Enabled
-	}
-	if req.BroadcastEnabled != nil {
-		broadcast = *req.BroadcastEnabled
-	}
 	rule := req.Rule
 	if rule == nil && req.TicketsPerPayment != nil {
 		legacy := cfg.LotteryGrantRule
 		legacy.TicketsPerPayment = *req.TicketsPerPayment
 		rule = &legacy
 	}
-	cfg, err = model.SaveLotteryConfig(enabled, broadcast, rule)
+	cfg, err = model.UpdateLotteryConfig(model.LotteryConfigUpdate{
+		Enabled:          req.Enabled,
+		BroadcastEnabled: req.BroadcastEnabled,
+		AutoRedeem:       req.AutoRedeem,
+		Rule:             rule,
+	})
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -675,11 +716,7 @@ func GetLotteryAdminDraws(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	items := make([]gin.H, 0, len(rows))
-	for _, row := range rows {
-		items = append(items, lotteryDrawDTO(row, true))
-	}
-	common.ApiSuccess(c, gin.H{"items": items, "total": total, "page": page, "page_size": size})
+	common.ApiSuccess(c, gin.H{"items": lotteryDrawDTOs(rows, true), "total": total, "page": page, "page_size": size})
 }
 
 func AdminGrantLotteryTickets(c *gin.Context) {

@@ -2275,3 +2275,150 @@ body.has-flash :is(.lz-w-panel, .lz-w-balance, .lz-w-meta li, .lz-w-note).is-fla
     animation: none;
   }
 }
+
+/* ---- 中奖入账：结果弹窗「已入账」、一键兑换，记录里的状态 ---- */
+.lz-w-result-credit[hidden] {
+  display: none;
+}
+
+.lz-w-result-credit {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 12px;
+  padding: 8px 16px 8px 10px;
+  border: 1px solid rgba(31, 138, 76, 0.22);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #f0fbf4, #e3f6ea);
+  color: #1f7a45;
+  font-size: 14px;
+  font-weight: 700;
+  animation: lz-w-credit-in 0.42s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+.lz-w-result-credit strong {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lz-w-result-credit-icon {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #22a35a;
+  box-shadow: 0 2px 6px rgba(34, 163, 90, 0.35);
+}
+
+.lz-w-result-credit-icon::after {
+  content: '';
+  position: absolute;
+  left: 7.5px;
+  top: 4.5px;
+  width: 5px;
+  height: 10px;
+  border: solid #fff;
+  border-width: 0 2.4px 2.4px 0;
+  transform: rotate(45deg);
+}
+
+@keyframes lz-w-credit-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+body.lz-w-app .lz-w-dialog #result-desc.is-error {
+  color: #c2410c;
+}
+
+body.lz-w-app .lz-w-dialog #result-redeem[hidden] {
+  display: none;
+}
+
+body.lz-w-app .lz-w-dialog #result-redeem {
+  margin-bottom: 10px;
+  background: linear-gradient(180deg, #34c27a, #1f9d5c);
+  box-shadow: 0 8px 18px rgba(31, 157, 92, 0.28);
+}
+
+body.lz-w-app .lz-w-dialog #result-redeem:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+body.lz-w-app .lz-w-dialog #result-close.is-secondary {
+  background: #fff;
+  color: #2f6dff;
+  border: 1px solid rgba(47, 109, 255, 0.28);
+  box-shadow: none;
+}
+
+.lz-w-redeem-mini {
+  appearance: none;
+  padding: 3px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #34c27a, #1f9d5c);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.lz-w-redeem-mini:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.lz-w-redeem-mini:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.lz-w-redeem-mini.is-done {
+  background: rgba(46, 160, 90, 0.14);
+  color: #1f8a4c;
+  cursor: default;
+}
+
+.lz-w-code-done {
+  justify-self: start;
+  padding: 2px 9px;
+  border-radius: 8px;
+  background: rgba(46, 160, 90, 0.12);
+  color: #1f8a4c;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.lz-w-code-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.lz-w-code-used {
+  overflow: hidden;
+  color: var(--w-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  text-decoration: line-through;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lz-w-result-credit {
+    animation: none;
+  }
+}

@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light" />
     <meta name="theme-color" content="#f4f6fa" />
     <title>抽奖管理</title>
-    <link rel="stylesheet" href="./admin.css?v=a23" />
+    <link rel="stylesheet" href="./admin.css?v=a24" />
   </head>
   <body class="lz-admin" data-page="admin">
     <aside class="lz-ad-side">
@@ -49,6 +49,13 @@
             <label class="lz-ad-mini-switch is-broadcast">
               <span id="cfg-broadcast-label">播报开启</span>
               <select id="cfg-broadcast-overview" aria-label="抽奖播报">
+                <option value="1">开启</option>
+                <option value="0">关闭</option>
+              </select>
+            </label>
+            <label class="lz-ad-mini-switch is-auto-redeem">
+              <span id="cfg-auto-redeem-label">自动入账</span>
+              <select id="cfg-auto-redeem-overview" aria-label="中奖自动入账">
                 <option value="1">开启</option>
                 <option value="0">关闭</option>
               </select>
@@ -217,7 +224,14 @@
               <option value="0">关闭</option>
             </select>
           </label>
-          <p class="lz-ad-hint" id="cfg-rules-msg">关掉抽奖后不能抽，但支付仍会送次数；关掉播报期间抽中的不会补发。</p>
+          <label>
+            <span>中奖自动入账</span>
+            <select id="cfg-auto-redeem">
+              <option value="1">开启</option>
+              <option value="0">关闭</option>
+            </select>
+          </label>
+          <p class="lz-ad-hint" id="cfg-rules-msg">关掉抽奖后不能抽，但支付仍会送次数；关掉播报期间抽中的不会补发；关掉自动入账后，中奖只发兑换码，由用户自己兑换。</p>
         </div>
         <div class="lz-ad-card lz-ad-grant-rule" id="grant-rule-card">
           <div class="lz-ad-rule-head">
@@ -577,6 +591,6 @@
       </div>
     </div>
 
-    <script src="./lottery.js?v=w81"></script>
+    <script src="./lottery.js?v=w82"></script>
   </body>
 </html>

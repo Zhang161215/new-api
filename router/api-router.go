@@ -76,6 +76,7 @@ func SetApiRouter(router *gin.Engine) {
 			lotteryRoute.GET("", middleware.TryUserAuth(), controller.GetLottery)
 			lotteryRoute.POST("/draw", middleware.LotteryAuth(common.RoleCommonUser), controller.DrawLottery)
 			lotteryRoute.GET("/history", middleware.LotteryAuth(common.RoleCommonUser), controller.GetLotteryHistory)
+			lotteryRoute.POST("/draws/:id/redeem", middleware.LotteryAuth(common.RoleCommonUser), controller.RedeemLotteryDraw)
 			lotteryRoute.GET("/tickets", middleware.LotteryAuth(common.RoleCommonUser), controller.GetLotteryTicketLog)
 			lotteryRoute.POST("/notice/ack", middleware.LotteryAuth(common.RoleCommonUser), controller.AckLotteryGiftNotice)
 

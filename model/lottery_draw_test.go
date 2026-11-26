@@ -129,8 +129,12 @@ func TestLotteryBroadcastConfigPersists(t *testing.T) {
 	require.Equal(t, 2, cfg.TicketsPerPayment)
 }
 
+// 自动入账关闭时的旧行为：抽中只发码，不动余额，用户自己兑换后才入账。
 func TestDrawLotteryRedeemsCodeNotDirectBalanceField(t *testing.T) {
 	setupLotteryTables(t)
+	off := false
+	_, err := UpdateLotteryConfig(LotteryConfigUpdate{AutoRedeem: &off})
+	require.NoError(t, err)
 	u := &User{Username: "lottery-draw", Password: "x", Quota: 1000, Status: common.UserStatusEnabled, Role: common.RoleCommonUser}
 	require.NoError(t, DB.Create(u).Error)
 	t.Cleanup(func() { DB.Unscoped().Where("id = ?", u.Id).Delete(&User{}) })
