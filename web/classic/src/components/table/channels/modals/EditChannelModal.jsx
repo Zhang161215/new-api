@@ -1809,6 +1809,8 @@ const EditChannelModal = (props) => {
     localInputs.settings = JSON.stringify(settings);
 
     // 清理不需要发送到后端的字段
+    // status 只能走 /api/channel/:id/status 改，编辑时带上会被后端判为无效参数
+    delete localInputs.status;
     delete localInputs.force_format;
     delete localInputs.thinking_to_content;
     delete localInputs.proxy;

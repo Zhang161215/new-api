@@ -447,13 +447,12 @@ export const useChannelsData = () => {
       case 'delete':
         res = await API.delete(`/api/channel/${id}/`);
         break;
+      // 后端不再接受通过 PUT /api/channel/ 改 status，启用/禁用走专用接口（返回 data 为是否有变化）。
       case 'enable':
-        data.status = 1;
-        res = await API.put('/api/channel/', data);
+        res = await API.post(`/api/channel/${id}/status`, { status: 1 });
         break;
       case 'disable':
-        data.status = 2;
-        res = await API.put('/api/channel/', data);
+        res = await API.post(`/api/channel/${id}/status`, { status: 2 });
         break;
       case 'priority':
         if (value === '') return;
@@ -477,7 +476,9 @@ export const useChannelsData = () => {
       showSuccess(t('操作成功完成！'));
       let channel = res.data.data;
       let newChannels = [...channels];
-      if (action !== 'delete') {
+      if (action === 'enable' || action === 'disable') {
+        record.status = action === 'enable' ? 1 : 2;
+      } else if (action !== 'delete') {
         record.status = channel.status;
       }
       setChannels(newChannels);
