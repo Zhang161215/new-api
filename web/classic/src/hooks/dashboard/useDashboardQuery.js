@@ -25,6 +25,7 @@ const PRESET_KEY = 'dashboard_range_preset';
 const LEGACY_GRANULARITY_KEY = 'data_export_default_time';
 
 export const RANGE_PRESETS = [
+  { key: 'today', label: '今天', granularity: 'hour' },
   { key: '24h', label: '近 24 小时', granularity: 'hour' },
   { key: '7d', label: '近 7 天', granularity: 'day' },
   { key: '30d', label: '近 30 天', granularity: 'day' },
@@ -42,7 +43,9 @@ function initialPreset() {
 
 export function presetRange(key) {
   const now = Math.floor(Date.now() / 1000);
-  const preset = RANGE_PRESETS.find((p) => p.key === key) || RANGE_PRESETS[0];
+  const preset =
+    RANGE_PRESETS.find((p) => p.key === key) ||
+    RANGE_PRESETS.find((p) => p.key === '24h');
   if (preset.key === '24h') {
     return {
       preset: preset.key,
@@ -51,10 +54,13 @@ export function presetRange(key) {
       granularity: 'hour',
     };
   }
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const days = preset.key === '7d' ? 6 : 29;
-  const start = Math.floor(today.getTime() / 1000) - days * 86400;
+  // 今天 / 近 N 天都从本地零点起算（近 7 天 = 今天 + 前 6 天）
+  const day = new Date();
+  day.setHours(0, 0, 0, 0);
+  day.setDate(
+    day.getDate() - ({ today: 0, '7d': 6, '30d': 29 }[preset.key] ?? 0),
+  );
+  const start = Math.floor(day.getTime() / 1000);
   return {
     preset: preset.key,
     start,

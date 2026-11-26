@@ -3987,6 +3987,7 @@
     "非缓存输入 + 缓存读取 + 缓存创建": "Uncached input + cache read + cache write",
     "预计可用": "Runway:",
     "约 {{n}} 天": "~{{n}} days",
-    "累计请求 {{n}} 次": "{{n}} requests in total"
+    "累计请求 {{n}} 次": "{{n}} requests in total",
+    "今天": "Today"
   }
 }
