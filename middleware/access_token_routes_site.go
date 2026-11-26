@@ -35,10 +35,16 @@ var siteAccessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/user/affiliate/summary":         accessTokenScopeRule("wallet:read"),
 	"GET /api/user/affiliate/history":         accessTokenScopeRule("wallet:read"),
 	"GET /api/user/affiliate/config":          accessTokenScopeRule("wallet:read"),
+	"GET /api/user/affiliate/overview":        accessTokenScopeRule("wallet:read"),
+	"GET /api/user/affiliate/invitees":        accessTokenScopeRule("wallet:read"),
+	"POST /api/user/affiliate/codes":          accessTokenScopeRule("wallet:write"),
+	"DELETE /api/user/affiliate/codes/:id":    accessTokenScopeRule("wallet:write"),
+	"POST /api/user/affiliate/transfer_all":   accessTokenScopeRule("wallet:write"),
 	"GET /api/user/:id/invites":               accessTokenScopeRule("user:read"),
 	"GET /api/affiliate-rebates":              accessTokenScopeRule("billing:read"),
 	"POST /api/affiliate-rebates/:id/release": accessTokenScopeRule("billing:write"),
 	"POST /api/affiliate-rebates/:id/revoke":  accessTokenScopeRule("billing:write"),
+	"POST /api/affiliate-rebates/:id/approve": accessTokenScopeRule("billing:write"),
 
 	// 收据、线下充值
 	"GET /api/user/topup/receipt/:trade_no": accessTokenScopeRule("wallet:read"),

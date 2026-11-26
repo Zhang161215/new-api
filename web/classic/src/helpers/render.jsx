@@ -76,6 +76,7 @@ import {
   Layers,
   Gift,
   Handshake,
+  HeartHandshake,
   User,
   Settings,
   CircleUser,
@@ -143,6 +144,8 @@ export function getLucideIcon(key, selected = false) {
       return <CheckSquare {...commonProps} color={iconColor} />;
     case 'topup':
       return <CreditCard {...commonProps} color={iconColor} />;
+    case 'invite':
+      return <HeartHandshake {...commonProps} color={iconColor} />;
     case 'channel':
       return <Layers {...commonProps} color={iconColor} />;
     case 'redemption':

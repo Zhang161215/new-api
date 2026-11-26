@@ -152,6 +152,9 @@ func InitOptionMap() {
 	common.OptionMap["AffiliateRebateBonusUSD"] = strconv.FormatFloat(common.AffiliateRebateBonusUSD, 'f', -1, 64)
 	common.OptionMap["AffiliateRebateDelayDays"] = strconv.Itoa(common.AffiliateRebateDelayDays)
 	common.OptionMap["AffiliateRebateExtraRules"] = common.AffiliateRebateExtraRules
+	common.OptionMap["AffiliateRebateEveryTopUp"] = strconv.FormatBool(common.AffiliateRebateEveryTopUp)
+	common.OptionMap["AffiliateRebateSameIPCheck"] = strconv.FormatBool(common.AffiliateRebateSameIPCheck)
+	common.OptionMap["AffiliateRebateSharedIPs"] = common.AffiliateRebateSharedIPs
 	common.OptionMap["QuotaRemindEnabled"] = strconv.FormatBool(common.QuotaRemindEnabled)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
@@ -667,6 +670,12 @@ func updateOptionMap(key string, value string) (err error) {
 		common.AffiliateRebateDelayDays, _ = strconv.Atoi(value)
 	case "AffiliateRebateExtraRules":
 		common.AffiliateRebateExtraRules = value
+	case "AffiliateRebateEveryTopUp":
+		common.AffiliateRebateEveryTopUp, _ = strconv.ParseBool(value)
+	case "AffiliateRebateSameIPCheck":
+		common.AffiliateRebateSameIPCheck, _ = strconv.ParseBool(value)
+	case "AffiliateRebateSharedIPs":
+		common.AffiliateRebateSharedIPs = value
 	case "QuotaRemindThreshold":
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":

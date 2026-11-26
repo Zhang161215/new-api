@@ -132,13 +132,16 @@ var QuotaForInviter = 0
 var QuotaForInvitee = 0
 
 // 邀请充值返利（Affiliate Top-up Rebate）
-// 在被邀人首次成功充值时，按金额给邀请人发放返利，延迟到账。
+// 被邀人钱包充值成功后，按支付金额给邀请人发放返利，延迟到账。订阅不返利。
 var AffiliateRebateEnabled = true
-var AffiliateRebatePercent = 5.0         // 返利百分比（%）
-var AffiliateRebateMinThresholdUSD = 2.0 // 保底阈值：当 money×percent < 此值时，额外赠送
-var AffiliateRebateBonusUSD = 2.0        // 额外奖励金额（美元）
+var AffiliateRebatePercent = 2.0         // 返利百分比（%）
+var AffiliateRebateEveryTopUp = true     // true：被邀人每笔充值都返利；false：只返首次充值
+var AffiliateRebateMinThresholdUSD = 0.0 // 仅首充模式：当 money×percent < 此值时，额外赠送
+var AffiliateRebateBonusUSD = 0.0        // 仅首充模式：额外奖励金额（美元）
 var AffiliateRebateDelayDays = 3         // 到账延迟天数
 var AffiliateRebateExtraRules = ""       // 自定义规则补充说明（多行，渲染时按 \n 拆分）
+var AffiliateRebateSameIPCheck = true    // 被邀人与邀请人注册 IP 相同（IPv6 按 /64）视为非真实邀请，不返利
+var AffiliateRebateSharedIPs = ""        // 共享出口 IP / CIDR（线路机、公司网等），不参与同 IP 判断；逗号或换行分隔
 
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false

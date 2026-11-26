@@ -519,7 +519,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	// Handle affiliate code
 	inviterId := 0
 	if affiliateCode != "" {
-		inviterId, _ = model.GetUserIdByAffCode(affiliateCode)
+		inviterId, user.InviteCodeId = model.ResolveInviteCode(affiliateCode) // 本站：默认码或自定义邀请码
 	}
 	user.InviterId = inviterId
 

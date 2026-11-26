@@ -27,11 +27,14 @@ export default function SettingsAffiliateRebate(props) {
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
     AffiliateRebateEnabled: true,
-    AffiliateRebatePercent: 5,
-    AffiliateRebateMinThresholdUSD: 2,
-    AffiliateRebateBonusUSD: 2,
+    AffiliateRebatePercent: 2,
+    AffiliateRebateEveryTopUp: true,
+    AffiliateRebateMinThresholdUSD: 0,
+    AffiliateRebateBonusUSD: 0,
     AffiliateRebateDelayDays: 3,
     AffiliateRebateExtraRules: '',
+    AffiliateRebateSameIPCheck: true,
+    AffiliateRebateSharedIPs: '',
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
@@ -102,6 +105,22 @@ export default function SettingsAffiliateRebate(props) {
                 }
               />
             </Col>
+            <Col xs={24} sm={12} md={16}>
+              <Form.Switch
+                label={t('被邀人每笔充值都返利')}
+                field={'AffiliateRebateEveryTopUp'}
+                extraText={
+                  inputs.AffiliateRebateEveryTopUp
+                    ? t(
+                        '每笔钱包充值按比例返利，不限次数、不限时间；订阅不返利',
+                      )
+                    : t('只返被邀人的首次充值，可配保底阈值和额外奖励')
+                }
+                onChange={(value) =>
+                  setInputs({ ...inputs, AffiliateRebateEveryTopUp: value })
+                }
+              />
+            </Col>
           </Row>
           <Row gutter={16}>
             <Col xs={24} sm={12} md={8}>
@@ -117,33 +136,37 @@ export default function SettingsAffiliateRebate(props) {
                 }
               />
             </Col>
-            <Col xs={24} sm={12} md={8}>
-              <Form.InputNumber
-                label={t('保底阈值')}
-                field={'AffiliateRebateMinThresholdUSD'}
-                step={0.1}
-                min={0}
-                suffix={'USD'}
-                onChange={(value) =>
-                  setInputs({
-                    ...inputs,
-                    AffiliateRebateMinThresholdUSD: value,
-                  })
-                }
-              />
-            </Col>
-            <Col xs={24} sm={12} md={8}>
-              <Form.InputNumber
-                label={t('额外奖励')}
-                field={'AffiliateRebateBonusUSD'}
-                step={0.1}
-                min={0}
-                suffix={'USD'}
-                onChange={(value) =>
-                  setInputs({ ...inputs, AffiliateRebateBonusUSD: value })
-                }
-              />
-            </Col>
+            {!inputs.AffiliateRebateEveryTopUp && (
+              <>
+                <Col xs={24} sm={12} md={8}>
+                  <Form.InputNumber
+                    label={t('保底阈值')}
+                    field={'AffiliateRebateMinThresholdUSD'}
+                    step={0.1}
+                    min={0}
+                    suffix={'USD'}
+                    onChange={(value) =>
+                      setInputs({
+                        ...inputs,
+                        AffiliateRebateMinThresholdUSD: value,
+                      })
+                    }
+                  />
+                </Col>
+                <Col xs={24} sm={12} md={8}>
+                  <Form.InputNumber
+                    label={t('额外奖励')}
+                    field={'AffiliateRebateBonusUSD'}
+                    step={0.1}
+                    min={0}
+                    suffix={'USD'}
+                    onChange={(value) =>
+                      setInputs({ ...inputs, AffiliateRebateBonusUSD: value })
+                    }
+                  />
+                </Col>
+              </>
+            )}
           </Row>
           <Row gutter={16}>
             <Col xs={24} sm={12} md={8}>
@@ -159,12 +182,41 @@ export default function SettingsAffiliateRebate(props) {
             </Col>
           </Row>
           <Row gutter={16}>
+            <Col xs={24} sm={12} md={8}>
+              <Form.Switch
+                label={t('同 IP 注册不返利')}
+                field={'AffiliateRebateSameIPCheck'}
+                extraText={t(
+                  '被邀人与邀请人注册 IP 相同（IPv6 按 /64）视为非真实邀请：记一条「不计返利」，可在邀请奖励管理里人工补发',
+                )}
+                onChange={(value) =>
+                  setInputs({ ...inputs, AffiliateRebateSameIPCheck: value })
+                }
+              />
+            </Col>
+            <Col xs={24} sm={12} md={16}>
+              <Form.TextArea
+                label={t('共享出口 IP（不做同 IP 判断）')}
+                field={'AffiliateRebateSharedIPs'}
+                extraText={t(
+                  '线路机、公司网等多人共用的出口 IP，支持单个 IP 或 CIDR，逗号或换行分隔',
+                )}
+                placeholder={'45.129.8.33\n10.0.0.0/8'}
+                autosize={{ minRows: 2, maxRows: 6 }}
+                disabled={!inputs.AffiliateRebateSameIPCheck}
+                onChange={(value) =>
+                  setInputs({ ...inputs, AffiliateRebateSharedIPs: value })
+                }
+              />
+            </Col>
+          </Row>
+          <Row gutter={16}>
             <Col xs={24} sm={24} md={16}>
               <Form.TextArea
                 label={t('自定义规则补充说明')}
                 field={'AffiliateRebateExtraRules'}
                 extraText={t(
-                  '每行一条，将追加显示在用户钱包页「活动规则」卡片末尾。留空则不显示补充说明',
+                  '每行一条，将追加显示在钱包页「活动规则」和邀请返利页「使用说明」末尾。留空则不显示补充说明',
                 )}
                 placeholder={t(
                   '例如：\n本活动最终解释权归本平台所有\n严禁刷邀请等作弊行为，违规者将取消所有奖励',

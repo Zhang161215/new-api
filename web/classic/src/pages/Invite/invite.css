@@ -1,0 +1,364 @@
+/* 本站：邀请返利页。颜色全部走 Semi 变量，暗色模式自动跟随 */
+.inv-page {
+  --inv-radius: 14px;
+  --inv-gap: 16px;
+  color: var(--semi-color-text-0);
+  padding-bottom: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--inv-gap);
+}
+
+.inv-loading {
+  padding: 80px 0;
+  text-align: center;
+  color: var(--semi-color-text-2);
+}
+
+.inv-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+}
+
+.inv-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.inv-subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--semi-color-text-2);
+}
+
+.inv-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.inv-banner {
+  border-radius: var(--inv-radius);
+  padding: 10px 14px;
+  font-size: 13px;
+  background: var(--semi-color-warning-light-default);
+  color: var(--semi-color-warning);
+}
+
+.inv-muted {
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+}
+
+.inv-num,
+.inv-stat-value,
+.inv-transfer-amount {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 统计卡 */
+.inv-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--inv-gap);
+}
+
+.inv-stat {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--inv-radius);
+  padding: 16px 18px;
+  background: var(--semi-color-bg-1);
+  border: 1px solid var(--semi-color-border);
+}
+
+.inv-stat::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--inv-accent);
+}
+
+.inv-stat-blue {
+  --inv-accent: var(--semi-color-primary);
+}
+.inv-stat-green {
+  --inv-accent: var(--semi-color-success);
+}
+.inv-stat-orange {
+  --inv-accent: var(--semi-color-warning);
+}
+.inv-stat-purple {
+  --inv-accent: var(--semi-purple-5, #8a5cf5);
+}
+
+.inv-stat-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--semi-color-text-1);
+  font-size: 13px;
+}
+
+.inv-stat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: var(--inv-accent);
+  background: var(--semi-color-fill-0);
+}
+
+.inv-stat-value {
+  margin-top: 12px;
+  font-size: 26px;
+  font-weight: 650;
+  line-height: 1.15;
+}
+
+.inv-stat-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+}
+
+/* 通用卡片 */
+.inv-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: var(--inv-gap);
+}
+
+.inv-card {
+  border-radius: var(--inv-radius);
+  padding: 18px 20px;
+  background: var(--semi-color-bg-1);
+  border: 1px solid var(--semi-color-border);
+  min-width: 0;
+}
+
+.inv-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.inv-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+/* 默认邀请码 */
+.inv-code-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0 16px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--semi-color-fill-0);
+  border: 1px dashed var(--semi-color-border);
+}
+
+.inv-code-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  word-break: break-all;
+}
+
+.inv-field-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  margin-bottom: 6px;
+  color: var(--semi-color-text-1);
+}
+
+.inv-link-row {
+  display: flex;
+  gap: 8px;
+}
+
+.inv-link-row .semi-input-wrapper {
+  flex: 1;
+  min-width: 0;
+}
+
+.inv-link-icon {
+  margin: 0 6px 0 10px;
+  color: var(--semi-color-text-2);
+}
+
+/* 使用说明 */
+.inv-steps {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.inv-steps li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.inv-step-no {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--semi-color-primary);
+  background: var(--semi-color-primary-light-default);
+}
+
+.inv-notes {
+  margin: 14px 0 0;
+  padding: 12px 0 0 18px;
+  border-top: 1px solid var(--semi-color-border);
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--semi-color-text-2);
+}
+
+/* 专属邀请码 */
+.inv-code-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.inv-code-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+}
+
+.inv-code-row + .inv-code-row,
+.inv-code-row + .inv-empty {
+  border-top: 1px solid var(--semi-color-border);
+}
+
+.inv-code-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.inv-code-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.inv-code-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.inv-empty {
+  padding: 18px 14px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--semi-color-text-2);
+}
+
+.inv-create {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.inv-create .semi-input-wrapper {
+  flex: 1;
+  max-width: 420px;
+}
+
+/* 转余额 */
+.inv-transfer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.inv-transfer-side {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.inv-transfer-amount {
+  font-size: 22px;
+  font-weight: 650;
+}
+
+.inv-transfer-note {
+  flex-basis: 100%;
+}
+
+.inv-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 960px) {
+  .inv-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .inv-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .inv-stat-value {
+    font-size: 20px;
+  }
+  .inv-link-row,
+  .inv-create {
+    flex-direction: column;
+  }
+  .inv-create .semi-input-wrapper {
+    max-width: none;
+  }
+  .inv-code-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

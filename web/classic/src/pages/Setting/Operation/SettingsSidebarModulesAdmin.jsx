@@ -57,6 +57,7 @@ export default function SettingsSidebarModulesAdmin(props) {
     personal: {
       enabled: true,
       topup: true,
+      invite: true,
       personal: true,
     },
     admin: {
@@ -121,6 +122,7 @@ export default function SettingsSidebarModulesAdmin(props) {
       personal: {
         enabled: true,
         topup: true,
+        invite: true,
         personal: true,
       },
       admin: {
@@ -194,7 +196,7 @@ export default function SettingsSidebarModulesAdmin(props) {
             midjourney: true,
             task: true,
           },
-          personal: { enabled: true, topup: true, personal: true },
+          personal: { enabled: true, topup: true, invite: true, personal: true },
           admin: {
             enabled: true,
             channel: true,
@@ -250,6 +252,11 @@ export default function SettingsSidebarModulesAdmin(props) {
       description: t('用户个人功能'),
       modules: [
         { key: 'topup', title: t('钱包管理'), description: t('余额充值管理') },
+        {
+          key: 'invite',
+          title: t('邀请返利'),
+          description: t('邀请码与返利管理'),
+        },
         {
           key: 'personal',
           title: t('个人设置'),

@@ -17,7 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import React, { useEffect, useState } from 'react';
-import { Modal, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import {
+  Modal,
+  Table,
+  Tag,
+  Toast,
+  Tooltip,
+  Typography,
+} from '@douyinfe/semi-ui';
 import { API, timestamp2string } from '../../../helpers';
 
 const { Text } = Typography;
@@ -80,16 +87,26 @@ const AffiliateHistoryModal = ({ visible, onClose, t, renderQuota }) => {
     {
       title: t('返利金额'),
       dataIndex: 'rebate_money',
-      render: (v, r) => (
-        <Text strong>${(v || 0).toFixed(2)}</Text>
-      ),
+      render: (v, r) => <Text strong>${(v || 0).toFixed(2)}</Text>,
     },
     {
       title: t('状态'),
       dataIndex: 'status',
-      render: (v) => {
+      render: (v, r) => {
+        if (v === 'revoked' && r.skip_reason) {
+          return (
+            <Tooltip content={r.revoke_reason || t('不符合返利条件')}>
+              <Tag color='grey'>{t('不计返利')}</Tag>
+            </Tooltip>
+          );
+        }
         const conf = STATUS_MAP[v] || { type: 'tertiary', key: v };
-        return <Tag color={conf.type}>{t(conf.key)}</Tag>;
+        const tag = <Tag color={conf.type}>{t(conf.key)}</Tag>;
+        return v === 'revoked' && r.revoke_reason ? (
+          <Tooltip content={r.revoke_reason}>{tag}</Tooltip>
+        ) : (
+          tag
+        );
       },
     },
     {

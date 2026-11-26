@@ -171,6 +171,11 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/affiliate/summary", controller.GetUserAffiliateSummary)
 				selfRoute.GET("/affiliate/history", controller.GetUserAffiliateHistory)
 				selfRoute.GET("/affiliate/config", controller.GetUserAffiliateConfig)
+				selfRoute.GET("/affiliate/overview", controller.GetUserAffiliateOverview)
+				selfRoute.GET("/affiliate/invitees", controller.GetUserAffiliateInvitees)
+				selfRoute.POST("/affiliate/codes", middleware.UserCriticalRateLimit("aff-code"), controller.CreateUserAffiliateCode)
+				selfRoute.DELETE("/affiliate/codes/:id", controller.DeleteUserAffiliateCode)
+				selfRoute.POST("/affiliate/transfer_all", middleware.UserCriticalRateLimit("aff-transfer"), controller.TransferAllAffiliateQuota)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
 
 				// 2FA routes
@@ -222,6 +227,7 @@ func SetApiRouter(router *gin.Engine) {
 			affiliateRebateRoute.GET("", controller.AdminListAffiliateRebates)
 			affiliateRebateRoute.POST("/:id/release", controller.AdminReleaseAffiliateRebate)
 			affiliateRebateRoute.POST("/:id/revoke", controller.AdminRevokeAffiliateRebate)
+			affiliateRebateRoute.POST("/:id/approve", controller.AdminApproveAffiliateRebate)
 		}
 
 		// Subscription billing (plans, purchase, admin management)

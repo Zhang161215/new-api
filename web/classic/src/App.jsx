@@ -62,6 +62,7 @@ const PromptAudit = lazy(() => import('./pages/PromptAudit'));
 const About = lazy(() => import('./pages/About'));
 const UserAgreement = lazy(() => import('./pages/UserAgreement'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
+const Invite = lazy(() => import('./pages/Invite'));
 
 function DynamicOAuth2Callback() {
   const { provider } = useParams();
@@ -304,6 +305,16 @@ function App() {
             <PrivateRoute>
               <Suspense fallback={<Loading></Loading>} key={location.pathname}>
                 <PersonalSetting />
+              </Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/invite'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <Invite />
               </Suspense>
             </PrivateRoute>
           }

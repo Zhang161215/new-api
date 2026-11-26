@@ -3988,6 +3988,8 @@
     "预计可用": "Runway:",
     "约 {{n}} 天": "~{{n}} days",
     "累计请求 {{n}} 次": "{{n}} requests in total",
-    "今天": "Today"
+    "今天": "Today",
+    "邀请返利": "Referral Rewards",
+    "邀请码与返利管理": "Invite codes and rebates"
   }
 }

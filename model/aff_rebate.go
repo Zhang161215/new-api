@@ -21,8 +21,14 @@ const (
 	AffRebateStatusRevoked  = "revoked"
 )
 
+// AffRebateSkipSameIP 被邀人与邀请人同 IP 注册，系统判为非真实邀请：记一条已撤销的记录，不动额度。
+const AffRebateSkipSameIP = "same_ip"
+
+// AffRebateSameIPReason 同 IP 跳过时写入 revoke_reason 的文案（用户端返利记录可见，不带具体 IP）。
+const AffRebateSameIPReason = "同 IP 注册，非真实邀请，不计返利"
+
 // AffRebate 表示一条邀请充值返利记录。
-// 每一笔被邀人的首次成功充值会生成且仅生成一条。
+// 每一笔触发返利的被邀人充值（默认每笔，首充模式下只有首笔）生成且仅生成一条。
 type AffRebate struct {
 	Id           int     `json:"id" gorm:"primaryKey"`
 	InviterId    int     `json:"inviter_id" gorm:"index;not null"`
@@ -37,7 +43,8 @@ type AffRebate struct {
 	ReleasedAt   int64   `json:"released_at"`             // 实际到账时间（手动或定时）
 	RevokedAt    int64   `json:"revoked_at"`
 	RevokeReason string  `json:"revoke_reason" gorm:"type:varchar(255)"`
-	OperatorId   int     `json:"operator_id"` // 管理员操作时记录
+	OperatorId   int     `json:"operator_id"`                         // 管理员操作时记录
+	SkipReason   string  `json:"skip_reason" gorm:"type:varchar(32)"` // 系统判定不返利的原因（same_ip）；管理员撤销的为空
 }
 
 func (AffRebate) TableName() string {
@@ -88,13 +95,71 @@ func CreatePendingAffRebate(rebate *AffRebate) error {
 	})
 }
 
+// CreateSkippedAffRebate 记录一条系统判定不返利的记录（状态 revoked），不改任何额度。
+// 留痕便于管理员复核；误判时可用 ApproveSkippedAffRebateById 补发。
+func CreateSkippedAffRebate(rebate *AffRebate, skipReason, reason string) error {
+	now := time.Now().Unix()
+	rebate.Status = AffRebateStatusRevoked
+	rebate.SkipReason = skipReason
+	rebate.RevokeReason = reason
+	rebate.RevokedAt = now
+	if rebate.CreatedAt == 0 {
+		rebate.CreatedAt = now
+	}
+	rebate.ReleaseAt = 0
+	return DB.Create(rebate).Error
+}
+
+// ApproveSkippedAffRebateById 管理员复核后补发一条被系统跳过的返利：直接到账（aff_quota + aff_history）。
+func ApproveSkippedAffRebateById(id int, operatorId int) error {
+	var r AffRebate
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockForUpdate(tx).Where("id = ?", id).First(&r).Error; err != nil {
+			return err
+		}
+		if r.Status != AffRebateStatusRevoked || r.SkipReason == "" {
+			return errors.New("只有被系统判定不返利的记录可以补发")
+		}
+		if r.RebateAmount <= 0 {
+			return errors.New("返利额度为 0，无需补发")
+		}
+		now := time.Now().Unix()
+		res := tx.Model(&AffRebate{}).Where("id = ? AND status = ?", r.Id, AffRebateStatusRevoked).Updates(map[string]interface{}{
+			"status":      AffRebateStatusReleased,
+			"released_at": now,
+			"operator_id": operatorId,
+		})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errors.New("该记录状态已变化，请刷新后重试")
+		}
+		return tx.Unscoped().Model(&User{}).Where("id = ?", r.InviterId).Updates(map[string]interface{}{
+			"aff_quota":   gorm.Expr("aff_quota + ?", r.RebateAmount),
+			"aff_history": gorm.Expr("aff_history + ?", r.RebateAmount),
+		}).Error
+	})
+	if err != nil {
+		return err
+	}
+	// 事务外记日志：日志库可能和主库共用连接池
+	RecordLog(r.InviterId, LogTypeAffiliateRebate, common.NewMessage("邀请返利 ${{rebate}} 已到账（被邀人 #{{invitee}} 充值 ${{topup}}，人工复核通过）", map[string]any{
+		"rebate":  fmt.Sprintf("%.2f", r.RebateMoney),
+		"invitee": r.InviteeId,
+		"topup":   fmt.Sprintf("%.2f", r.TopUpMoney),
+	}))
+	return nil
+}
+
 // ListAffRebatesQuery 列表查询参数
 type ListAffRebatesQuery struct {
-	Status    string
-	InviterId int
-	InviteeId int
-	StartTime int64
-	EndTime   int64
+	Status     string
+	SkipReason string // "any"：只看系统跳过的；其它非空值：精确匹配
+	InviterId  int
+	InviteeId  int
+	StartTime  int64
+	EndTime    int64
 }
 
 // ListAffRebates 管理员列表。
@@ -108,6 +173,11 @@ func ListAffRebates(q ListAffRebatesQuery, page, pageSize int) (items []*AffReba
 	tx := DB.Model(&AffRebate{})
 	if q.Status != "" {
 		tx = tx.Where("status = ?", q.Status)
+	}
+	if q.SkipReason == "any" {
+		tx = tx.Where("skip_reason IS NOT NULL AND skip_reason <> ''")
+	} else if q.SkipReason != "" {
+		tx = tx.Where("skip_reason = ?", q.SkipReason)
 	}
 	if q.InviterId > 0 {
 		tx = tx.Where("inviter_id = ?", q.InviterId)
@@ -177,7 +247,7 @@ func ReleaseAffRebateById(id int, operatorId int) (bool, error) {
 			return err
 		}
 		released = true
-		RecordLog(r.InviterId, LogTypeAffiliateRebate, common.NewMessage("邀请返利 ${{rebate}} 已到账（被邀人 #{{invitee}} 首次充值 ${{topup}}）", map[string]any{
+		RecordLog(r.InviterId, LogTypeAffiliateRebate, common.NewMessage("邀请返利 ${{rebate}} 已到账（被邀人 #{{invitee}} 充值 ${{topup}}）", map[string]any{
 			"rebate":  fmt.Sprintf("%.2f", r.RebateMoney),
 			"invitee": r.InviteeId,
 			"topup":   fmt.Sprintf("%.2f", r.TopUpMoney),

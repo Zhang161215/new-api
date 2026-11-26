@@ -20,6 +20,7 @@ import {
   Select,
   Form,
   Empty,
+  Tooltip,
 } from '@douyinfe/semi-ui';
 import {
   IllustrationNoResult,
@@ -70,12 +71,11 @@ const AffiliateRebatesTable = () => {
         page: p,
         page_size: ps,
       });
-      if (s) params.append('status', s);
+      if (s === 'skipped') params.append('skip_reason', 'any');
+      else if (s) params.append('status', s);
       if (iv) params.append('inviter_id', iv);
       if (ie) params.append('invitee_id', ie);
-      const res = await API.get(
-        `/api/affiliate-rebates?${params.toString()}`,
-      );
+      const res = await API.get(`/api/affiliate-rebates?${params.toString()}`);
       const { success, message, data } = res.data;
       if (success) {
         setItems(data.items || []);
@@ -119,6 +119,31 @@ const AffiliateRebatesTable = () => {
           );
           if (res?.data?.success) {
             Toast.success({ content: t('已到账') });
+            fetchList(page, pageSize, statusFilter, inviterId, inviteeId);
+          } else {
+            Toast.error({ content: res?.data?.message || t('操作失败') });
+          }
+        } catch (e) {
+          Toast.error({ content: t('操作失败') });
+        }
+      },
+    });
+  };
+
+  const onApprove = (record) => {
+    Modal.confirm({
+      title: t('确认补发这笔返利？'),
+      content: t(
+        '系统判定 #{{id}} 为同 IP 邀请。确认是真实邀请（比如共享出口误判）后，{{amount}} 会直接到账给邀请人。',
+        { id: record.id, amount: `$${(record.rebate_money || 0).toFixed(2)}` },
+      ),
+      onOk: async () => {
+        try {
+          const res = await API.post(
+            `/api/affiliate-rebates/${record.id}/approve`,
+          );
+          if (res?.data?.success) {
+            Toast.success({ content: t('已补发') });
             fetchList(page, pageSize, statusFilter, inviterId, inviteeId);
           } else {
             Toast.error({ content: res?.data?.message || t('操作失败') });
@@ -180,9 +205,34 @@ const AffiliateRebatesTable = () => {
     {
       title: t('状态'),
       dataIndex: 'status',
-      render: (v) => {
+      width: 170,
+      render: (v, r) => {
+        if (v === 'revoked' && r.skip_reason) {
+          return (
+            <Tooltip
+              content={`${r.revoke_reason || ''}${r.register_ip ? ` · IP ${r.register_ip}` : ''}`}
+            >
+              <Tag color='orange'>{t('同 IP · 不计返利')}</Tag>
+            </Tooltip>
+          );
+        }
         const conf = STATUS_MAP[v] || { color: 'grey', key: v };
-        return <Tag color={conf.color}>{t(conf.key)}</Tag>;
+        const tag = <Tag color={conf.color}>{t(conf.key)}</Tag>;
+        if (v === 'released' && r.skip_reason) {
+          return (
+            <Space spacing={4}>
+              {tag}
+              <Tooltip content={r.register_ip ? `IP ${r.register_ip}` : ''}>
+                <Tag color='blue'>{t('人工补发')}</Tag>
+              </Tooltip>
+            </Space>
+          );
+        }
+        return v === 'revoked' && r.revoke_reason ? (
+          <Tooltip content={r.revoke_reason}>{tag}</Tooltip>
+        ) : (
+          tag
+        );
       },
     },
     {
@@ -210,6 +260,11 @@ const AffiliateRebatesTable = () => {
           {r.status === 'pending' && (
             <Button size='small' type='primary' onClick={() => onRelease(r)}>
               {t('提前到账')}
+            </Button>
+          )}
+          {r.status === 'revoked' && r.skip_reason && (
+            <Button size='small' type='primary' onClick={() => onApprove(r)}>
+              {t('补发返利')}
             </Button>
           )}
           {(r.status === 'pending' || r.status === 'released') && (
@@ -252,6 +307,7 @@ const AffiliateRebatesTable = () => {
         <Select.Option value='pending'>{t('待到账')}</Select.Option>
         <Select.Option value='released'>{t('已到账')}</Select.Option>
         <Select.Option value='revoked'>{t('已撤销')}</Select.Option>
+        <Select.Option value='skipped'>{t('同 IP 不计返利')}</Select.Option>
       </Select>
       <Input
         placeholder={t('邀请人') + ' ID'}
@@ -305,7 +361,9 @@ const AffiliateRebatesTable = () => {
           scroll={{ x: 1100 }}
           empty={
             <Empty
-              image={<IllustrationNoResult style={{ width: 140, height: 140 }} />}
+              image={
+                <IllustrationNoResult style={{ width: 140, height: 140 }} />
+              }
               darkModeImage={
                 <IllustrationNoResultDark style={{ width: 140, height: 140 }} />
               }

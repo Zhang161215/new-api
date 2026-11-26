@@ -273,12 +273,14 @@ func Register(c *gin.Context) {
 		return
 	}
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
-	inviterId, _ := model.GetUserIdByAffCode(affCode)
+	// 本站：默认码或自定义邀请码
+	inviterId, inviteCodeId := model.ResolveInviteCode(affCode)
 	cleanUser := model.User{
 		Username:     user.Username,
 		Password:     user.Password,
 		DisplayName:  user.Username,
 		InviterId:    inviterId,
+		InviteCodeId: inviteCodeId,
 		RegisterIP:   c.ClientIP(),
 		RegisterTime: common.GetTimestamp(),
 		Role:         common.RoleCommonUser, // 明确设置角色为普通用户

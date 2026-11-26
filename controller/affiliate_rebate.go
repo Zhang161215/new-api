@@ -44,6 +44,8 @@ func GetUserAffiliateConfig(c *gin.Context) {
 		"delay_days":        common.AffiliateRebateDelayDays,
 		"quota_per_unit":    common.QuotaPerUnit,
 		"extra_rules":       common.AffiliateRebateExtraRules,
+		"every_top_up":      common.AffiliateRebateEveryTopUp,
+		"same_ip_check":     common.AffiliateRebateSameIPCheck,
 	})
 }
 
@@ -78,6 +80,7 @@ func GetUserAffiliateHistory(c *gin.Context) {
 			"released_at":   r.ReleasedAt,
 			"revoked_at":    r.RevokedAt,
 			"revoke_reason": r.RevokeReason,
+			"skip_reason":   r.SkipReason,
 		}
 		if username, _ := model.GetUsernameById(r.InviteeId, false); username != "" {
 			entry["invitee_username"] = maskInviteeUsername(username)
@@ -120,11 +123,12 @@ func AdminListAffiliateRebates(c *gin.Context) {
 	endTime, _ := strconv.ParseInt(c.Query("end_time"), 10, 64)
 
 	q := model.ListAffRebatesQuery{
-		Status:    c.Query("status"),
-		InviterId: inviterId,
-		InviteeId: inviteeId,
-		StartTime: startTime,
-		EndTime:   endTime,
+		Status:     c.Query("status"),
+		SkipReason: c.Query("skip_reason"),
+		InviterId:  inviterId,
+		InviteeId:  inviteeId,
+		StartTime:  startTime,
+		EndTime:    endTime,
 	}
 
 	items, total, err := model.ListAffRebates(q, page, pageSize)
@@ -150,12 +154,20 @@ func AdminListAffiliateRebates(c *gin.Context) {
 			"revoked_at":    r.RevokedAt,
 			"revoke_reason": r.RevokeReason,
 			"operator_id":   r.OperatorId,
+			"skip_reason":   r.SkipReason,
 		}
 		if inviterName, _ := model.GetUsernameById(r.InviterId, false); inviterName != "" {
 			entry["inviter_username"] = inviterName
 		}
 		if inviteeName, _ := model.GetUsernameById(r.InviteeId, false); inviteeName != "" {
 			entry["invitee_username"] = inviteeName
+		}
+		if r.SkipReason != "" {
+			// 本站：同 IP 跳过的记录带上注册 IP，方便管理员判断是不是共享出口误判
+			var invitee model.User
+			if err := model.DB.Unscoped().Select("register_ip").First(&invitee, "id = ?", r.InviteeId).Error; err == nil {
+				entry["register_ip"] = invitee.RegisterIP
+			}
 		}
 		enriched = append(enriched, entry)
 	}

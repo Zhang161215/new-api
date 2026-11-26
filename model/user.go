@@ -104,6 +104,7 @@ type User struct {
 	AffPendingQuota       int                        `json:"aff_pending_quota" gorm:"type:int;default:0;column:aff_pending_quota"` // 邀请待到账额度
 	AffHistoryQuota       int                        `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"`       // 邀请历史额度
 	InviterId             int                        `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	InviteCodeId          int                        `json:"-" gorm:"type:int;column:invite_code_id;default:0"` // 本站：注册时用的自定义邀请码（aff_invite_codes.id），0 = 默认码
 	RegisterIP            string                     `json:"register_ip,omitempty" gorm:"type:varchar(64);column:register_ip;index"`
 	RegisterTime          int64                      `json:"register_time" gorm:"bigint;column:register_time;index"`
 	InvitedTotal          int                        `json:"invited_total,omitempty" gorm:"-:all"`
@@ -701,7 +702,7 @@ func (user *User) Insert(inviterId int) error {
 				return err
 			}
 			user.Quota = common.QuotaForNewUser
-			user.AffCode = common.GetRandomString(4)
+			user.AffCode = newUserAffCode(tx) // 本站：避开自定义邀请码
 
 			// 初始化用户设置，包括默认的边栏配置
 			if user.Setting == "" {
@@ -764,7 +765,7 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 			return err
 		}
 		user.Quota = common.QuotaForNewUser
-		user.AffCode = common.GetRandomString(4)
+		user.AffCode = newUserAffCode(tx) // 本站：避开自定义邀请码
 
 		// 初始化用户设置
 		if user.Setting == "" {

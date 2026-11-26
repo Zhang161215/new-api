@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Avatar,
   Typography,
@@ -36,6 +37,7 @@ import {
   Zap,
   Clock,
   History,
+  ArrowRight,
 } from 'lucide-react';
 import { API } from '../../helpers';
 import AffiliateHistoryModal from './modals/AffiliateHistoryModal';
@@ -53,6 +55,7 @@ const InvitationCard = ({
 }) => {
   const [config, setConfig] = useState(null);
   const [historyVisible, setHistoryVisible] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     (async () => {
@@ -87,6 +90,15 @@ const InvitationCard = ({
           onClick={() => setHistoryVisible(true)}
         >
           {t('返利记录')}
+        </Button>
+        <Button
+          size='small'
+          theme='light'
+          icon={<ArrowRight size={14} />}
+          iconPosition='right'
+          onClick={() => navigate('/console/invite')}
+        >
+          {t('邀请返利')}
         </Button>
       </div>
 
@@ -276,7 +288,9 @@ const InvitationCard = ({
               <div className='flex items-start gap-2'>
                 <Badge dot type='success' />
                 <Text type='tertiary' className='text-sm'>
-                  {t('邀请好友首次充值，您将获得返利奖励')}
+                  {config.every_top_up
+                    ? t('邀请的好友每次充值，您都能获得返利奖励')
+                    : t('邀请好友首次充值，您将获得返利奖励')}
                 </Text>
               </div>
               <div className='flex items-start gap-2'>
@@ -285,16 +299,28 @@ const InvitationCard = ({
                   {t('返利金额 = 充值额 × {{p}}%', { p: config.percent })}
                 </Text>
               </div>
-              <div className='flex items-start gap-2'>
-                <Badge dot type='success' />
-                <Text type='tertiary' className='text-sm'>
-                  {t('若 {{p}}% 返利不足 ${{m}}，额外赠送 ${{b}}', {
-                    p: config.percent,
-                    m: config.min_threshold_usd,
-                    b: config.bonus_usd,
-                  })}
-                </Text>
-              </div>
+              {!config.every_top_up &&
+                config.min_threshold_usd > 0 &&
+                config.bonus_usd > 0 && (
+                  <div className='flex items-start gap-2'>
+                    <Badge dot type='success' />
+                    <Text type='tertiary' className='text-sm'>
+                      {t('若 {{p}}% 返利不足 ${{m}}，额外赠送 ${{b}}', {
+                        p: config.percent,
+                        m: config.min_threshold_usd,
+                        b: config.bonus_usd,
+                      })}
+                    </Text>
+                  </div>
+                )}
+              {config.same_ip_check && (
+                <div className='flex items-start gap-2'>
+                  <Badge dot type='success' />
+                  <Text type='tertiary' className='text-sm'>
+                    {t('与邀请人同一网络注册的账号视为非真实邀请，不计返利。')}
+                  </Text>
+                </div>
+              )}
               <div className='flex items-start gap-2'>
                 <Badge dot type='success' />
                 <Text type='tertiary' className='text-sm'>
@@ -316,9 +342,15 @@ const InvitationCard = ({
                   .map((line) => line.trim())
                   .filter((line) => line.length > 0)
                   .map((line, idx) => (
-                    <div key={`extra-${idx}`} className='flex items-start gap-2'>
+                    <div
+                      key={`extra-${idx}`}
+                      className='flex items-start gap-2'
+                    >
                       <Badge dot type='warning' />
-                      <Text type='tertiary' className='text-sm whitespace-pre-wrap'>
+                      <Text
+                        type='tertiary'
+                        className='text-sm whitespace-pre-wrap'
+                      >
                         {line}
                       </Text>
                     </div>

@@ -38,11 +38,14 @@ const OperationSetting = () => {
     QuotaForInviter: 0,
     QuotaForInvitee: 0,
     AffiliateRebateEnabled: true,
-    AffiliateRebatePercent: 5,
-    AffiliateRebateMinThresholdUSD: 2,
-    AffiliateRebateBonusUSD: 2,
+    AffiliateRebatePercent: 2,
+    AffiliateRebateEveryTopUp: true,
+    AffiliateRebateMinThresholdUSD: 0,
+    AffiliateRebateBonusUSD: 0,
     AffiliateRebateDelayDays: 3,
     AffiliateRebateExtraRules: '',
+    AffiliateRebateSameIPCheck: true,
+    AffiliateRebateSharedIPs: '',
     'quota_setting.enable_free_model_pre_consume': true,
 
     /* 通用设置 */

@@ -211,6 +211,7 @@ func InitDB() (err error) {
 		sqlDB.SetMaxIdleConns(common.GetEnvOrDefault("SQL_MAX_IDLE_CONNS", 100))
 		sqlDB.SetMaxOpenConns(common.GetEnvOrDefault("SQL_MAX_OPEN_CONNS", 1000))
 		sqlDB.SetConnMaxLifetime(time.Second * time.Duration(common.GetEnvOrDefault("SQL_MAX_LIFETIME", 60)))
+		affInviteCodesReady = true // 本站：aff_invite_codes 由主节点迁移，新用户默认码要避开自定义码
 
 		if !common.IsMasterNode {
 			// Only the master node migrates. A node that cannot read the deadline
@@ -263,6 +264,7 @@ func InitLogDB() (err error) {
 		sqlDB.SetMaxIdleConns(common.GetEnvOrDefault("SQL_MAX_IDLE_CONNS", 100))
 		sqlDB.SetMaxOpenConns(common.GetEnvOrDefault("SQL_MAX_OPEN_CONNS", 1000))
 		sqlDB.SetConnMaxLifetime(time.Second * time.Duration(common.GetEnvOrDefault("SQL_MAX_LIFETIME", 60)))
+		affInviteCodesReady = true // 本站：aff_invite_codes 由主节点迁移，新用户默认码要避开自定义码
 
 		if !common.IsMasterNode {
 			return nil
@@ -370,6 +372,7 @@ func migrateDB() error {
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
 		&AffRebate{},
+		&AffInviteCode{},
 		&PromptAuditLog{},
 		&LotteryConfig{},
 		&LotteryPrize{},
