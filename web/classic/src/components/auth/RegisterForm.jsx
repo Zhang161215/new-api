@@ -34,7 +34,7 @@ import {
   onTelegramOAuthClicked,
   authUserFromData,
 } from '../../helpers';
-import Turnstile from 'react-turnstile';
+import TurnstileWidget from '../common/TurnstileWidget';
 import {
   Button,
   Card,
@@ -94,6 +94,17 @@ const RegisterForm = () => {
     setTurnstileToken('');
     setTurnstileWidgetKey((v) => v + 1);
   };
+
+  const renderTurnstile = (className) =>
+    turnstileEnabled ? (
+      <TurnstileWidget
+        key={turnstileWidgetKey}
+        className={className}
+        sitekey={turnstileSiteKey}
+        onVerify={(token) => setTurnstileToken(token)}
+        onExpire={() => setTurnstileToken('')}
+      />
+    ) : null;
   const [showWeChatLoginModal, setShowWeChatLoginModal] = useState(false);
   const [showEmailRegister, setShowEmailRegister] = useState(false);
   const [wechatLoading, setWechatLoading] = useState(false);
@@ -191,7 +202,7 @@ const RegisterForm = () => {
 
   const onSubmitWeChatVerificationCode = async () => {
     if (turnstileEnabled && turnstileToken === '') {
-      showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
+      showInfo(t('请先完成人机验证；验证框没出现时请点击「重新加载」'));
       return;
     }
     setWechatCodeSubmitLoading(true);
@@ -235,7 +246,7 @@ const RegisterForm = () => {
     }
     if (username && password) {
       if (turnstileEnabled && turnstileToken === '') {
-        showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
+        showInfo(t('请先完成人机验证；验证框没出现时请点击「重新加载」'));
         return;
       }
       setRegisterLoading(true);
@@ -268,7 +279,7 @@ const RegisterForm = () => {
   const sendVerificationCode = async () => {
     if (inputs.email === '') return;
     if (turnstileEnabled && turnstileToken === '') {
-      showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
+      showInfo(t('请先完成人机验证；验证框没出现时请点击「重新加载」'));
       return;
     }
     setVerificationCodeLoading(true);
@@ -660,6 +671,8 @@ const RegisterForm = () => {
                   </div>
                 )}
 
+                {renderTurnstile('pt-2')}
+
                 <div className='space-y-2 pt-2'>
                   <Button
                     theme='solid'
@@ -772,17 +785,10 @@ const RegisterForm = () => {
           : renderOAuthOptions()}
         {renderWeChatLoginModal()}
 
-        {turnstileEnabled && (
-          <div className='flex justify-center mt-6'>
-            <Turnstile
-              key={turnstileWidgetKey}
-              sitekey={turnstileSiteKey}
-              onVerify={(token) => {
-                setTurnstileToken(token);
-              }}
-            />
-          </div>
-        )}
+        {/* 邮箱注册表单里的验证框在卡片内；首屏只有微信注册需要验证 */}
+        {!(showEmailRegister || !hasOAuthRegisterOptions) &&
+          status.wechat_login &&
+          renderTurnstile('mt-6')}
       </div>
     </div>
   );

@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import { Banner, Input, Modal, Typography } from '@douyinfe/semi-ui';
 import { IconDelete, IconUser } from '@douyinfe/semi-icons';
-import Turnstile from 'react-turnstile';
+import TurnstileWidget from '../../../common/TurnstileWidget';
 
 const AccountDeleteModal = ({
   t,
@@ -78,11 +78,10 @@ const AccountDeleteModal = ({
 
         {turnstileEnabled && (
           <div className='flex justify-center'>
-            <Turnstile
+            <TurnstileWidget
               sitekey={turnstileSiteKey}
-              onVerify={(token) => {
-                setTurnstileToken(token);
-              }}
+              onVerify={(token) => setTurnstileToken(token)}
+              onExpire={() => setTurnstileToken('')}
             />
           </div>
         )}

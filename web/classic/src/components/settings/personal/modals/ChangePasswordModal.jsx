@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import { Input, Modal, Typography } from '@douyinfe/semi-ui';
 import { IconLock } from '@douyinfe/semi-icons';
-import Turnstile from 'react-turnstile';
+import TurnstileWidget from '../../../common/TurnstileWidget';
 
 const ChangePasswordModal = ({
   t,
@@ -109,11 +109,10 @@ const ChangePasswordModal = ({
 
         {turnstileEnabled && (
           <div className='flex justify-center'>
-            <Turnstile
+            <TurnstileWidget
               sitekey={turnstileSiteKey}
-              onVerify={(token) => {
-                setTurnstileToken(token);
-              }}
+              onVerify={(token) => setTurnstileToken(token)}
+              onExpire={() => setTurnstileToken('')}
             />
           </div>
         )}

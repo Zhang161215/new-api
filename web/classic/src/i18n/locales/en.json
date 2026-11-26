@@ -3990,6 +3990,14 @@
     "累计请求 {{n}} 次": "{{n}} requests in total",
     "今天": "Today",
     "邀请返利": "Referral Rewards",
+    "正在加载人机验证…": "Loading human verification…",
+    "人机验证加载较慢，正在重试…": "Human verification is slow to load, retrying…",
+    "人机验证加载失败": "Human verification failed to load",
+    "可能是当前网络无法访问 Cloudflare，或被浏览器插件拦截。请点击重新加载，或更换网络后再试。": "Your network may be unable to reach Cloudflare, or a browser extension may be blocking it. Click Reload, or try another network.",
+    "重新加载": "Reload",
+    "人机验证出错（错误码 {{code}}）": "Human verification error (code {{code}})",
+    "验证框没有出现或一直在转圈？": "Verification box not showing or stuck loading?",
+    "请先完成人机验证；验证框没出现时请点击「重新加载」": "Please complete the human verification first; if the box does not appear, click Reload",
     "邀请码与返利管理": "Invite codes and rebates"
   }
 }

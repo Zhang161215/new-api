@@ -26,7 +26,7 @@ import {
   showSuccess,
   getSystemName,
 } from '../../helpers';
-import Turnstile from 'react-turnstile';
+import TurnstileWidget from '../common/TurnstileWidget';
 import { Button, Card, Form, Typography } from '@douyinfe/semi-ui';
 import { IconMail } from '@douyinfe/semi-icons';
 import { Link } from 'react-router-dom';
@@ -91,7 +91,7 @@ const PasswordResetForm = () => {
       return;
     }
     if (turnstileEnabled && turnstileToken === '') {
-      showInfo(t('请稍后几秒重试，Turnstile 正在检查用户环境！'));
+      showInfo(t('请先完成人机验证；验证框没出现时请点击「重新加载」'));
       return;
     }
     setDisableButton(true);
@@ -181,15 +181,13 @@ const PasswordResetForm = () => {
             </Card>
 
             {turnstileEnabled && (
-              <div className='flex justify-center mt-6'>
-                <Turnstile
-                  key={turnstileWidgetKey}
-                  sitekey={turnstileSiteKey}
-                  onVerify={(token) => {
-                    setTurnstileToken(token);
-                  }}
-                />
-              </div>
+              <TurnstileWidget
+                key={turnstileWidgetKey}
+                className='mt-6'
+                sitekey={turnstileSiteKey}
+                onVerify={(token) => setTurnstileToken(token)}
+                onExpire={() => setTurnstileToken('')}
+              />
             )}
           </div>
         </div>

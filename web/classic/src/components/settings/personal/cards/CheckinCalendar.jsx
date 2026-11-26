@@ -37,7 +37,7 @@ import {
   ChevronUp,
   Wallet,
 } from 'lucide-react';
-import Turnstile from 'react-turnstile';
+import TurnstileWidget from '../../../common/TurnstileWidget';
 import { API, showError, showSuccess, renderQuota } from '../../../../helpers';
 import {
   ChestClosed,
@@ -313,14 +313,11 @@ const CheckinCalendar = ({ t, status, turnstileEnabled, turnstileSiteKey }) => {
         }}
       >
         <div className='flex justify-center py-2'>
-          <Turnstile
+          <TurnstileWidget
             key={turnstileWidgetKey}
             sitekey={turnstileSiteKey}
             onVerify={(token) => {
               doCheckin(token);
-            }}
-            onExpire={() => {
-              setTurnstileWidgetKey((v) => v + 1);
             }}
           />
         </div>
