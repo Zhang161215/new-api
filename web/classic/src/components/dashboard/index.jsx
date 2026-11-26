@@ -17,26 +17,28 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext, useEffect } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
+import { Tabs, TabPane } from '@douyinfe/semi-ui';
+import { initVChartSemiTheme } from '@visactor/vchart-semi-theme';
 import { getRelativeTime } from '../../helpers';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
+import { useActualTheme } from '../../context/Theme';
 
-import DashboardHeader from './DashboardHeader';
-import StatsCards from './StatsCards';
-import ChartsPanel from './ChartsPanel';
 import ApiInfoPanel from './ApiInfoPanel';
 import AnnouncementsPanel from './AnnouncementsPanel';
 import FaqPanel from './FaqPanel';
 import UptimePanel from './UptimePanel';
-import SearchModal from './modals/SearchModal';
+import RangeBar from './RangeBar';
+import OverviewTab from './OverviewTab';
+import UsageTab from './UsageTab';
+import ModelTab from './ModelTab';
+import UserTab from './UserTab';
 
 import { useDashboardData } from '../../hooks/dashboard/useDashboardData';
-import { useDashboardStats } from '../../hooks/dashboard/useDashboardStats';
-import { useDashboardCharts } from '../../hooks/dashboard/useDashboardCharts';
+import { useDashboardQuery } from '../../hooks/dashboard/useDashboardQuery';
 
 import {
-  CHART_CONFIG,
   CARD_PROPS,
   FLEX_CENTER_GAP2,
   ILLUSTRATION_SIZE,
@@ -44,7 +46,6 @@ import {
   UPTIME_STATUS_MAP,
 } from '../../constants/dashboard.constants';
 import {
-  getTrendSpec,
   handleCopyUrl,
   handleSpeedTest,
   getUptimeStatusColor,
@@ -52,73 +53,35 @@ import {
   renderMonitorList,
 } from '../../helpers/dashboard';
 
+const TAB_KEY = 'dashboard_tab';
+const TABS = ['overview', 'usage', 'models', 'users'];
+
 const Dashboard = () => {
-  // ========== Context ==========
   const [userState, userDispatch] = useContext(UserContext);
-  const [statusState, statusDispatch] = useContext(StatusContext);
+  const [statusState] = useContext(StatusContext);
+  const theme = useActualTheme();
 
-  // ========== 主要数据管理 ==========
-  const dashboardData = useDashboardData(userState, userDispatch, statusState);
+  const shell = useDashboardData(userState, userDispatch, statusState);
+  const { t, isAdminUser } = shell;
+  const dash = useDashboardQuery({ isAdminUser });
 
-  // ========== 图表管理 ==========
-  const dashboardCharts = useDashboardCharts(
-    dashboardData.dataExportDefaultTime,
-    dashboardData.setTrendData,
-    dashboardData.setConsumeQuota,
-    dashboardData.setTimes,
-    dashboardData.setConsumeTokens,
-    dashboardData.setPieData,
-    dashboardData.setLineData,
-    dashboardData.setModelColors,
-    dashboardData.t,
-  );
-
-  // ========== 统计数据 ==========
-  const { groupedStatsData } = useDashboardStats(
-    userState,
-    dashboardData.consumeQuota,
-    dashboardData.consumeTokens,
-    dashboardData.times,
-    dashboardData.trendData,
-    dashboardData.performanceMetrics,
-    dashboardData.navigate,
-    dashboardData.t,
-  );
-
-  // ========== 数据处理 ==========
-  const loadUserData = async () => {
-    if (dashboardData.isAdminUser) {
-      const userData = await dashboardData.loadUserQuotaData();
-      if (userData && userData.length > 0) {
-        dashboardCharts.updateUserChartData(userData);
-      }
-    }
+  const [tab, setTab] = useState(() => {
+    const saved = localStorage.getItem(TAB_KEY);
+    return TABS.includes(saved) ? saved : 'overview';
+  });
+  const activeTab = tab === 'users' && !isAdminUser ? 'overview' : tab;
+  const changeTab = (key) => {
+    setTab(key);
+    localStorage.setItem(TAB_KEY, key);
   };
 
-  const initChart = async () => {
-    await dashboardData.loadQuotaData().then((data) => {
-      if (data && data.length > 0) {
-        dashboardCharts.updateChartData(data);
-      }
-    });
-    await loadUserData();
-    await dashboardData.loadUptimeData();
-  };
+  useEffect(() => {
+    initVChartSemiTheme({ isWatchingThemeSwitch: true });
+    shell.loadUptimeData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const handleRefresh = async () => {
-    const data = await dashboardData.refresh();
-    if (data && data.length > 0) {
-      dashboardCharts.updateChartData(data);
-    }
-    await loadUserData();
-  };
-
-  const handleSearchConfirm = async () => {
-    await dashboardData.handleSearchConfirm(dashboardCharts.updateChartData);
-    await loadUserData();
-  };
-
-  // ========== 数据准备 ==========
+  // ========== 总览面板数据 ==========
   const apiInfoData = statusState?.status?.api_info || [];
   const announcementData = (statusState?.status?.announcements || []).map(
     (item) => {
@@ -127,158 +90,152 @@ const Dashboard = () => {
         pubDate && !isNaN(pubDate.getTime())
           ? `${pubDate.getFullYear()}-${String(pubDate.getMonth() + 1).padStart(2, '0')}-${String(pubDate.getDate()).padStart(2, '0')} ${String(pubDate.getHours()).padStart(2, '0')}:${String(pubDate.getMinutes()).padStart(2, '0')}`
           : item?.publishDate || '';
-      const relativeTime = getRelativeTime(item.publishDate);
       return {
         ...item,
         time: absoluteTime,
-        relative: relativeTime,
+        relative: getRelativeTime(item.publishDate),
       };
     },
   );
   const faqData = statusState?.status?.faq || [];
-
   const uptimeLegendData = Object.entries(UPTIME_STATUS_MAP).map(
     ([status, info]) => ({
       status: Number(status),
       color: info.color,
-      label: dashboardData.t(info.label),
+      label: t(info.label),
     }),
   );
 
-  // ========== Effects ==========
-  useEffect(() => {
-    initChart();
-  }, []);
+  const apiInfoPanel = shell.hasApiInfoPanel ? (
+    <ApiInfoPanel
+      apiInfoData={apiInfoData}
+      handleCopyUrl={(url) => handleCopyUrl(url, t)}
+      handleSpeedTest={handleSpeedTest}
+      CARD_PROPS={CARD_PROPS}
+      FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
+      ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
+      t={t}
+    />
+  ) : null;
+
+  const infoPanels = shell.hasInfoPanels ? (
+    <div className='grid grid-cols-1 lg:grid-cols-4 gap-4'>
+      {shell.announcementsEnabled && (
+        <AnnouncementsPanel
+          announcementData={announcementData}
+          announcementLegendData={ANNOUNCEMENT_LEGEND_DATA.map((item) => ({
+            ...item,
+            label: t(item.label),
+          }))}
+          CARD_PROPS={CARD_PROPS}
+          ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
+          t={t}
+        />
+      )}
+      {shell.faqEnabled && (
+        <FaqPanel
+          faqData={faqData}
+          CARD_PROPS={CARD_PROPS}
+          FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
+          ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
+          t={t}
+        />
+      )}
+      {shell.uptimeEnabled && (
+        <UptimePanel
+          uptimeData={shell.uptimeData}
+          uptimeLoading={shell.uptimeLoading}
+          activeUptimeTab={shell.activeUptimeTab}
+          setActiveUptimeTab={shell.setActiveUptimeTab}
+          loadUptimeData={shell.loadUptimeData}
+          uptimeLegendData={uptimeLegendData}
+          renderMonitorList={(monitors) =>
+            renderMonitorList(
+              monitors,
+              (status) => getUptimeStatusColor(status, UPTIME_STATUS_MAP),
+              (status) => getUptimeStatusText(status, UPTIME_STATUS_MAP, t),
+              t,
+            )
+          }
+          CARD_PROPS={CARD_PROPS}
+          ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
+          t={t}
+        />
+      )}
+    </div>
+  ) : null;
+
+  const viewProps = {
+    data: dash.quotaData,
+    buckets: dash.buckets,
+    granularity: dash.query.granularity,
+    rangeMinutes: dash.rangeMinutes,
+    loading: dash.loading,
+    loaded: dash.loaded,
+    theme,
+    t,
+  };
 
   return (
     <div className='h-full'>
-      <DashboardHeader
-        getGreeting={dashboardData.getGreeting}
-        greetingVisible={dashboardData.greetingVisible}
-        showSearchModal={dashboardData.showSearchModal}
-        refresh={handleRefresh}
-        loading={dashboardData.loading}
-        t={dashboardData.t}
-      />
-
-      <SearchModal
-        searchModalVisible={dashboardData.searchModalVisible}
-        handleSearchConfirm={handleSearchConfirm}
-        handleCloseModal={dashboardData.handleCloseModal}
-        isMobile={dashboardData.isMobile}
-        isAdminUser={dashboardData.isAdminUser}
-        inputs={dashboardData.inputs}
-        dataExportDefaultTime={dashboardData.dataExportDefaultTime}
-        timeOptions={dashboardData.timeOptions}
-        handleInputChange={dashboardData.handleInputChange}
-        t={dashboardData.t}
-      />
-
-      <StatsCards
-        groupedStatsData={groupedStatsData}
-        loading={dashboardData.loading}
-        getTrendSpec={getTrendSpec}
-        CARD_PROPS={CARD_PROPS}
-        CHART_CONFIG={CHART_CONFIG}
-      />
-
-      {/* API信息和图表面板 */}
-      <div className='mb-4'>
-        <div
-          className={`grid grid-cols-1 gap-4 ${dashboardData.hasApiInfoPanel ? 'lg:grid-cols-4' : ''}`}
+      <div className='mb-2 flex items-center justify-between'>
+        <h2
+          className='text-2xl font-semibold text-semi-color-text-0 transition-opacity duration-1000 ease-in-out'
+          style={{ opacity: shell.greetingVisible ? 1 : 0 }}
         >
-          <ChartsPanel
-            activeChartTab={dashboardData.activeChartTab}
-            setActiveChartTab={dashboardData.setActiveChartTab}
-            spec_line={dashboardCharts.spec_line}
-            spec_model_line={dashboardCharts.spec_model_line}
-            spec_pie={dashboardCharts.spec_pie}
-            spec_rank_bar={dashboardCharts.spec_rank_bar}
-            spec_user_rank={dashboardCharts.spec_user_rank}
-            spec_user_trend={dashboardCharts.spec_user_trend}
-            isAdminUser={dashboardData.isAdminUser}
-            CARD_PROPS={CARD_PROPS}
-            CHART_CONFIG={CHART_CONFIG}
-            FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
-            hasApiInfoPanel={dashboardData.hasApiInfoPanel}
-            t={dashboardData.t}
-          />
-
-          {dashboardData.hasApiInfoPanel && (
-            <ApiInfoPanel
-              apiInfoData={apiInfoData}
-              handleCopyUrl={(url) => handleCopyUrl(url, dashboardData.t)}
-              handleSpeedTest={handleSpeedTest}
-              CARD_PROPS={CARD_PROPS}
-              FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
-              ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
-              t={dashboardData.t}
-            />
-          )}
-        </div>
+          {shell.getGreeting}
+        </h2>
       </div>
 
-      {/* 系统公告和常见问答卡片 */}
-      {dashboardData.hasInfoPanels && (
-        <div className='mb-4'>
-          <div className='grid grid-cols-1 lg:grid-cols-4 gap-4'>
-            {/* 公告卡片 */}
-            {dashboardData.announcementsEnabled && (
-              <AnnouncementsPanel
-                announcementData={announcementData}
-                announcementLegendData={ANNOUNCEMENT_LEGEND_DATA.map(
-                  (item) => ({
-                    ...item,
-                    label: dashboardData.t(item.label),
-                  }),
-                )}
-                CARD_PROPS={CARD_PROPS}
-                ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
-                t={dashboardData.t}
-              />
-            )}
+      <Tabs
+        type='line'
+        activeKey={activeTab}
+        onChange={changeTab}
+        className='mb-3'
+        lazyRender
+      >
+        <TabPane tab={t('总览')} itemKey='overview' />
+        <TabPane tab={t('用量')} itemKey='usage' />
+        <TabPane tab={t('模型调用分析')} itemKey='models' />
+        {isAdminUser && <TabPane tab={t('用户分析')} itemKey='users' />}
+      </Tabs>
 
-            {/* 常见问答卡片 */}
-            {dashboardData.faqEnabled && (
-              <FaqPanel
-                faqData={faqData}
-                CARD_PROPS={CARD_PROPS}
-                FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
-                ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
-                t={dashboardData.t}
-              />
-            )}
-
-            {/* 服务可用性卡片 */}
-            {dashboardData.uptimeEnabled && (
-              <UptimePanel
-                uptimeData={dashboardData.uptimeData}
-                uptimeLoading={dashboardData.uptimeLoading}
-                activeUptimeTab={dashboardData.activeUptimeTab}
-                setActiveUptimeTab={dashboardData.setActiveUptimeTab}
-                loadUptimeData={dashboardData.loadUptimeData}
-                uptimeLegendData={uptimeLegendData}
-                renderMonitorList={(monitors) =>
-                  renderMonitorList(
-                    monitors,
-                    (status) => getUptimeStatusColor(status, UPTIME_STATUS_MAP),
-                    (status) =>
-                      getUptimeStatusText(
-                        status,
-                        UPTIME_STATUS_MAP,
-                        dashboardData.t,
-                      ),
-                    dashboardData.t,
-                  )
-                }
-                CARD_PROPS={CARD_PROPS}
-                ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
-                t={dashboardData.t}
-              />
-            )}
-          </div>
-        </div>
+      {activeTab !== 'overview' && (
+        <RangeBar
+          query={dash.query}
+          isAdminUser={isAdminUser}
+          loading={dash.loading || dash.userLoading}
+          onPreset={dash.applyPreset}
+          onCustom={dash.applyCustom}
+          onRefresh={dash.refresh}
+          isMobile={shell.isMobile}
+          t={t}
+        />
       )}
+
+      <div className='mb-4'>
+        {activeTab === 'overview' && (
+          <OverviewTab
+            user={userState?.user}
+            theme={theme}
+            onOpenUsage={() => changeTab('usage')}
+            aside={apiInfoPanel}
+            t={t}
+          >
+            {infoPanels}
+          </OverviewTab>
+        )}
+        {activeTab === 'usage' && <UsageTab {...viewProps} />}
+        {activeTab === 'models' && <ModelTab {...viewProps} />}
+        {activeTab === 'users' && isAdminUser && (
+          <UserTab
+            {...viewProps}
+            data={dash.userData}
+            loading={dash.userLoading}
+            ensureUsers={dash.ensureUsers}
+          />
+        )}
+      </div>
     </div>
   );
 };

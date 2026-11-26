@@ -61,6 +61,8 @@ type textQuotaSummary struct {
 	CacheCreationRatio12h  float64
 	Quota                  int
 	IsClaudeUsageSemantic  bool
+	// PromptExcludesCache prompt_tokens 不含缓存（Anthropic 语义或旧版 Claude 派生用量），看板输入要把缓存加回去
+	PromptExcludesCache    bool
 	UsageSemantic          string
 	AudioInputPrice        float64
 	ToolSurchargeItems     []ToolSurchargeItem
@@ -263,6 +265,7 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 	summary.ImageTokens = usage.PromptTokensDetails.ImageTokens
 	summary.AudioTokens = usage.PromptTokensDetails.AudioTokens
 	legacyClaudeDerived := isLegacyClaudeDerivedOpenAIUsage(relayInfo, usage)
+	summary.PromptExcludesCache = summary.IsClaudeUsageSemantic || legacyClaudeDerived
 	if !summary.IsClaudeUsageSemantic && !legacyClaudeDerived {
 		summary.CacheCreationTokens12h = usage.PromptTokensDetails.CacheWrite12hTokens()
 	}
@@ -565,5 +568,14 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		IsStream:         relayInfo.IsStream,
 		Group:            relayInfo.UsingGroup,
 		Other:            other,
+		InputTokensTotal: dashboardInputTokensTotal(summary, cacheWriteTokens),
 	})
+}
+
+// dashboardInputTokensTotal 看板口径的输入 Token：非缓存输入 + 缓存读取 + 缓存创建（model/usedata_tokens.go）。
+func dashboardInputTokensTotal(summary textQuotaSummary, cacheWriteTokens int) int {
+	if summary.PromptExcludesCache {
+		return max(0, summary.PromptTokens) + max(0, summary.CacheTokens) + max(0, cacheWriteTokens)
+	}
+	return max(0, summary.PromptTokens)
 }

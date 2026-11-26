@@ -334,6 +334,9 @@ type RecordConsumeLogParams struct {
 	IsStream         bool              `json:"is_stream"`
 	Group            string            `json:"group"`
 	Other            *LogOther         `json:"other"`
+	// InputTokensTotal 看板口径的输入 Token（含缓存读取与缓存创建），结算时已知用量语义的路径填写；
+	// 0 表示按日志语义推断，见 dashboardInputTokens。
+	InputTokensTotal int `json:"input_tokens_total,omitempty"`
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
@@ -391,13 +394,16 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 			// Do not add the 5m/1h breakdown again or infer tokens from prices.
 			cacheCreationTokens, _ = other.public["cache_write_tokens"].(int)
 		}
+		inputTokens := dashboardInputTokens(params, other, cacheReadTokens, cacheCreationTokens)
 		LogQuotaData(QuotaDataLogParams{
 			UserID:              userId,
 			Username:            username,
 			ModelName:           params.ModelName,
 			Quota:               params.Quota,
 			CreatedAt:           createdAt,
-			TokenUsed:           params.PromptTokens + params.CompletionTokens,
+			TokenUsed:           inputTokens + params.CompletionTokens,
+			InputTokens:         int64(inputTokens),
+			OutputTokens:        int64(params.CompletionTokens),
 			CacheReadTokens:     int64(cacheReadTokens),
 			CacheCreationTokens: int64(cacheCreationTokens),
 			UseGroup:            params.Group,
