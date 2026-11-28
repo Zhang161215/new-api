@@ -1732,6 +1732,11 @@ html.sx-home-page {
 }
 
 @media (max-width: 680px) {
+  /* 手机宽度下导航放不下：主题按钮只留图标，在线天数胶囊交给下面的翻牌钟 */
+  .sx-home .uptime-pill,
+  .sx-home #sx-theme-text { display: none; }
+  .sx-home .brand-name,
+  .sx-home .nav-actions .mag-btn { white-space: nowrap; }
   .sx-home .sf-card { --fw: 38px; --fh: 54px; --fs: 26px; }
   .sx-home .sf-card.is-day { --fw: 44px; --fh: 62px; --fs: 32px; }
   .sx-home .gw-matrix,

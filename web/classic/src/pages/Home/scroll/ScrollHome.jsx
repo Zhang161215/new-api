@@ -5,6 +5,10 @@ import { SCROLL_HOME_MARKUP } from './markup';
 import { mountScrollHome } from './engine';
 import './home-scroll.css';
 
+// React 19 只要 dangerouslySetInnerHTML 换了新对象就会重写 innerHTML。
+// 父组件一重渲染，engine 挂好的翻牌、事件监听就全被冲掉，所以这个对象必须固定。
+const SCROLL_HOME_HTML = { __html: SCROLL_HOME_MARKUP };
+
 const ScrollHome = ({ docsUrl, siteUrl, systemName }) => {
   const hostRef = useRef(null);
   const navigate = useNavigate();
@@ -46,7 +50,7 @@ const ScrollHome = ({ docsUrl, siteUrl, systemName }) => {
     <div
       className='sx-home'
       ref={hostRef}
-      dangerouslySetInnerHTML={{ __html: SCROLL_HOME_MARKUP }}
+      dangerouslySetInnerHTML={SCROLL_HOME_HTML}
     />
   );
 };

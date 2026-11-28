@@ -21,7 +21,10 @@ function normalizeHost(rawUrl, fallback = 'api.synai996.space') {
 }
 
 function versionRank(name) {
-  const nums = String(name || '').match(/\d+(?:\.\d+)?/g);
+  // 去掉 20251001 这类日期后缀，否则带日期的旧模型（haiku-4-5-20251001）会排到 opus-5-5 前面
+  const nums = String(name || '')
+    .replace(/\d{6,}/g, '')
+    .match(/\d+(?:\.\d+)?/g);
   if (!nums) return 0;
   return nums.reduce((acc, n, i) => acc + parseFloat(n) * Math.pow(100, Math.max(0, 2 - i)), 0);
 }
