@@ -8,8 +8,9 @@
 */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Spin, Typography } from '@douyinfe/semi-ui';
+import { Button, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
+import '../auth/auth-polish.css';
 
 const { Text } = Typography;
 
@@ -20,14 +21,6 @@ const SCRIPT_ATTR = 'data-synai-turnstile';
 const LOAD_TIMEOUT_MS = 10000;
 const AUTO_RETRIES = 1;
 const STALL_HINT_MS = 15000;
-
-// classic 的 Tailwind 只配了少量颜色，用 Semi 主题变量（自动适配暗色）
-const boxStyle = {
-  width: 300,
-  maxWidth: '100%',
-  border: '1px solid var(--semi-color-border)',
-  background: 'var(--semi-color-fill-0)',
-};
 
 let loadPromise = null;
 let loadAttempt = 0;
@@ -91,6 +84,25 @@ export function loadTurnstile() {
   });
   return loadPromise;
 }
+
+const CloudflareBrandMark = () => (
+  <div className='synai-cf-badge'>
+    <span className='synai-cf-logo-row'>
+      <svg width='22' height='12' viewBox='0 0 48 24' aria-hidden='true'>
+        <path
+          d='M35.8 18.8H11.4c-3.8 0-6.9-3-6.9-6.7 0-3.3 2.5-6.1 5.8-6.6C11.6 2.3 15 0 19.1 0c4.8 0 8.8 3.4 9.6 7.9.9-.4 1.9-.6 2.9-.6 3.7 0 6.8 2.8 7.1 6.4 2.7.4 4.8 2.6 4.8 5.1 0 0-.2 0-7.7 0z'
+          fill='#F38020'
+        />
+        <path
+          d='M39.5 18.8H26.4c.7-2.6 3.1-4.5 6-4.5 1 0 2 .2 2.8.7.6-1.9 2.4-3.3 4.5-3.3 2.6 0 4.8 2.1 4.8 4.7 0 .9-.3 1.8-.8 2.4h-4.2z'
+          fill='#FAAE40'
+        />
+      </svg>
+      <span className='synai-cf-wordmark'>CLOUDFLARE</span>
+    </span>
+    <span className='synai-cf-legal'>Turnstile · Privacy</span>
+  </div>
+);
 
 /**
  * @param {string} sitekey
@@ -218,48 +230,74 @@ const TurnstileWidget = ({ sitekey, onVerify, onExpire, className = '' }) => {
     phase === 'ready' && stalled && !verified && !interactive && !errorCode;
 
   return (
-    <div className={`flex flex-col items-center gap-2 ${className}`}>
-      {phase === 'ready' && <div ref={containerRef} />}
+    <div className={`synai-ts-wrap ${className}`}>
+      {phase === 'ready' && (
+        <div className='synai-ts-ready-wrap'>
+          <div ref={containerRef} />
+        </div>
+      )}
 
       {(phase === 'loading' || phase === 'retrying') && (
-        <div
-          className='flex items-center justify-center gap-2 rounded'
-          style={{ ...boxStyle, height: 65 }}
-        >
-          <Spin size='small' />
-          <Text type='tertiary' size='small'>
-            {phase === 'loading'
-              ? t('正在加载人机验证…')
-              : t('人机验证加载较慢，正在重试…')}
-          </Text>
+        <div className='synai-ts-shell is-loading' role='status' aria-live='polite'>
+          <div className='synai-ts-left'>
+            <span className='synai-ts-orb-spin' aria-hidden='true' />
+            <div className='synai-ts-copy'>
+              <span className='synai-ts-title'>
+                {phase === 'loading'
+                  ? t('正在加载人机验证…')
+                  : t('人机验证加载较慢，正在重试…')}
+              </span>
+              <span className='synai-ts-sub'>
+                {t('自动校验环境，通常仅需 1–2 秒')}
+              </span>
+            </div>
+          </div>
+          <div className='synai-ts-right'>
+            <CloudflareBrandMark />
+          </div>
         </div>
       )}
 
       {phase === 'failed' && (
-        <div
-          className='flex flex-col items-center gap-2 rounded px-3 py-3 text-center'
-          style={{
-            ...boxStyle,
-            borderColor: 'var(--semi-color-warning)',
-            background: 'var(--semi-color-warning-light-default)',
-          }}
-        >
-          <Text strong size='small'>
-            {t('人机验证加载失败')}
-          </Text>
-          <Text type='tertiary' size='small'>
-            {t(
-              '可能是当前网络无法访问 Cloudflare，或被浏览器插件拦截。请点击重新加载，或更换网络后再试。',
-            )}
-          </Text>
-          <Button size='small' theme='solid' type='primary' onClick={reload}>
-            {t('重新加载')}
-          </Button>
+        <div className='synai-ts-shell is-failed' role='alert'>
+          <div className='synai-ts-left'>
+            <span className='synai-ts-warn-icon' aria-hidden='true'>
+              <svg
+                width='14'
+                height='14'
+                viewBox='0 0 24 24'
+                fill='none'
+                stroke='currentColor'
+                strokeWidth='2.5'
+                strokeLinecap='round'
+              >
+                <path d='M12 8v5m0 4h.01' />
+              </svg>
+            </span>
+            <div className='synai-ts-copy'>
+              <span className='synai-ts-title'>{t('人机验证加载失败')}</span>
+              <span className='synai-ts-sub'>
+                {t(
+                  '可能是当前网络无法访问 Cloudflare，或被浏览器插件拦截。请点击重新加载，或更换网络后再试。',
+                )}
+              </span>
+            </div>
+          </div>
+          <div className='synai-ts-failed-actions'>
+            <CloudflareBrandMark />
+            <button
+              type='button'
+              className='synai-ts-retry-btn'
+              onClick={reload}
+            >
+              {t('重新加载')}
+            </button>
+          </div>
         </div>
       )}
 
       {phase === 'ready' && (errorCode || showStallHint) && (
-        <div className='flex items-center gap-2 text-center'>
+        <div className='synai-ts-stall-bar'>
           <Text type={errorCode ? 'warning' : 'tertiary'} size='small'>
             {errorCode
               ? t('人机验证出错（错误码 {{code}}）', { code: errorCode })

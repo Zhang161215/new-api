@@ -34,7 +34,8 @@ import {
   onTelegramOAuthClicked,
   authUserFromData,
 } from '../../helpers';
-import TurnstileWidget from '../common/TurnstileWidget';
+import TurnstileWidget, { loadTurnstile } from '../common/TurnstileWidget';
+import './auth-polish.css';
 import {
   Button,
   Card,
@@ -136,6 +137,20 @@ const RegisterForm = () => {
   if (affCode) {
     localStorage.setItem('aff', affCode);
   }
+  const activeAffCode = affCode || localStorage.getItem('aff') || '';
+
+  const passwordStrength = useMemo(() => {
+    const v = password || '';
+    if (!v) return { score: 0, text: t('请输入 8–20 位密码'), color: 'var(--auth-muted)' };
+    let score = 0;
+    if (v.length >= 8) score += 1;
+    if (/[a-z]/.test(v) && /[A-Z]/.test(v)) score += 1;
+    if (/\d/.test(v)) score += 1;
+    if (/[^A-Za-z0-9]/.test(v) || v.length >= 13) score += 1;
+    const colors = ['var(--auth-line)', '#ef4444', '#f59e0b', '#3b82f6', '#10b981'];
+    const labels = [t('请输入 8–20 位密码'), t('强度较弱'), t('强度一般'), t('强度良好'), t('强度极佳')];
+    return { score, text: labels[score], color: colors[score] };
+  }, [password, t]);
 
   const status = useMemo(() => {
     if (statusState?.status) return statusState.status;
@@ -166,6 +181,7 @@ const RegisterForm = () => {
     if (status?.turnstile_check) {
       setTurnstileEnabled(true);
       setTurnstileSiteKey(status.turnstile_site_key);
+      loadTurnstile().catch(() => {});
     }
 
     // 从 status 获取用户协议和隐私政策的启用状态
@@ -387,21 +403,26 @@ const RegisterForm = () => {
   const renderOAuthOptions = () => {
     return (
       <div className='flex flex-col items-center'>
-        <div className='w-full max-w-md'>
-          <div className='flex items-center justify-center mb-6 gap-2'>
+        <div className='w-full'>
+          <div className='synai-auth-brand'>
             <img src={logo} alt='Logo' className='app-logo' width={40} height={40} />
-            <Title heading={3} className='!text-gray-800'>
+            <Title heading={3} className='synai-auth-brand-title'>
               {systemName}
             </Title>
           </div>
 
-          <Card className='border-0 !rounded-2xl overflow-hidden'>
-            <div className='flex justify-center pt-6 pb-2'>
-              <Title heading={3} className='text-gray-800 dark:text-gray-200'>
+          <Card className='synai-auth-card border-0'>
+            <div className='flex flex-col items-center pb-5'>
+              <Title heading={3} className='synai-auth-title'>
                 {t('注 册')}
               </Title>
+              {activeAffCode && (
+                <span className='synai-aff-pill'>
+                  ✦ {t('已自动绑定邀请码')} {activeAffCode}
+                </span>
+              )}
             </div>
-            <div className='px-2 py-8'>
+            <div>
               <div className='space-y-3'>
                 {status.wechat_login && (
                   <Button
@@ -551,24 +572,35 @@ const RegisterForm = () => {
   };
 
   const renderEmailRegisterForm = () => {
+    const pwMatchStatus = !password2
+      ? null
+      : password2 === password
+        ? { text: `✓ ${t('一致')}`, color: '#10b981' }
+        : { text: t('两次输入的密码不一致'), color: '#ef4444' };
+
     return (
       <div className='flex flex-col items-center'>
-        <div className='w-full max-w-md'>
-          <div className='flex items-center justify-center mb-6 gap-2'>
+        <div className='w-full'>
+          <div className='synai-auth-brand'>
             <img src={logo} alt='Logo' className='app-logo' width={40} height={40} />
-            <Title heading={3} className='!text-gray-800'>
+            <Title heading={3} className='synai-auth-brand-title'>
               {systemName}
             </Title>
           </div>
 
-          <Card className='border-0 !rounded-2xl overflow-hidden'>
-            <div className='flex justify-center pt-6 pb-2'>
-              <Title heading={3} className='text-gray-800 dark:text-gray-200'>
+          <Card className='synai-auth-card border-0'>
+            <div className='flex flex-col items-center pb-5'>
+              <Title heading={3} className='synai-auth-title'>
                 {t('注 册')}
               </Title>
+              {activeAffCode && (
+                <span className='synai-aff-pill'>
+                  ✦ {t('已自动绑定邀请码')} {activeAffCode}
+                </span>
+              )}
             </div>
-            <div className='px-2 py-8'>
-              <Form className='space-y-3'>
+            <div>
+              <Form className='space-y-2'>
                 <Form.Input
                   field='username'
                   label={t('用户名')}
@@ -580,17 +612,57 @@ const RegisterForm = () => {
 
                 <Form.Input
                   field='password'
-                  label={t('密码')}
+                  label={{
+                    text: (
+                      <span className='synai-field-label-row'>
+                        <span>{t('密码')}</span>
+                        <span style={{ fontSize: 11.5, color: 'var(--auth-muted)', fontWeight: 500 }}>
+                          {t('8–20 位字符')}
+                        </span>
+                      </span>
+                    ),
+                  }}
                   placeholder={t('输入密码，最短 8 位，最长 20 位')}
                   name='password'
                   mode='password'
                   onChange={(value) => handleChange('password', value)}
                   prefix={<IconLock />}
                 />
+                {password && (
+                  <div className='synai-pw-meter'>
+                    <span style={{ color: passwordStrength.color, fontWeight: 600 }}>
+                      {passwordStrength.text}
+                    </span>
+                    <span className='synai-pw-dots' aria-hidden='true'>
+                      {[0, 1, 2, 3].map((idx) => (
+                        <i
+                          key={idx}
+                          style={{
+                            background:
+                              idx < passwordStrength.score
+                                ? passwordStrength.color
+                                : 'var(--auth-line)',
+                          }}
+                        />
+                      ))}
+                    </span>
+                  </div>
+                )}
 
                 <Form.Input
                   field='password2'
-                  label={t('确认密码')}
+                  label={{
+                    text: (
+                      <span className='synai-field-label-row'>
+                        <span>{t('确认密码')}</span>
+                        {pwMatchStatus && (
+                          <span style={{ fontSize: 11.5, color: pwMatchStatus.color, fontWeight: 600 }}>
+                            {pwMatchStatus.text}
+                          </span>
+                        )}
+                      </span>
+                    ),
+                  }}
                   placeholder={t('确认密码')}
                   name='password2'
                   mode='password'
@@ -610,6 +682,7 @@ const RegisterForm = () => {
                       prefix={<IconMail />}
                       suffix={
                         <Button
+                          size='small'
                           onClick={sendVerificationCode}
                           loading={verificationCodeLoading}
                           disabled={disableButton || verificationCodeLoading}
@@ -633,8 +706,10 @@ const RegisterForm = () => {
                   </>
                 )}
 
+                {renderTurnstile('pt-2')}
+
                 {(hasUserAgreement || hasPrivacyPolicy) && (
-                  <div className='pt-4'>
+                  <div className='pt-2'>
                     <Checkbox
                       checked={agreedToTerms}
                       onChange={(e) => setAgreedToTerms(e.target.checked)}
@@ -671,12 +746,10 @@ const RegisterForm = () => {
                   </div>
                 )}
 
-                {renderTurnstile('pt-2')}
-
-                <div className='space-y-2 pt-2'>
+                <div className='space-y-2 pt-3'>
                   <Button
                     theme='solid'
-                    className='w-full !rounded-full'
+                    className='w-full h-11 !rounded-full'
                     type='primary'
                     htmlType='submit'
                     onClick={handleSubmit}
@@ -762,33 +835,24 @@ const RegisterForm = () => {
               handleChange('wechat_verification_code', value)
             }
           />
+          {showWeChatLoginModal && renderTurnstile('pt-3')}
         </Form>
       </Modal>
     );
   };
 
   return (
-    <div className='classic-page-fill relative overflow-hidden bg-gray-100 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8'>
-      {/* 背景模糊晕染球 */}
-      <div
-        className='blur-ball blur-ball-indigo'
-        style={{ top: '-80px', right: '-80px', transform: 'none' }}
-      />
-      <div
-        className='blur-ball blur-ball-teal'
-        style={{ top: '50%', left: '-120px' }}
-      />
-      <div className='w-full max-w-sm mt-[60px]'>
-        {showEmailRegister ||
-        !hasOAuthRegisterOptions
+    <div className='synai-auth-page'>
+      <div className='synai-auth-grid' aria-hidden='true' />
+      <div className='synai-auth-grain' aria-hidden='true' />
+      <div className='synai-auth-orb orb-indigo' aria-hidden='true' />
+      <div className='synai-auth-orb orb-teal' aria-hidden='true' />
+      <div className='synai-auth-orb orb-sky' aria-hidden='true' />
+      <div className='synai-auth-column'>
+        {showEmailRegister || !hasOAuthRegisterOptions
           ? renderEmailRegisterForm()
           : renderOAuthOptions()}
         {renderWeChatLoginModal()}
-
-        {/* 邮箱注册表单里的验证框在卡片内；首屏只有微信注册需要验证 */}
-        {!(showEmailRegister || !hasOAuthRegisterOptions) &&
-          status.wechat_login &&
-          renderTurnstile('mt-6')}
       </div>
     </div>
   );

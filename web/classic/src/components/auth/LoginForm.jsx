@@ -45,6 +45,7 @@ import {
   takeLoginChallenge,
 } from '../../helpers';
 import TurnstileWidget, { loadTurnstile } from '../common/TurnstileWidget';
+import './auth-polish.css';
 import {
   Button,
   Card,
@@ -528,21 +529,21 @@ const LoginForm = () => {
   const renderOAuthOptions = () => {
     return (
       <div className='flex flex-col items-center'>
-        <div className='w-full max-w-md'>
-          <div className='flex items-center justify-center mb-6 gap-2'>
+        <div className='w-full'>
+          <div className='synai-auth-brand'>
             <img src={logo} alt='Logo' className='app-logo' width={40} height={40} />
-            <Title heading={3} className='!text-gray-800'>
+            <Title heading={3} className='synai-auth-brand-title'>
               {systemName}
             </Title>
           </div>
 
-          <Card className='border-0 !rounded-2xl overflow-hidden'>
-            <div className='flex justify-center pt-6 pb-2'>
-              <Title heading={3} className='text-gray-800 dark:text-gray-200'>
+          <Card className='synai-auth-card border-0'>
+            <div className='flex justify-center pb-5'>
+              <Title heading={3} className='synai-auth-title'>
                 {t('登 录')}
               </Title>
             </div>
-            <div className='px-2 py-8'>
+            <div>
               <div className='space-y-3'>
                 {status.wechat_login && (
                   <Button
@@ -747,24 +748,26 @@ const LoginForm = () => {
   const renderEmailLoginForm = () => {
     return (
       <div className='flex flex-col items-center'>
-        <div className='w-full max-w-md'>
-          <div className='flex items-center justify-center mb-6 gap-2'>
+        <div className='w-full'>
+          <div className='synai-auth-brand'>
             <img src={logo} alt='Logo' className='app-logo' width={40} height={40} />
-            <Title heading={3}>{systemName}</Title>
+            <Title heading={3} className='synai-auth-brand-title'>
+              {systemName}
+            </Title>
           </div>
 
-          <Card className='border-0 !rounded-2xl overflow-hidden'>
-            <div className='flex justify-center pt-6 pb-2'>
-              <Title heading={3} className='text-gray-800 dark:text-gray-200'>
+          <Card className='synai-auth-card border-0'>
+            <div className='flex justify-center pb-5'>
+              <Title heading={3} className='synai-auth-title'>
                 {t('登 录')}
               </Title>
             </div>
-            <div className='px-2 py-8'>
+            <div>
               {status.passkey_login && passkeySupported && (
                 <Button
                   theme='outline'
                   type='tertiary'
-                  className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors mb-4'
+                  className='w-full h-11 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors mb-4'
                   icon={<IconKey size='large' />}
                   onClick={handlePasskeyLogin}
                   loading={passkeyLoading}
@@ -772,7 +775,7 @@ const LoginForm = () => {
                   <span className='ml-3'>{t('使用 Passkey 登录')}</span>
                 </Button>
               )}
-              <Form className='space-y-3'>
+              <Form className='space-y-2'>
                 <Form.Input
                   field='username'
                   label={t('用户名或邮箱')}
@@ -784,7 +787,21 @@ const LoginForm = () => {
 
                 <Form.Input
                   field='password'
-                  label={t('密码')}
+                  label={{
+                    text: (
+                      <span className='synai-field-label-row'>
+                        <span>{t('密码')}</span>
+                        <button
+                          type='button'
+                          className='synai-inline-link'
+                          onClick={handleResetPasswordClick}
+                          disabled={resetPasswordLoading}
+                        >
+                          {t('忘记密码？')}
+                        </button>
+                      </span>
+                    ),
+                  }}
                   placeholder={t('请输入您的密码')}
                   name='password'
                   mode='password'
@@ -792,8 +809,10 @@ const LoginForm = () => {
                   prefix={<IconLock />}
                 />
 
+                {renderTurnstile('pt-2')}
+
                 {(hasUserAgreement || hasPrivacyPolicy) && (
-                  <div className='pt-4'>
+                  <div className='pt-2'>
                     <Checkbox
                       checked={agreedToTerms}
                       onChange={(e) => setAgreedToTerms(e.target.checked)}
@@ -830,12 +849,10 @@ const LoginForm = () => {
                   </div>
                 )}
 
-                {renderTurnstile('pt-2')}
-
-                <div className='space-y-2 pt-2'>
+                <div className='space-y-2 pt-3'>
                   <Button
                     theme='solid'
-                    className='w-full !rounded-full'
+                    className='w-full h-11 !rounded-full'
                     type='primary'
                     htmlType='submit'
                     onClick={handleSubmit}
@@ -845,16 +862,6 @@ const LoginForm = () => {
                     }
                   >
                     {t('继续')}
-                  </Button>
-
-                  <Button
-                    theme='borderless'
-                    type='tertiary'
-                    className='w-full !rounded-full'
-                    onClick={handleResetPasswordClick}
-                    loading={resetPasswordLoading}
-                  >
-                    {t('忘记密码？')}
                   </Button>
                 </div>
               </Form>
@@ -934,6 +941,7 @@ const LoginForm = () => {
               handleChange('wechat_verification_code', value)
             }
           />
+          {showWeChatLoginModal && renderTurnstile('pt-3')}
         </Form>
       </Modal>
     );
@@ -979,28 +987,18 @@ const LoginForm = () => {
   };
 
   return (
-    <div className='classic-page-fill relative overflow-hidden bg-gray-100 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8'>
-      {/* 背景模糊晕染球 */}
-      <div
-        className='blur-ball blur-ball-indigo'
-        style={{ top: '-80px', right: '-80px', transform: 'none' }}
-      />
-      <div
-        className='blur-ball blur-ball-teal'
-        style={{ top: '50%', left: '-120px' }}
-      />
-      <div className='w-full max-w-sm mt-[60px]'>
-        {showEmailLogin ||
-        !hasOAuthLoginOptions
+    <div className='synai-auth-page'>
+      <div className='synai-auth-grid' aria-hidden='true' />
+      <div className='synai-auth-grain' aria-hidden='true' />
+      <div className='synai-auth-orb orb-indigo' aria-hidden='true' />
+      <div className='synai-auth-orb orb-teal' aria-hidden='true' />
+      <div className='synai-auth-orb orb-sky' aria-hidden='true' />
+      <div className='synai-auth-column'>
+        {showEmailLogin || !hasOAuthLoginOptions
           ? renderEmailLoginForm()
           : renderOAuthOptions()}
         {renderWeChatLoginModal()}
         {render2FAModal()}
-
-        {/* 邮箱登录表单里的验证框在卡片内；首屏只有微信登录需要验证 */}
-        {!(showEmailLogin || !hasOAuthLoginOptions) &&
-          status.wechat_login &&
-          renderTurnstile('mt-6')}
       </div>
     </div>
   );
