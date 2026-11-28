@@ -70,7 +70,7 @@ export function presetRange(key) {
 }
 
 // 看板数据：一次取回所选时间段的 quota_data，用量 / 模型分析 / 用户分析三个视图共用
-export function useDashboardQuery({ isAdminUser }) {
+export function useDashboardQuery({ isAdminUser, enabled = true }) {
   const [query, setQuery] = useState(() => ({
     ...presetRange(initialPreset()),
     username: '',
@@ -82,6 +82,7 @@ export function useDashboardQuery({ isAdminUser }) {
   const [userLoading, setUserLoading] = useState(false);
   const [userLoadedFor, setUserLoadedFor] = useState('');
   const seq = useRef(0);
+  const lastQueryKeyRef = useRef('');
 
   const rangeParams = (q) => {
     // 结束时间往后放一小时，包含当前小时（后端会按当前时间截断）
@@ -140,8 +141,12 @@ export function useDashboardQuery({ isAdminUser }) {
   );
 
   useEffect(() => {
+    if (!enabled) return;
+    const key = `${isAdminUser ? 'a' : 'u'}|${query.start}|${query.end}|${query.preset}|${query.username || ''}|${query.refreshTick || 0}`;
+    if (lastQueryKeyRef.current === key) return;
+    lastQueryKeyRef.current = key;
     load(query);
-  }, [query, load]);
+  }, [enabled, isAdminUser, query, load]);
 
   const applyPreset = useCallback((key) => {
     localStorage.setItem(PRESET_KEY, key);
@@ -157,11 +162,12 @@ export function useDashboardQuery({ isAdminUser }) {
     setUserLoadedFor('');
     setQuery((q) =>
       q.preset === 'custom'
-        ? { ...q }
+        ? { ...q, refreshTick: (q.refreshTick || 0) + 1 }
         : {
             ...presetRange(q.preset),
             granularity: q.granularity,
             username: q.username,
+            refreshTick: (q.refreshTick || 0) + 1,
           },
     );
   }, []);

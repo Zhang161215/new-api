@@ -125,16 +125,46 @@ export function StatTile({
   sparkline,
   sparkColor,
   action,
+  accent,
+  tone = 'default',
 }) {
+  const toneClass =
+    tone === 'subtle'
+      ? 'bg-semi-color-fill-0/50 border-semi-color-border/70 px-3.5 py-2.5'
+      : tone === 'warning'
+        ? 'bg-semi-color-bg-0 border-amber-400/60 px-4 py-3'
+        : tone === 'danger'
+          ? 'bg-semi-color-bg-0 border-red-400/60 px-4 py-3'
+          : 'bg-semi-color-bg-0 border-semi-color-border px-4 py-3';
+  const valueClass =
+    tone === 'subtle'
+      ? 'text-xl font-semibold text-semi-color-text-0 truncate tabular-nums'
+      : 'text-2xl font-semibold text-semi-color-text-0 truncate tabular-nums';
+  const subClass =
+    tone === 'danger'
+      ? 'mt-0.5 text-xs font-medium text-red-500 truncate'
+      : tone === 'warning'
+        ? 'mt-0.5 text-xs font-medium text-amber-600 truncate'
+        : 'mt-0.5 text-xs text-semi-color-text-2 truncate';
+
   return (
-    <div className='rounded-xl border border-semi-color-border bg-semi-color-bg-0 px-4 py-3 min-w-0'>
-      <div className='flex items-center gap-1 text-xs text-semi-color-text-2'>
+    <div
+      className={`rounded-xl border min-w-0 transition-colors hover:border-semi-color-primary/40 ${toneClass}`}
+    >
+      <div className='flex items-center gap-1.5 text-xs text-semi-color-text-2'>
+        {accent ? (
+          <span
+            className='inline-block h-2 w-2 shrink-0 rounded-full'
+            style={{ background: accent }}
+            aria-hidden='true'
+          />
+        ) : null}
         <span className='truncate'>{title}</span>
         {help ? (
           <Tooltip content={help}>
             <IconHelpCircle
               size='small'
-              className='cursor-help text-semi-color-text-3'
+              className='cursor-help text-semi-color-text-3 shrink-0'
             />
           </Tooltip>
         ) : null}
@@ -149,17 +179,13 @@ export function StatTile({
             />
           ) : (
             <div
-              className='text-2xl font-semibold text-semi-color-text-0 truncate'
+              className={valueClass}
               title={typeof value === 'string' ? value : undefined}
             >
               {value}
             </div>
           )}
-          {sub ? (
-            <div className='mt-0.5 text-xs text-semi-color-text-2 truncate'>
-              {sub}
-            </div>
-          ) : null}
+          {sub ? <div className={subClass}>{sub}</div> : null}
         </div>
         {action ||
           (sparkline ? (
@@ -217,10 +243,11 @@ export function CompositionBar({ parts, total, format, formatShare }) {
   );
 }
 
-export function ChartEmpty({ text }) {
+export function ChartEmpty({ text, action }) {
   return (
-    <div className='flex h-full items-center justify-center text-sm text-semi-color-text-2'>
-      {text}
+    <div className='flex h-full flex-col items-center justify-center gap-2.5 text-sm text-semi-color-text-2'>
+      <span>{text}</span>
+      {action ? <div className='flex items-center gap-2 flex-wrap justify-center'>{action}</div> : null}
     </div>
   );
 }

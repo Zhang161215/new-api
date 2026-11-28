@@ -63,13 +63,16 @@ const Dashboard = () => {
 
   const shell = useDashboardData(userState, userDispatch, statusState);
   const { t, isAdminUser } = shell;
-  const dash = useDashboardQuery({ isAdminUser });
 
   const [tab, setTab] = useState(() => {
     const saved = localStorage.getItem(TAB_KEY);
     return TABS.includes(saved) ? saved : 'overview';
   });
   const activeTab = tab === 'users' && !isAdminUser ? 'overview' : tab;
+  const dash = useDashboardQuery({
+    isAdminUser,
+    enabled: activeTab !== 'overview',
+  });
   const changeTab = (key) => {
     setTab(key);
     localStorage.setItem(TAB_KEY, key);
@@ -77,9 +80,15 @@ const Dashboard = () => {
 
   useEffect(() => {
     initVChartSemiTheme({ isWatchingThemeSwitch: true });
-    shell.loadUptimeData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (shell.uptimeEnabled) {
+      shell.loadUptimeData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shell.uptimeEnabled]);
 
   // ========== 总览面板数据 ==========
   const apiInfoData = statusState?.status?.api_info || [];
@@ -118,8 +127,24 @@ const Dashboard = () => {
     />
   ) : null;
 
+  const enabledInfoCount =
+    (shell.announcementsEnabled ? 1 : 0) +
+    (shell.faqEnabled ? 1 : 0) +
+    (shell.uptimeEnabled ? 1 : 0);
+  const infoGridClass =
+    enabledInfoCount <= 1
+      ? 'grid grid-cols-1 gap-4'
+      : enabledInfoCount === 2
+        ? shell.announcementsEnabled
+          ? 'grid grid-cols-1 lg:grid-cols-3 gap-4'
+          : 'grid grid-cols-1 lg:grid-cols-2 gap-4'
+        : 'grid grid-cols-1 lg:grid-cols-4 gap-4';
+  const announcementsSpan =
+    enabledInfoCount === 1 ? 'lg:col-span-1' : 'lg:col-span-2';
+  const sidePanelSpan = 'lg:col-span-1';
+
   const infoPanels = shell.hasInfoPanels ? (
-    <div className='grid grid-cols-1 lg:grid-cols-4 gap-4'>
+    <div className={infoGridClass}>
       {shell.announcementsEnabled && (
         <AnnouncementsPanel
           announcementData={announcementData}
@@ -129,6 +154,7 @@ const Dashboard = () => {
           }))}
           CARD_PROPS={CARD_PROPS}
           ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
+          spanClassName={announcementsSpan}
           t={t}
         />
       )}
@@ -138,6 +164,7 @@ const Dashboard = () => {
           CARD_PROPS={CARD_PROPS}
           FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
           ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
+          spanClassName={sidePanelSpan}
           t={t}
         />
       )}
@@ -159,6 +186,7 @@ const Dashboard = () => {
           }
           CARD_PROPS={CARD_PROPS}
           ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
+          spanClassName={sidePanelSpan}
           t={t}
         />
       )}
@@ -219,6 +247,7 @@ const Dashboard = () => {
             user={userState?.user}
             theme={theme}
             onOpenUsage={() => changeTab('usage')}
+            onRefreshUser={shell.getUserData}
             aside={apiInfoPanel}
             t={t}
           >
@@ -233,6 +262,10 @@ const Dashboard = () => {
             data={dash.userData}
             loading={dash.userLoading}
             ensureUsers={dash.ensureUsers}
+            onSelectUser={(username) => {
+              dash.applyCustom({ username, preset: dash.query.preset });
+              changeTab('usage');
+            }}
           />
         )}
       </div>

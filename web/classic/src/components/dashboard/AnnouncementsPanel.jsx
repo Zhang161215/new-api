@@ -32,18 +32,19 @@ const AnnouncementsPanel = ({
   announcementLegendData,
   CARD_PROPS,
   ILLUSTRATION_SIZE,
+  spanClassName = 'lg:col-span-2',
   t,
 }) => {
   return (
     <Card
       {...CARD_PROPS}
-      className='shadow-sm !rounded-2xl lg:col-span-2'
+      className={`shadow-sm !rounded-2xl ${spanClassName}`}
       title={
         <div className='flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 w-full'>
           <div className='flex items-center gap-2'>
             <Bell size={16} />
             {t('系统公告')}
-            <Tag color='white' shape='circle'>
+            <Tag color='grey' type='light' shape='circle'>
               {t('显示最新20条')}
             </Tag>
           </div>
@@ -68,7 +69,7 @@ const AnnouncementsPanel = ({
                                 : '#8b9aa7',
                   }}
                 />
-                <span className='text-gray-600'>{legend.label}</span>
+                <span className='text-semi-color-text-2'>{legend.label}</span>
               </div>
             ))}
           </div>
@@ -89,7 +90,7 @@ const AnnouncementsPanel = ({
                   extra={
                     item.extra ? (
                       <div
-                        className='text-xs text-gray-500'
+                        className='text-xs text-semi-color-text-2'
                         dangerouslySetInnerHTML={{ __html: htmlExtra }}
                       />
                     ) : null

@@ -38,7 +38,7 @@ const ApiInfoPanel = ({
   return (
     <Card
       {...CARD_PROPS}
-      className='bg-gray-50 border-0 !rounded-2xl'
+      className='bg-semi-color-bg-0 border border-semi-color-border !rounded-2xl'
       title={
         <div className={FLEX_CENTER_GAP2}>
           <Server size={16} />
@@ -51,22 +51,23 @@ const ApiInfoPanel = ({
         {apiInfoData.length > 0 ? (
           apiInfoData.map((api) => (
             <React.Fragment key={api.id}>
-              <div className='flex p-2 hover:bg-white rounded-lg transition-colors cursor-pointer'>
+              <div className='flex p-2.5 hover:bg-semi-color-fill-0 rounded-lg transition-colors cursor-pointer'>
                 <div className='flex-shrink-0 mr-3'>
                   <Avatar size='extra-small' color={api.color}>
                     {api.route.substring(0, 2)}
                   </Avatar>
                 </div>
-                <div className='flex-1'>
+                <div className='flex-1 min-w-0'>
                   <div className='flex flex-wrap items-center justify-between mb-1 w-full gap-2'>
-                    <span className='text-sm font-medium text-gray-900 !font-bold break-all'>
+                    <span className='text-sm font-semibold text-semi-color-text-0 break-all'>
                       {api.route}
                     </span>
                     <div className='flex items-center gap-1 mt-1 lg:mt-0'>
                       <Tag
                         prefixIcon={<Gauge size={12} />}
                         size='small'
-                        color='white'
+                        color='grey'
+                        type='light'
                         shape='circle'
                         onClick={() => handleSpeedTest(api.url)}
                         className='cursor-pointer hover:opacity-80 text-xs'
@@ -76,7 +77,8 @@ const ApiInfoPanel = ({
                       <Tag
                         prefixIcon={<ExternalLink size={12} />}
                         size='small'
-                        color='white'
+                        color='grey'
+                        type='light'
                         shape='circle'
                         onClick={() =>
                           window.open(api.url, '_blank', 'noopener,noreferrer')
@@ -89,18 +91,18 @@ const ApiInfoPanel = ({
                   </div>
                   <div className='flex items-center gap-1 mb-1'>
                     <span
-                      className='!text-semi-color-primary break-all cursor-pointer hover:underline'
+                      className='!text-semi-color-primary break-all cursor-pointer hover:underline text-xs'
                       onClick={() => handleCopyUrl(api.url)}
                     >
                       {api.url}
                     </span>
                     <Copy
                       size={14}
-                      className='flex-shrink-0 text-gray-400 hover:text-semi-color-primary cursor-pointer transition-colors'
+                      className='flex-shrink-0 text-semi-color-text-2 hover:text-semi-color-primary cursor-pointer transition-colors'
                       onClick={() => handleCopyUrl(api.url)}
                     />
                   </div>
-                  <div className='text-gray-500'>{api.description}</div>
+                  <div className='text-xs text-semi-color-text-2'>{api.description}</div>
                 </div>
               </div>
               <Divider />

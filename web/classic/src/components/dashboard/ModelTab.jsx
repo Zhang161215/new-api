@@ -18,9 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useMemo, useState } from 'react';
-import { Table, Tooltip } from '@douyinfe/semi-ui';
+import { Input, Table, Tooltip } from '@douyinfe/semi-ui';
 import { VChart } from '@visactor/react-vchart';
-import { BarChart3, ListOrdered } from 'lucide-react';
+import { BarChart3, ListOrdered, Search } from 'lucide-react';
 import { renderQuota } from '../../helpers';
 import {
   byModel,
@@ -64,8 +64,15 @@ export default function ModelTab({
   t,
 }) {
   const [chartTab, setChartTab] = useState('quota');
+  const [rankBy, setRankBy] = useState('quota');
+  const [keyword, setKeyword] = useState('');
   const otherLabel = t('其他');
   const models = useMemo(() => byModel(data), [data]);
+  const filteredModels = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+    if (!kw) return models;
+    return models.filter((m) => m.model.toLowerCase().includes(kw));
+  }, [models, keyword]);
   const totals = useMemo(() => summarize(data), [data]);
   const topNames = useMemo(
     () => topModelNames(models, MAX_MODEL_SERIES),
@@ -84,11 +91,18 @@ export default function ModelTab({
 
   const spec = useMemo(() => {
     if (chartTab === 'rank') {
+      const byQuota = rankBy === 'quota';
+      const field = byQuota ? 'quota' : 'count';
+      const totalVal = byQuota ? totals.quota : totals.count;
+      const fmtVal = byQuota ? (v) => renderQuota(v, 2) : formatInt;
+      const tipVal = byQuota ? (v) => renderQuota(v, 4) : formatInt;
       const rank = [...models]
-        .sort((a, b) => b.count - a.count)
+        .sort((a, b) => b[field] - a[field])
         .slice(0, RANK_LIMIT)
         .map((m) => ({
           model: m.model,
+          value: m[field],
+          quota: m.quota,
           count: m.count,
           color: colorMap[m.model] || colorMap[otherLabel] || '#999',
         }));
@@ -96,7 +110,7 @@ export default function ModelTab({
         type: 'bar',
         direction: 'horizontal',
         data: [{ id: 'rank', values: rank }],
-        xField: 'count',
+        xField: 'value',
         yField: 'model',
         barMaxWidth: 20,
         bar: { style: { fill: (d) => d.color, cornerRadius: [0, 4, 4, 0] } },
@@ -105,7 +119,7 @@ export default function ModelTab({
           position: 'outside',
           style: { fill: textColor(2), fontSize: 12 },
           formatMethod: (v, d) =>
-            `${formatInt(d.count)}  ${formatPercent(d.count, totals.count)}`,
+            `${fmtVal(d.value)}  ${formatPercent(d.value, totalVal)}`,
         },
         axes: [
           {
@@ -120,10 +134,17 @@ export default function ModelTab({
         tooltip: {
           mark: {
             content: [
-              { key: t('调用次数'), value: (d) => formatInt(d.count) },
+              {
+                key: byQuota ? t('消耗额度') : t('调用次数'),
+                value: (d) => tipVal(d.value),
+              },
+              {
+                key: byQuota ? t('调用次数') : t('消耗额度'),
+                value: (d) => (byQuota ? formatInt(d.count) : renderQuota(d.quota, 4)),
+              },
               {
                 key: t('占比'),
-                value: (d) => formatPercent(d.count, totals.count),
+                value: (d) => formatPercent(d.value, totalVal),
               },
             ],
           },
@@ -181,7 +202,7 @@ export default function ModelTab({
       bar: { style: { stroke: surfaceColor(theme), lineWidth: 2 } },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chartTab, timeRows, names, colorMap, models, totals.count, theme]);
+  }, [chartTab, rankBy, timeRows, names, colorMap, models, totals.count, totals.quota, theme]);
 
   const tokenFmt = (v) => <span title={formatInt(v)}>{formatTokens(v)}</span>;
   const rateFmt = (v) =>
@@ -264,16 +285,28 @@ export default function ModelTab({
         subtitle={`${t('模型')} ${totals.modelCount} · ${t('调用')} ${formatInt(totals.count)} · ${renderQuota(totals.quota, 2)}`}
         dimmed={loading && loaded}
         extra={
-          <SegmentedTabs
-            value={chartTab}
-            onChange={setChartTab}
-            options={[
-              { value: 'quota', label: t('消耗分布') },
-              { value: 'count', label: t('调用趋势') },
-              { value: 'total', label: t('Token 分布') },
-              { value: 'rank', label: t('调用排行') },
-            ]}
-          />
+          <div className='flex items-center gap-2 flex-wrap'>
+            {chartTab === 'rank' ? (
+              <SegmentedTabs
+                value={rankBy}
+                onChange={setRankBy}
+                options={[
+                  { value: 'quota', label: t('按额度') },
+                  { value: 'count', label: t('按次数') },
+                ]}
+              />
+            ) : null}
+            <SegmentedTabs
+              value={chartTab}
+              onChange={setChartTab}
+              options={[
+                { value: 'quota', label: t('消耗分布') },
+                { value: 'count', label: t('调用趋势') },
+                { value: 'total', label: t('Token 分布') },
+                { value: 'rank', label: t('排行') },
+              ]}
+            />
+          </div>
         }
       >
         <div className={chartTab === 'rank' ? 'h-[420px]' : 'h-80'}>
@@ -296,18 +329,36 @@ export default function ModelTab({
       <ChartCard
         title={t('模型明细')}
         icon={<ListOrdered size={16} />}
-        subtitle={t('点击表头排序')}
+        subtitle={
+          keyword.trim()
+            ? t('匹配 {{n}} / {{total}} 个模型', {
+                n: filteredModels.length,
+                total: models.length,
+              })
+            : t('点击表头排序')
+        }
         dimmed={loading && loaded}
         bodyClassName='p-0'
+        extra={
+          <Input
+            prefix={<Search size={13} className='text-semi-color-text-2' />}
+            value={keyword}
+            onChange={setKeyword}
+            showClear
+            size='small'
+            placeholder={t('搜索模型名')}
+            style={{ width: 200 }}
+          />
+        }
       >
         <Table
           columns={columns}
-          dataSource={models}
+          dataSource={filteredModels}
           rowKey='model'
           size='small'
           loading={loading && !loaded}
           pagination={
-            models.length > 20
+            filteredModels.length > 20
               ? { pageSize: 20, showSizeChanger: false }
               : false
           }

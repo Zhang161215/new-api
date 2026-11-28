@@ -158,13 +158,15 @@ export default function UsageTab({
   }
 
   const quotaFmt = (v) => renderQuota(v, 2);
-  const tiles = [
+  const primaryTiles = [
     {
       key: 'quota',
       title: t('消耗额度'),
       value: renderQuota(totals.quota, 2),
       sub: `${t('平均每次')} ${totals.count > 0 ? renderQuota(totals.quota / totals.count, 4) : '-'}`,
       sparkline: series.map((r) => r.quota),
+      accent: colors[0],
+      sparkColor: colors[0],
     },
     {
       key: 'count',
@@ -172,6 +174,8 @@ export default function UsageTab({
       value: formatInt(totals.count),
       sub: `${t('平均 RPM')} ${formatRate(totals.count / rangeMinutes)}`,
       sparkline: series.map((r) => r.count),
+      accent: colors[1],
+      sparkColor: colors[1],
     },
     {
       key: 'total',
@@ -179,7 +183,20 @@ export default function UsageTab({
       value: formatTokens(totals.total),
       sub: `${t('平均 TPM')} ${formatRate(totals.total / rangeMinutes)}`,
       help: t(TOKEN_RULE_TEXT),
+      sparkline: series.map((r) => r.total),
+      accent: colors[6],
+      sparkColor: colors[6],
     },
+    {
+      key: 'cacheRead',
+      title: t('缓存命中率'),
+      value: hit === null ? '-' : `${(hit * 100).toFixed(1)}%`,
+      sub: `${t('缓存读取')} ${formatTokens(totals.cacheRead)}`,
+      help: t('命中率 = 缓存读取 / 输入'),
+      accent: parts.readIn,
+    },
+  ];
+  const secondaryTiles = [
     {
       key: 'avg',
       title: t('平均每次 Token'),
@@ -200,13 +217,6 @@ export default function UsageTab({
       sub: `${t('占总量')} ${formatPercent(totals.output, totals.input + totals.output)}`,
     },
     {
-      key: 'cacheRead',
-      title: t('缓存读取'),
-      value: formatTokens(totals.cacheRead),
-      sub: `${t('命中率')} ${hit === null ? '-' : `${(hit * 100).toFixed(1)}%`}`,
-      help: t('命中率 = 缓存读取 / 输入'),
-    },
-    {
       key: 'cacheWrite',
       title: t('缓存创建'),
       value: formatTokens(totals.cacheWrite),
@@ -219,8 +229,16 @@ export default function UsageTab({
       return singleLineSpec({
         rows: series,
         field: 'count',
-        color: colors[0],
+        color: colors[1],
         format: formatInt,
+      });
+    }
+    if (trendTab === 'total') {
+      return singleLineSpec({
+        rows: series,
+        field: 'total',
+        color: colors[6],
+        format: formatTokens,
       });
     }
     return singleBarSpec({
@@ -289,15 +307,27 @@ export default function UsageTab({
 
   return (
     <div className='flex flex-col gap-4'>
-      <div className='grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4'>
-        {tiles.map(({ key, ...tile }) => (
-          <StatTile
-            key={key}
-            {...tile}
-            loading={showSkeleton}
-            sparkColor={colors[0]}
-          />
-        ))}
+      <div className='flex flex-col gap-2.5'>
+        <div className='grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4'>
+          {primaryTiles.map(({ key, sparkColor, ...tile }) => (
+            <StatTile
+              key={key}
+              {...tile}
+              loading={showSkeleton}
+              sparkColor={sparkColor || colors[0]}
+            />
+          ))}
+        </div>
+        <div className='grid grid-cols-2 gap-2.5 xl:grid-cols-4'>
+          {secondaryTiles.map(({ key, ...tile }) => (
+            <StatTile
+              key={key}
+              {...tile}
+              tone='subtle'
+              loading={showSkeleton}
+            />
+          ))}
+        </div>
       </div>
 
       <ChartCard
@@ -311,6 +341,7 @@ export default function UsageTab({
             options={[
               { value: 'quota', label: t('消耗额度') },
               { value: 'count', label: t('请求次数') },
+              { value: 'total', label: t('总 Token') },
             ]}
           />
         }

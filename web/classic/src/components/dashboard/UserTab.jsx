@@ -18,9 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Table } from '@douyinfe/semi-ui';
+import { Button, Input, Table } from '@douyinfe/semi-ui';
 import { VChart } from '@visactor/react-vchart';
-import { Users, ListOrdered } from 'lucide-react';
+import { Users, ListOrdered, Search, ArrowUpRight } from 'lucide-react';
 import { renderQuota } from '../../helpers';
 import {
   byUser,
@@ -49,14 +49,21 @@ export default function UserTab({
   loading,
   theme,
   ensureUsers,
+  onSelectUser,
   t,
 }) {
   const [chartTab, setChartTab] = useState('rank');
+  const [keyword, setKeyword] = useState('');
   useEffect(() => {
     ensureUsers();
   }, [ensureUsers]);
 
   const users = useMemo(() => byUser(data), [data]);
+  const filteredUsers = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+    if (!kw) return users;
+    return users.filter((u) => u.user.toLowerCase().includes(kw));
+  }, [users, keyword]);
   const totals = useMemo(() => summarize(data), [data]);
   const trendNames = useMemo(
     () => users.slice(0, MAX_MODEL_SERIES).map((u) => u.user),
@@ -183,6 +190,27 @@ export default function UserTab({
         v === null || v === undefined ? '-' : `${(v * 100).toFixed(1)}%`,
       width: 110,
     }),
+    ...(onSelectUser
+      ? [
+          {
+            title: t('操作'),
+            dataIndex: '_action',
+            width: 96,
+            align: 'right',
+            render: (_, row) => (
+              <Button
+                size='small'
+                theme='borderless'
+                icon={<ArrowUpRight size={13} />}
+                iconPosition='right'
+                onClick={() => onSelectUser(row.user)}
+              >
+                {t('明细')}
+              </Button>
+            ),
+          },
+        ]
+      : []),
   ];
 
   const hasData = users.length > 0;
@@ -219,19 +247,40 @@ export default function UserTab({
       <ChartCard
         title={t('用户明细')}
         icon={<ListOrdered size={16} />}
+        subtitle={
+          keyword.trim()
+            ? t('匹配 {{n}} / {{total}} 位用户', {
+                n: filteredUsers.length,
+                total: users.length,
+              })
+            : t('点击「明细」可按用户下钻查看用量')
+        }
         bodyClassName='p-0'
         dimmed={loading && hasData}
+        extra={
+          <Input
+            prefix={<Search size={13} className='text-semi-color-text-2' />}
+            value={keyword}
+            onChange={setKeyword}
+            showClear
+            size='small'
+            placeholder={t('搜索用户名')}
+            style={{ width: 180 }}
+          />
+        }
       >
         <Table
           columns={columns}
-          dataSource={users}
+          dataSource={filteredUsers}
           rowKey='user'
           size='small'
           loading={loading && !hasData}
           pagination={
-            users.length > 20 ? { pageSize: 20, showSizeChanger: false } : false
+            filteredUsers.length > 20
+              ? { pageSize: 20, showSizeChanger: false }
+              : false
           }
-          scroll={{ x: 1130 }}
+          scroll={{ x: 1220 }}
           empty={t('所选时间内没有用量')}
         />
       </ChartCard>

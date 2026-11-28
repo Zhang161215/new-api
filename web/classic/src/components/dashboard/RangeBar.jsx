@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Button,
   DatePicker,
@@ -28,7 +28,7 @@ import {
   Select,
   Tag,
 } from '@douyinfe/semi-ui';
-import { CalendarRange, RefreshCw } from 'lucide-react';
+import { CalendarRange, RefreshCw, Search } from 'lucide-react';
 import { RANGE_PRESETS } from '../../hooks/dashboard/useDashboardQuery';
 
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -50,6 +50,11 @@ export default function RangeBar({
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(null);
+  const [userInput, setUserInput] = useState(query.username || '');
+
+  useEffect(() => {
+    setUserInput(query.username || '');
+  }, [query.username]);
 
   const granularityOptions = [
     { label: t('按小时'), value: 'hour' },
@@ -82,6 +87,13 @@ export default function RangeBar({
     setOpen(false);
   };
 
+  const applyUserSearch = () => {
+    const next = userInput.trim();
+    if (next !== (query.username || '')) {
+      onCustom({ username: next, preset: query.preset });
+    }
+  };
+
   let scope = t('我的数据');
   if (isAdminUser)
     scope = query.username ? `${t('用户')}：${query.username}` : t('全站数据');
@@ -91,32 +103,46 @@ export default function RangeBar({
       <div className='flex flex-wrap items-center gap-2'>
         <RadioGroup
           type='button'
-          value={query.preset}
-          onChange={(e) => {
-            if (e.target.value !== 'custom') onPreset(e.target.value);
-          }}
+          value={query.preset === 'custom' ? '' : query.preset}
+          onChange={(e) => onPreset(e.target.value)}
         >
           {RANGE_PRESETS.map((p) => (
             <Radio key={p.key} value={p.key}>
               {t(p.label)}
             </Radio>
           ))}
-          <Radio value='custom'>
-            <span
-              className='inline-flex items-center gap-1'
-              onClick={openCustom}
-            >
-              <CalendarRange size={14} />
-              {t('自定义')}
-            </span>
-          </Radio>
         </RadioGroup>
+        <Button
+          icon={<CalendarRange size={14} />}
+          theme={query.preset === 'custom' ? 'light' : 'borderless'}
+          type={query.preset === 'custom' ? 'primary' : 'tertiary'}
+          onClick={openCustom}
+        >
+          {t('自定义')}
+        </Button>
         <Select
           value={query.granularity}
           optionList={granularityOptions}
           onChange={(v) => onCustom({ granularity: v, preset: query.preset })}
           style={{ width: 104 }}
         />
+        {isAdminUser ? (
+          <Input
+            prefix={<Search size={13} className='text-semi-color-text-2' />}
+            value={userInput}
+            onChange={(v) => {
+              setUserInput(v);
+              if (v === '' && query.username) {
+                onCustom({ username: '', preset: query.preset });
+              }
+            }}
+            onEnterPress={applyUserSearch}
+            onBlur={applyUserSearch}
+            showClear
+            placeholder={t('按用户名筛选')}
+            style={{ width: 168 }}
+          />
+        ) : null}
       </div>
       <div className='flex flex-wrap items-center gap-2 text-xs text-semi-color-text-2'>
         <Tag

@@ -33,12 +33,13 @@ const FaqPanel = ({
   CARD_PROPS,
   FLEX_CENTER_GAP2,
   ILLUSTRATION_SIZE,
+  spanClassName = 'lg:col-span-1',
   t,
 }) => {
   return (
     <Card
       {...CARD_PROPS}
-      className='shadow-sm !rounded-2xl lg:col-span-1'
+      className={`shadow-sm !rounded-2xl ${spanClassName}`}
       title={
         <div className={FLEX_CENTER_GAP2}>
           <HelpCircle size={16} />

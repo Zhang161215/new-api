@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@douyinfe/semi-ui';
 import { VChart } from '@visactor/react-vchart';
-import { Wallet, ArrowRight } from 'lucide-react';
+import { Wallet, ArrowRight, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { API, renderQuota } from '../../helpers';
 import {
@@ -39,6 +39,7 @@ export default function OverviewTab({
   user,
   theme,
   onOpenUsage,
+  onRefreshUser,
   aside,
   t,
   children,
@@ -46,13 +47,14 @@ export default function OverviewTab({
   const navigate = useNavigate();
   const [recent, setRecent] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [range] = useState(() => {
+  const [range, setRange] = useState(() => {
     const end = Math.floor(Date.now() / 1000);
     return { start: last24hStart(end), end };
   });
 
   useEffect(() => {
     let alive = true;
+    setLoading(true);
     API.get(
       `/api/data/self?start_timestamp=${range.start}&end_timestamp=${range.end + 3600}`,
     )
@@ -66,6 +68,12 @@ export default function OverviewTab({
       alive = false;
     };
   }, [range]);
+
+  const handleRefresh = () => {
+    const end = Math.floor(Date.now() / 1000);
+    setRange({ start: last24hStart(end), end });
+    onRefreshUser?.();
+  };
 
   const totals = useMemo(() => summarize(recent), [recent]);
   const series = useMemo(
@@ -104,11 +112,16 @@ export default function OverviewTab({
     [series, theme, t],
   );
   const balance = Number(user?.quota) || 0;
+  const colors = seriesColors(theme);
 
   let runway = t('近 24 小时无用量');
-  if (balance <= 0) runway = t('余额已用完');
-  else if (totals.quota > 0) {
+  let balanceTone = 'default';
+  if (balance <= 0) {
+    runway = t('余额已用完');
+    balanceTone = 'danger';
+  } else if (totals.quota > 0) {
     const days = balance / totals.quota;
+    if (days < 3) balanceTone = 'warning';
     runway =
       days < 1
         ? t('不足 1 天')
@@ -127,15 +140,26 @@ export default function OverviewTab({
           title={t('账户概览')}
           icon={<Wallet size={16} />}
           extra={
-            <Button
-              theme='borderless'
-              size='small'
-              onClick={onOpenUsage}
-              icon={<ArrowRight size={14} />}
-              iconPosition='right'
-            >
-              {t('查看用量明细')}
-            </Button>
+            <div className='flex items-center gap-1'>
+              <Button
+                theme='borderless'
+                size='small'
+                onClick={onOpenUsage}
+                icon={<ArrowRight size={14} />}
+                iconPosition='right'
+              >
+                {t('查看用量明细')}
+              </Button>
+              <Button
+                theme='borderless'
+                type='tertiary'
+                size='small'
+                icon={<RefreshCw size={13} />}
+                loading={loading}
+                onClick={handleRefresh}
+                aria-label={t('刷新')}
+              />
+            </div>
           }
         >
           <div className='grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3'>
@@ -144,6 +168,8 @@ export default function OverviewTab({
               value={renderQuota(balance, 2)}
               sub={`${t('预计可用')} ${runway}`}
               help={t('按近 24 小时的消耗速度估算')}
+              accent={balanceTone === 'danger' ? '#ef4444' : balanceTone === 'warning' ? '#f59e0b' : colors[0]}
+              tone={balanceTone}
               action={
                 <Button
                   size='small'
@@ -158,6 +184,7 @@ export default function OverviewTab({
               title={t('近 24 小时消耗')}
               value={renderQuota(totals.quota, 2)}
               sub={`${formatInt(totals.count)} ${t('次请求')} · ${formatTokens(totals.total)} Token`}
+              accent={colors[2]}
               loading={loading}
             />
             <StatTile
@@ -166,6 +193,7 @@ export default function OverviewTab({
               sub={t('累计请求 {{n}} 次', {
                 n: formatInt(user?.request_count),
               })}
+              accent={colors[6]}
             />
           </div>
           <div className='mt-4'>
@@ -178,6 +206,26 @@ export default function OverviewTab({
               ) : (
                 <ChartEmpty
                   text={loading ? t('加载中') : t('近 24 小时无用量')}
+                  action={
+                    !loading ? (
+                      <>
+                        <Button
+                          size='small'
+                          theme='light'
+                          onClick={() => navigate('/console/token')}
+                        >
+                          {t('去创建令牌')}
+                        </Button>
+                        <Button
+                          size='small'
+                          theme='borderless'
+                          onClick={onOpenUsage}
+                        >
+                          {t('查看更长时间用量')}
+                        </Button>
+                      </>
+                    ) : null
+                  }
                 />
               )}
             </div>
