@@ -1397,3 +1397,339 @@ body.lz-admin .lz-dialog h2 {
   padding-top: 16px;
   border-top: 1px dashed var(--ad-line, rgba(0, 0, 0, 0.12));
 }
+
+/* ===== v2 后台体验升级：分组侧栏 / 全局开关顶栏 / 库存水位预警 / 抽屉导入 / 试算溢出修复 ===== */
+
+.lz-ad-nav-group {
+  display: block;
+  margin: 14px 10px 4px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.lz-ad-nav-group:first-child {
+  margin-top: 2px;
+}
+
+.lz-ad-nav button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 38px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.lz-ad-nav button.is-on {
+  font-weight: 650;
+  color: var(--ad-accent);
+  background: rgba(14, 116, 144, 0.11);
+}
+
+.lz-ad-nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #b45309;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.lz-ad-nav-badge.is-critical {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.lz-ad-global-bar {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  max-width: 1080px;
+  margin: 0 auto 22px;
+  padding: 12px 16px;
+  border: 1px solid var(--ad-line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+}
+
+.lz-ad-global-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ad-text);
+}
+
+.lz-ad-global-switches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.lz-ad-toggle-pill {
+  height: 36px;
+  padding: 0 6px 0 11px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 999px;
+  background: #f8fafc;
+  gap: 6px;
+  color: var(--ad-ok);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.lz-ad-toggle-pill span {
+  height: auto;
+  line-height: 1.2;
+}
+
+.lz-ad-toggle-k {
+  color: var(--ad-muted);
+  font-weight: 500;
+}
+
+.lz-ad-toggle-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+  flex-shrink: 0;
+}
+
+.lz-ad-toggle-pill.is-off {
+  border-color: rgba(217, 119, 6, 0.32);
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.lz-ad-toggle-pill.is-off .lz-ad-toggle-dot {
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.22);
+}
+
+.lz-ad-toggle-pill select {
+  width: auto;
+  min-width: 68px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 24px;
+}
+
+/* 库存预警条与水位分布 */
+.lz-ad-stock-alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin-bottom: 16px;
+  padding: 13px 16px;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fff5f5 0%, #fffbeb 100%);
+}
+
+.lz-ad-stock-alert.is-warn {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.lz-ad-stock-alert-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  color: #7f1d1d;
+}
+
+.lz-ad-stock-alert.is-warn .lz-ad-stock-alert-copy {
+  color: #92400e;
+}
+
+.lz-ad-stock-alert-copy strong {
+  font-size: 13.5px;
+  font-weight: 750;
+}
+
+.lz-ad-stock-bars {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.lz-ad-stock-item {
+  display: grid;
+  gap: 6px;
+  padding: 11px 12px;
+  border: 1px solid var(--ad-line);
+  border-radius: 10px;
+  background: #f8fafc;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.12s ease, background 0.15s ease;
+}
+
+.lz-ad-stock-item:hover {
+  border-color: var(--ad-accent);
+  background: #f0f9ff;
+  transform: translateY(-1px);
+}
+
+.lz-ad-stock-item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.lz-ad-stock-item-head span {
+  font-weight: 650;
+  color: var(--ad-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lz-ad-stock-item-head strong {
+  font-variant-numeric: tabular-nums;
+  color: var(--ad-ok);
+  flex-shrink: 0;
+}
+
+.lz-ad-stock-item.is-low {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.lz-ad-stock-item.is-low .lz-ad-stock-item-head strong {
+  color: #b45309;
+}
+
+.lz-ad-stock-item.is-empty {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.lz-ad-stock-item.is-empty .lz-ad-stock-item-head strong {
+  color: #dc2626;
+}
+
+.lz-ad-stock-meter {
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+}
+
+.lz-ad-stock-meter i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #10b981;
+}
+
+.lz-ad-stock-item.is-low .lz-ad-stock-meter i {
+  background: #f59e0b;
+}
+
+.lz-ad-stock-item.is-empty .lz-ad-stock-meter i {
+  background: #ef4444;
+}
+
+/* 兑换码宽表与右侧滑出导入抽屉 */
+.lz-ad-codes-wide {
+  display: block;
+}
+
+.lz-ad-drawer-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 18;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(15, 23, 42, 0.34);
+  backdrop-filter: blur(4px);
+}
+
+.lz-ad-drawer {
+  position: relative;
+  top: 0;
+  width: min(460px, 94vw);
+  height: 100dvh;
+  margin: 0;
+  padding: 22px 22px 28px;
+  border: 0;
+  border-left: 1px solid var(--ad-line);
+  border-radius: 0;
+  overflow-y: auto;
+  box-shadow: -14px 0 42px rgba(15, 23, 42, 0.16);
+}
+
+.lz-ad-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.lz-ad-drawer-head h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+/* 修复试算输入框在 260px 侧栏内的溢出问题 */
+.lz-ad-rule-try {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 10px;
+}
+
+.lz-ad-rule-try .lz-ad-rule-input {
+  min-width: 0;
+  width: 100%;
+}
+
+.lz-ad-rule-try .lz-ad-rule-input input {
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.lz-ad-rule-try strong {
+  white-space: nowrap;
+}
+
+@media (max-width: 960px) {
+  .lz-ad-nav-group {
+    display: none;
+  }
+
+  .lz-ad-global-bar {
+    position: static;
+    margin-bottom: 16px;
+  }
+}

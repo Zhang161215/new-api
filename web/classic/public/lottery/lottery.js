@@ -847,6 +847,7 @@ function mapPrize(row) {
     short: row.short,
     hint: row.hint,
     weight: Number(row.weight) || 0,
+    odds: row.odds !== undefined && row.odds !== null ? Number(row.odds) : null,
     quota: Number(row.quota ?? row.quota_amount) || 0,
     extraTicket: Boolean(row.extraTicket || row.extra_ticket),
     enabled: row.enabled !== false,
@@ -1551,6 +1552,41 @@ function bumpDrawButton() {
 
 function syncWheelPrizes() {
   buildWheel();
+  renderWheelOddsStrip();
+}
+
+function formatPrizeOdds(prize, list) {
+  if (prize.odds !== null && prize.odds !== undefined && Number.isFinite(Number(prize.odds))) {
+    const val = Number(prize.odds);
+    return `${Number.isInteger(val) ? val : Number(val.toFixed(2))}%`;
+  }
+  const total = totalWeight(list);
+  if (!total) return '';
+  const pct = (Math.max(0, Number(prize.weight) || 0) / total) * 100;
+  return `${Number.isInteger(pct) ? pct : Number(pct.toFixed(1))}%`;
+}
+
+function renderWheelOddsStrip() {
+  const strip = $('prize-odds-strip');
+  if (!strip || PAGE !== 'wheel') return;
+  const list = prizes();
+  if (!list.length) {
+    strip.replaceChildren();
+    return;
+  }
+  strip.replaceChildren(
+    ...list.map((prize) => {
+      const li = document.createElement('li');
+      const isJackpot = isJackpotPrize(prize);
+      const isMiss = prize.tier === 'miss' || (!Number(prize.quota) && !prize.extraTicket);
+      li.className = isJackpot ? 'is-jackpot' : isMiss ? 'is-miss' : '';
+      const pct = formatPrizeOdds(prize, list);
+      li.innerHTML = `<span class="lz-w-odds-name">${escapeHtml(prizeWheelText(prize))}</span>${
+        pct ? `<strong class="lz-w-odds-val">${escapeHtml(pct)}</strong>` : ''
+      }`;
+      return li;
+    }),
+  );
 }
 
 function buildHalo(size) {
@@ -1591,50 +1627,199 @@ function preloadPrizeIcons() {
   );
 }
 
+function wheelSliceStyle(prize, index) {
+  const q = Number(prize.quota) || 0;
+  const tier = String(prize.tier || '').toLowerCase();
+  if (tier === 'legend' || q >= 10) {
+    return {
+      kind: 'legend',
+      grad: 'url(#lz-g-legend)',
+      ink: '#fef08a',
+      subInk: '#fcd34d',
+      ico: '#fde047',
+      ring: 'rgba(253,224,71,0.42)',
+      sub: prize.hint || '头奖算力',
+    };
+  }
+  if (tier === 'rare' || q >= 3) {
+    return {
+      kind: 'rare',
+      grad: 'url(#lz-g-royal)',
+      ink: '#ffffff',
+      subInk: '#dbeafe',
+      ico: '#fde047',
+      ring: 'rgba(255,255,255,0.32)',
+      sub: prize.hint || '高额大奖',
+    };
+  }
+  if (prize.extraTicket) {
+    return {
+      kind: 'bonus',
+      grad: 'url(#lz-g-mint)',
+      ink: '#065f46',
+      subInk: '#059669',
+      ico: '#059669',
+      ring: 'rgba(5,150,105,0.22)',
+      sub: prize.hint || '次数返还',
+    };
+  }
+  if (tier === 'miss' || q <= 0) {
+    return {
+      kind: 'miss',
+      grad: 'url(#lz-g-mist)',
+      ink: '#475569',
+      subInk: '#64748b',
+      ico: '#64748b',
+      ring: 'rgba(100,116,139,0.2)',
+      sub: prize.hint || '再接再厉',
+    };
+  }
+  if (q >= 1 || index % 2 === 1) {
+    return {
+      kind: 'uncommon',
+      grad: 'url(#lz-g-sky)',
+      ink: '#1e3a8a',
+      subInk: '#2563eb',
+      ico: '#2563eb',
+      ring: 'rgba(37,99,235,0.2)',
+      sub: prize.hint || 'API 额度',
+    };
+  }
+  return {
+    kind: 'common',
+    grad: 'url(#lz-g-champ)',
+    ink: '#78350f',
+    subInk: '#b45309',
+    ico: '#d97706',
+    ring: 'rgba(217,119,6,0.22)',
+    sub: prize.hint || 'API 额度',
+  };
+}
+
+function wheelGlyphPath(kind) {
+  if (kind === 'legend') return '<path d="M12 2C13 7.5 16.5 11 22 12C16.5 13 13 16.5 12 22C11 16.5 7.5 13 2 12C7.5 11 11 7.5 12 2Z"/>';
+  if (kind === 'rare') return '<path d="M6 3h12l4 6-10 13L2 9l4-6z"/>';
+  if (kind === 'bonus') return '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/>';
+  if (kind === 'miss') return '<circle cx="12" cy="12" r="9"/><path d="M8 15s1.5-1.5 4-1.5 4 1.5 4 1.5"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>';
+  return '<rect x="5" y="5" width="14" height="14" rx="3"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/><circle cx="12" cy="12" r="2.2"/>';
+}
+
 function buildWheel() {
   const el = $('lucky-wheel');
   if (!el || PAGE !== 'wheel') return;
   if (wheelFace()?.classList.contains('is-whirling')) return;
   const list = prizes();
-  const key = list.map((prize) => `${prize.id}:${prizeWheelText(prize)}:${prizeIconSrc(prize)}`).join('|');
+  const key = list
+    .map((prize) => `${prize.id}:${prizeWheelText(prize)}:${prize.quota || 0}:${prize.extraTicket ? 1 : 0}:${prize.hint || ''}`)
+    .join('|');
   if (key === wheelBuiltKey && wheelFace()) {
-    const face = wheelFace();
-    face.style.background = cssWheelGradient(list);
     return;
   }
   const n = Math.max(1, list.length);
+  const sliceDeg = 360 / n;
+  const cx = 250;
+  const cy = 250;
+  const r = 248;
+  const toRad = (deg) => ((deg - 90) * Math.PI) / 180;
   wheelBuiltKey = key;
-  el.classList.add('lz-w-css-wheel');
+
+  el.classList.remove('lz-w-css-wheel');
+  el.classList.add('lz-w-svg-wheel');
   el.replaceChildren();
+
   const face = document.createElement('div');
   face.className = 'lz-w-css-face';
   face.id = 'wheel-face';
   face.style.setProperty('--n', String(n));
   face.style.setProperty('--from', `${wheelAngle}deg`);
-  face.style.background = cssWheelGradient(list);
   face.style.transform = `rotate(${wheelAngle}deg)`;
+
+  let wedges = '';
+  let pegs = '';
+  let labels = '';
+  const compact = n >= 8;
+
   list.forEach((prize, i) => {
-    const node = document.createElement('div');
-    const angle = (i + 0.5) * (360 / n);
-    const flip = angle > 90 && angle < 270;
-    node.className = 'lz-w-css-prize';
-    if (flip) node.classList.add('is-flip');
-    node.style.setProperty('--a', `${angle}deg`);
-    node.style.setProperty('--flip', flip ? '180deg' : '0deg');
-    const img = document.createElement('img');
-    img.src = prizeIconSrc(prize, i);
-    img.alt = '';
-    img.draggable = false;
-    img.decoding = 'async';
-    img.loading = 'eager';
-    const label = document.createElement('span');
+    const startDeg = i * sliceDeg;
+    const endDeg = (i + 1) * sliceDeg;
+    const midDeg = startDeg + sliceDeg / 2;
+    const x1 = cx + r * Math.cos(toRad(startDeg));
+    const y1 = cy + r * Math.sin(toRad(startDeg));
+    const x2 = cx + r * Math.cos(toRad(endDeg));
+    const y2 = cy + r * Math.sin(toRad(endDeg));
+    const largeArc = sliceDeg > 180 ? 1 : 0;
+
+    const st = wheelSliceStyle(prize, i);
     const text = prizeWheelText(prize);
-    label.textContent = text;
-    if (text.length > 3) label.classList.add('is-long');
-    node.append(img, label);
-    face.append(node);
+    const isBig = st.kind === 'legend' || st.kind === 'rare';
+    const glyphFill = isBig ? st.ico : 'none';
+    const fontSize = compact
+      ? text.length > 4 ? 16 : 20
+      : text.length > 4 ? 19 : isBig ? 26 : 23;
+
+    wedges += `<path d="M ${cx} ${cy} L ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${largeArc} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z" fill="${st.grad}" stroke="#e2b857" stroke-width="2"/>`;
+
+    const px = cx + (r - 12) * Math.cos(toRad(startDeg));
+    const py = cy + (r - 12) * Math.sin(toRad(startDeg));
+    pegs += `<circle cx="${px.toFixed(2)}" cy="${py.toFixed(2)}" r="5.5" fill="#fde047" stroke="#b45309" stroke-width="1.3"/>`;
+    pegs += `<circle cx="${(px - 1.3).toFixed(2)}" cy="${(py - 1.3).toFixed(2)}" r="2" fill="#ffffff"/>`;
+
+    labels += `
+      <g transform="rotate(${midDeg} ${cx} ${cy})">
+        <circle cx="${cx}" cy="${compact ? 62 : 66}" r="${compact ? 17 : 20}" fill="${isBig ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.72)'}" stroke="${st.ring}" stroke-width="1.2"/>
+        <g transform="translate(${cx - (compact ? 10 : 12)}, ${compact ? 52 : 54})">
+          <svg width="${compact ? 20 : 24}" height="${compact ? 20 : 24}" viewBox="0 0 24 24" fill="${glyphFill}" stroke="${st.ico}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            ${wheelGlyphPath(st.kind)}
+          </svg>
+        </g>
+        <text x="${cx}" y="${compact ? 108 : 114}" text-anchor="middle" fill="${st.ink}" font-family="'Maple Mono NF CN', 'PingFang SC', monospace" font-size="${fontSize}" font-weight="800" style="font-variant-numeric: tabular-nums;${isBig ? ' filter: drop-shadow(0 2px 5px rgba(0,0,0,0.38));' : ''}">
+          ${escapeHtml(text)}
+        </text>
+        <text x="${cx}" y="${compact ? 127 : 135}" text-anchor="middle" fill="${st.subInk}" font-size="${compact ? 11 : 12}" font-weight="700" style="letter-spacing: 0.04em;">
+          ${escapeHtml(st.sub)}
+        </text>
+      </g>
+    `;
   });
+
+  face.innerHTML = `
+    <svg viewBox="0 0 500 500" aria-label="Synai996 AI 算力转盘盘面">
+      <defs>
+        <radialGradient id="lz-g-legend" cx="50%" cy="22%" r="78%">
+          <stop offset="0%" stop-color="#1e3a8a"/>
+          <stop offset="56%" stop-color="#172554"/>
+          <stop offset="100%" stop-color="#0f172a"/>
+        </radialGradient>
+        <radialGradient id="lz-g-royal" cx="50%" cy="22%" r="78%">
+          <stop offset="0%" stop-color="#6366f1"/>
+          <stop offset="100%" stop-color="#3730a3"/>
+        </radialGradient>
+        <radialGradient id="lz-g-sky" cx="50%" cy="22%" r="78%">
+          <stop offset="0%" stop-color="#e0f2fe"/>
+          <stop offset="100%" stop-color="#bae6fd"/>
+        </radialGradient>
+        <radialGradient id="lz-g-champ" cx="50%" cy="22%" r="78%">
+          <stop offset="0%" stop-color="#fffbeb"/>
+          <stop offset="100%" stop-color="#fde68a"/>
+        </radialGradient>
+        <radialGradient id="lz-g-mint" cx="50%" cy="22%" r="78%">
+          <stop offset="0%" stop-color="#ecfdf5"/>
+          <stop offset="100%" stop-color="#a7f3d0"/>
+        </radialGradient>
+        <radialGradient id="lz-g-mist" cx="50%" cy="22%" r="78%">
+          <stop offset="0%" stop-color="#f8fafc"/>
+          <stop offset="100%" stop-color="#e2e8f0"/>
+        </radialGradient>
+      </defs>
+      ${wedges}
+      <circle cx="${cx}" cy="${cy}" r="154" fill="none" stroke="rgba(226,184,87,0.35)" stroke-width="1.2" stroke-dasharray="4 5"/>
+      ${labels}
+      ${pegs}
+    </svg>
+  `;
+
   el.append(face);
+  renderWheelOddsStrip();
   placeWheelPin();
   if (!placeWheelPin.bound) {
     placeWheelPin.bound = true;
@@ -1820,12 +2005,12 @@ function applyActivityStamp(state = readState()) {
     return;
   }
   if (sold) {
-    if (tape) tape.textContent = '库存不足';
-    if (title) title.textContent = '请联系站长补货';
+    if (tape) tape.textContent = '暂时打烊';
+    if (title) title.textContent = '奖被抽空了';
     if (sub) {
       sub.innerHTML = state?.isAdmin
-        ? '有奖项兑换码用完了<br><a class="lz-w-stamp-admin" href="./admin.html">点这里去补库存</a>'
-        : '有奖项兑换码用完了<br>补货后即可继续抽';
+        ? '站长去进货了<br><a class="lz-w-stamp-admin" href="./admin.html">点这里去补库存</a>'
+        : '站长去进货了<br>转盘先歇一会儿';
     }
     if (note) {
       note.textContent = state?.isAdmin
@@ -1958,8 +2143,11 @@ function setBusy(busy, tickets) {
   document.querySelector('.lz-w-ornament')?.classList.toggle('is-spinning', busy);
   if (!btn || !label) return;
   btn.classList.toggle('is-busy', busy);
-  const idleLabel = PAGE === 'wheel' ? '立即抽奖' : '转一次';
-  label.textContent = idleLabel;
+  if (PAGE === 'wheel') {
+    label.innerHTML = busy ? '开奖<br>中…' : '立即<br>抽奖';
+  } else {
+    label.textContent = '转一次';
+  }
   if (busy) {
     btn.disabled = true;
     setDrawStatus(PAGE === 'wheel' ? '开奖中…' : '正在转');
@@ -3277,6 +3465,16 @@ async function bootHistory() {
   syncAuthUI(live);
 }
 
+const ADMIN_VIEW_TITLES = {
+  overview: '运营面板',
+  prizes: '奖项配置',
+  codes: '兑换码库存',
+  rules: '次数规则与补发',
+  gifts: '礼包发放',
+  users: '用户记录',
+  tickets: '次数流水',
+};
+
 function showAdminView(name) {
   document.querySelectorAll('.lz-ad-view').forEach((el) => {
     el.hidden = el.id !== `view-${name}`;
@@ -3284,6 +3482,10 @@ function showAdminView(name) {
   document.querySelectorAll('.lz-ad-nav button').forEach((btn) => {
     btn.classList.toggle('is-on', btn.dataset.view === name);
   });
+  const titleEl = $('ad-topbar-title');
+  if (titleEl && ADMIN_VIEW_TITLES[name]) {
+    titleEl.textContent = ADMIN_VIEW_TITLES[name];
+  }
 }
 
 function isoDay(d) {
@@ -3571,9 +3773,85 @@ function renderDashCharts() {
   paintBarChart('dash-chart-week', week);
 }
 
+function setCodeDrawerOpen(open) {
+  const mask = $('code-drawer-mask');
+  if (!mask) return;
+  mask.hidden = !open;
+  if (open) {
+    fillQuotaPrizeOptions('code-prize');
+    $('code-keys')?.focus();
+  }
+}
+
+function showRulesSubtab(sub) {
+  const mode = sub === 'wallet' ? 'wallet' : 'rule';
+  document.querySelectorAll('#rules-subtabs [data-rules-sub]').forEach((btn) => {
+    btn.classList.toggle('is-on', btn.dataset.rulesSub === mode);
+  });
+  const ruleCard = $('grant-rule-card');
+  const walletPane = $('rules-wallet-pane');
+  if (ruleCard) ruleCard.hidden = mode !== 'rule';
+  if (walletPane) walletPane.hidden = mode !== 'wallet';
+  if (mode === 'wallet') renderWalletLookup();
+}
+
+function renderAdminStockOverview() {
+  const list = adminCatalog().filter((p) => prizeKind(p) === 'quota' && p.enabled !== false);
+  const empty = list.filter((p) => (Number(p.stock) || 0) <= 0);
+  const low = list.filter((p) => {
+    const s = Number(p.stock) || 0;
+    return s > 0 && s <= 5;
+  });
+  const badge = $('nav-lowstock-badge');
+  const warnCount = empty.length + low.length;
+  if (badge) {
+    badge.hidden = warnCount === 0;
+    badge.textContent = String(warnCount);
+    badge.classList.toggle('is-critical', empty.length > 0);
+  }
+  const alertEl = $('overview-stock-alert');
+  const alertText = $('overview-stock-alert-text');
+  if (alertEl) {
+    alertEl.hidden = warnCount === 0;
+    alertEl.classList.toggle('is-warn', empty.length === 0 && low.length > 0);
+    if (alertText && warnCount > 0) {
+      if (empty.length > 0) {
+        alertText.textContent = `${empty.map((p) => p.label).join('、')} 已缺货，转盘已自动暂停，请尽快补导入兑换码。`;
+      } else {
+        alertText.textContent = `${low.map((p) => `${p.label}(余${p.stock})`).join('、')} 余量偏低（≤5），建议提前补货。`;
+      }
+    }
+  }
+  const card = $('overview-stock-card');
+  const bars = $('overview-stock-bars');
+  if (!card || !bars) return;
+  if (!list.length) {
+    card.hidden = true;
+    return;
+  }
+  card.hidden = false;
+  const maxStock = Math.max(20, ...list.map((p) => Number(p.stock) || 0));
+  bars.replaceChildren(
+    ...list.map((prize) => {
+      const stock = Number(prize.stock) || 0;
+      const pct = stock <= 0 ? 4 : Math.max(8, Math.min(100, Math.round((stock / maxStock) * 100)));
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `lz-ad-stock-item${stock <= 0 ? ' is-empty' : stock <= 5 ? ' is-low' : ''}`;
+      btn.innerHTML = `<div class="lz-ad-stock-item-head"><span>${escapeHtml(prize.label || '')}</span><strong>${stock <= 0 ? '缺货' : `${stock} 份`}</strong></div><div class="lz-ad-stock-meter"><i style="width:${pct}%"></i></div>`;
+      btn.addEventListener('click', () => {
+        openCodesView(prize.dbId);
+        if (stock <= 5) setCodeDrawerOpen(true);
+      });
+      return btn;
+    }),
+  );
+}
+
 async function renderAdminDashboard() {
   await hydrateDashOverview();
   renderDashPeriods();
+  renderAdminStockOverview();
   renderDashCharts();
   await renderDashPrizeTable();
   return renderDashDraws();
@@ -3996,7 +4274,7 @@ async function renderAdminCodes() {
   const meta = $('code-meta');
   if (meta) meta.textContent = data.total ? `共 ${data.total} 个兑换码` : '';
   if (!data.total) {
-    body.innerHTML = '<tr><td colspan="7">没有匹配的兑换码，可在右侧导入或粘贴入库</td></tr>';
+    body.innerHTML = '<tr><td colspan="7">没有匹配的兑换码，可点右上角「批量导入 / 粘贴兑换码」入库</td></tr>';
     renderPager($('admin-code-pager'), { total: 0, pages: 1, current: 1 }, () => {});
     return;
   }
@@ -4061,6 +4339,7 @@ function renderAdminPrizes() {
       return tr;
     }),
   );
+  renderAdminStockOverview();
 }
 
 let prizeSaveTimer = 0;
@@ -4604,6 +4883,7 @@ function syncEnabledControls(onFlag) {
   });
   const label = $('cfg-enabled-label');
   if (label) label.textContent = onFlag ? '开启中' : '已关闭';
+  $('cfg-enabled-overview')?.closest('.lz-ad-toggle-pill')?.classList.toggle('is-off', !onFlag);
   document.querySelector('.lz-ad-activity')?.classList.toggle('is-off', !onFlag);
   document.querySelector('.lz-ad-hero-row')?.classList.toggle('is-off', !onFlag);
 }
@@ -5071,6 +5351,27 @@ async function bootAdmin() {
     showAdminView('users');
     showUserTab('draws');
     refreshUsers();
+  });
+  on('overview-goto-restock', 'click', () => {
+    const firstLow = adminCatalog()
+      .filter((p) => prizeKind(p) === 'quota' && p.enabled !== false)
+      .sort((a, b) => (Number(a.stock) || 0) - (Number(b.stock) || 0))[0];
+    openCodesView(firstLow?.dbId);
+    setCodeDrawerOpen(true);
+  });
+  on('overview-open-codes', 'click', () => openCodesView());
+  on('open-code-drawer', 'click', () => setCodeDrawerOpen(true));
+  on('close-code-drawer', 'click', () => setCodeDrawerOpen(false));
+  $('code-drawer-mask')?.addEventListener('click', (event) => {
+    if (event.target.id === 'code-drawer-mask') setCodeDrawerOpen(false);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && $('code-drawer-mask') && !$('code-drawer-mask').hidden) {
+      setCodeDrawerOpen(false);
+    }
+  });
+  document.querySelectorAll('#rules-subtabs [data-rules-sub]').forEach((btn) => {
+    btn.addEventListener('click', () => showRulesSubtab(btn.dataset.rulesSub));
   });
   on('add-prize', 'click', async () => {
     if (LotteryClient.mode === 'api') {

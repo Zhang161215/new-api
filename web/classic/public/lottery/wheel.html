@@ -15,21 +15,13 @@
         } catch (e) {}
       })();
     </script>
-    <link rel="preload" as="style" href="./wheel.css?v=w59" />
-    <link rel="preload" as="script" href="./lottery.js?v=w83" />
+    <link rel="preload" as="style" href="./wheel.css?v=w61" />
+    <link rel="preload" as="script" href="./lottery.js?v=w85" />
     <link rel="preload" as="audio" href="./assets/bgm.mp3?v=b1" />
-    <link rel="preload" as="image" href="./assets/ui/wheel-outer.png" fetchpriority="high" />
-    <link rel="preload" as="image" href="./assets/ui/title.png?v=t6" fetchpriority="high" />
-    <link rel="preload" as="image" href="./assets/ui/draw-button.png" fetchpriority="high" />
-    <link rel="preload" as="image" href="./assets/ui/prize-amount.png" />
-    <link rel="preload" as="image" href="./assets/ui/prize-thanks.png" />
-    <link rel="preload" as="image" href="./assets/ui/prize-again.png" />
-    <link rel="preload" as="image" href="./assets/ui/prize-grand.png" />
-    <link rel="preload" as="image" href="./assets/ui/prize-extra.png" />
-    <link rel="preload" as="image" href="./assets/ui/prize-ticket.png" />
+    <link rel="preload" as="image" href="./assets/ui/wheel-outer-daytime.webp?v=w61" fetchpriority="high" />
     <link rel="stylesheet" href="./lottery.css" />
-    <link rel="stylesheet" href="./wheel.css?v=w59" />
-    <script defer src="./lottery.js?v=w83"></script>
+    <link rel="stylesheet" href="./wheel.css?v=w61" />
+    <script defer src="./lottery.js?v=w85"></script>
     <script defer src="./fx.js?v=f3"></script>
   </head>
   <body class="lz-w-app" data-page="wheel">
@@ -79,21 +71,35 @@
 
       <section class="lz-w-arena">
         <div class="lz-w-hero">
-          <img class="lz-w-title" src="./assets/ui/title.png?v=t6" alt="幸运大抽奖" draggable="false" fetchpriority="high" decoding="async" />
+          <div class="lz-w-hero-kicker">AI 算力幸运转盘 · 真实库存自动入账</div>
+          <h1 class="lz-w-title-text">幸运大抽奖</h1>
         </div>
 
         <div class="lz-w-ornament lz-w-wheel-stack" aria-label="抽奖转盘">
-          <img class="lz-w-wheel-outer" src="./assets/ui/wheel-outer.png" alt="" draggable="false" fetchpriority="high" decoding="async" />
-          <div class="lz-w-wheel-core">
-            <div class="lz-w-disc" aria-hidden="false">
-              <div id="lucky-wheel" role="img" aria-label="额度抽奖转盘"></div>
-            </div>
-            <div class="lz-w-hub">
-              <img class="lz-w-spin-art" src="./assets/ui/draw-button.png" alt="" draggable="false" fetchpriority="high" decoding="async" />
-              <button class="lz-w-spin" id="draw-btn" type="button">
-                <span id="draw-label">立即抽奖</span>
-              </button>
-            </div>
+          <div class="lz-w-holo-orbit-1" aria-hidden="true"></div>
+          <div class="lz-w-holo-orbit-2" aria-hidden="true"></div>
+          <div class="lz-w-disc" aria-hidden="false">
+            <div id="lucky-wheel" role="img" aria-label="额度抽奖转盘"></div>
+            <div class="lz-w-disc-sheen" aria-hidden="true"></div>
+          </div>
+          <img class="lz-w-wheel-outer" src="./assets/ui/wheel-outer-daytime.webp?v=w61" alt="" draggable="false" fetchpriority="high" decoding="async" />
+          <div class="lz-w-pointer-needle" aria-hidden="true">
+            <svg viewBox="0 0 36 46" width="34" height="44">
+              <defs>
+                <linearGradient id="lz-ptr-gold" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#fffbeb" />
+                  <stop offset="48%" stop-color="#f5b93b" />
+                  <stop offset="100%" stop-color="#b45309" />
+                </linearGradient>
+              </defs>
+              <path d="M18 44L5 15C3.5 9.5 7.6 4 13.4 4h9.2C28.4 4 32.5 9.5 31 15L18 44z" fill="url(#lz-ptr-gold)" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="round" />
+              <circle cx="18" cy="14" r="4.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.8" />
+            </svg>
+          </div>
+          <div class="lz-w-hub">
+            <button class="lz-w-spin lz-w-spin-3d" id="draw-btn" type="button">
+              <span class="lz-w-spin-grid" id="draw-label">立即<br>抽奖</span>
+            </button>
           </div>
           <div class="lz-w-jackpot-fx" id="jackpot-fx" hidden aria-hidden="true"></div>
           <div class="lz-w-stamp" id="stock-stamp" hidden>
@@ -110,6 +116,8 @@
             </div>
           </div>
         </div>
+
+        <ul class="lz-w-odds-strip" id="prize-odds-strip" aria-label="奖池与中奖概率"></ul>
 
         <p class="lz-w-draw-status" id="draw-status" hidden></p>
         <p class="lz-w-toast" id="draw-toast" hidden role="status"></p>

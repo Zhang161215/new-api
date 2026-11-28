@@ -2422,3 +2422,320 @@ body.lz-w-app .lz-w-dialog #result-close.is-secondary {
     animation: none;
   }
 }
+
+/* ============================================================================
+   v2 旗舰日间 3D 雕塑转盘精修覆写（Maple Mono NF CN + 2×2 实体按钮 + 概率带 + 实底弹窗）
+   ============================================================================ */
+body.lz-w-app {
+  --w-display: 'Maple Mono NF CN', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+
+.lz-w-hero {
+  width: min(92%, 520px);
+  margin: -14px auto 8px;
+  gap: 6px;
+  text-align: center;
+}
+
+.lz-w-hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(47, 109, 255, 0.2);
+  color: #2f6dff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  box-shadow: 0 4px 12px rgba(47, 109, 255, 0.08);
+}
+
+.lz-w-title-text {
+  margin: 0;
+  font-family: var(--w-display);
+  font-size: clamp(30px, 3.8vw, 44px);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.12;
+  background: linear-gradient(180deg, #1b3a80 0%, #2563eb 54%, #0284c7 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 4px 10px rgba(37, 99, 235, 0.16));
+}
+
+/* 新 3D 雕塑外框精确居中与层级（内盘 z-index:4，3D 外圈 z-index:10 严丝合缝盖住盘边，中心按钮 z-index:18，指针 z-index:22） */
+.lz-w-holo-orbit-1 {
+  position: absolute;
+  inset: -4.2%;
+  border-radius: 50%;
+  border: 1.5px dashed rgba(37, 99, 235, 0.26);
+  pointer-events: none;
+  z-index: 1;
+  animation: lzHoloSpinCW 28s linear infinite;
+}
+
+.lz-w-holo-orbit-1::before,
+.lz-w-holo-orbit-1::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transform: translateX(-50%);
+}
+
+.lz-w-holo-orbit-1::before {
+  top: -4px;
+  background: #38bdf8;
+  box-shadow: 0 0 10px #0ea5e9;
+}
+
+.lz-w-holo-orbit-1::after {
+  bottom: -4px;
+  background: #f59e0b;
+  box-shadow: 0 0 10px #f59e0b;
+}
+
+.lz-w-holo-orbit-2 {
+  position: absolute;
+  inset: -1.4%;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 1;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 60deg,
+    rgba(14, 165, 233, 0.65) 100deg,
+    rgba(255, 255, 255, 0.95) 108deg,
+    transparent 115deg 240deg,
+    rgba(245, 158, 11, 0.65) 280deg,
+    rgba(255, 255, 255, 0.95) 288deg,
+    transparent 295deg 360deg
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 1.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 1.5px));
+  animation: lzHoloSpinCCW 6.5s linear infinite;
+}
+
+.lz-w-ornament.is-spinning .lz-w-holo-orbit-1 {
+  animation-duration: 3.4s;
+  border-color: rgba(37, 99, 235, 0.55);
+}
+
+.lz-w-ornament.is-spinning .lz-w-holo-orbit-2 {
+  animation-duration: 0.9s;
+}
+
+@keyframes lzHoloSpinCW { to { transform: rotate(360deg); } }
+@keyframes lzHoloSpinCCW { to { transform: rotate(-360deg); } }
+
+.lz-w-wheel-stack .lz-w-disc {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 4;
+  width: 63.8%;
+  height: 63.8%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: inset 0 0 18px rgba(15, 23, 42, 0.16);
+}
+
+.lz-w-disc-sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 5;
+  background:
+    radial-gradient(ellipse 76% 40% at 50% 6%, rgba(255, 255, 255, 0.36), transparent 62%),
+    radial-gradient(circle at 50% 50%, transparent 66%, rgba(15, 23, 42, 0.12) 100%);
+}
+
+.lz-w-wheel-stack .lz-w-wheel-outer {
+  z-index: 10;
+}
+
+.lz-w-wheel-stack .lz-w-hub {
+  z-index: 18;
+}
+
+.lz-w-wheel-stack #lucky-wheel.lz-w-svg-wheel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.lz-w-wheel-stack #lucky-wheel.lz-w-svg-wheel .lz-w-css-face {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
+.lz-w-wheel-stack #lucky-wheel.lz-w-svg-wheel .lz-w-css-face::before,
+.lz-w-wheel-stack #lucky-wheel.lz-w-svg-wheel .lz-w-css-face::after {
+  display: none;
+}
+
+.lz-w-wheel-stack #lucky-wheel.lz-w-svg-wheel svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.lz-w-pointer-needle {
+  position: absolute;
+  left: 50%;
+  top: 12.2%;
+  z-index: 22;
+  transform: translateX(-50%);
+  pointer-events: none;
+  filter: drop-shadow(0 6px 12px rgba(15, 23, 42, 0.34));
+}
+
+.lz-w-ornament.is-soldout .lz-w-disc {
+  filter: saturate(0.58) brightness(0.92);
+}
+
+/* 盘面奖项金额字体采用 Maple Mono NF CN */
+.lz-w-css-prize span {
+  font-family: var(--w-display);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+/* 中心实体 3D 雕塑 2×2「立即 / 抽奖」按钮（无多余次数胶囊） */
+.lz-w-hub .lz-w-spin.lz-w-spin-3d {
+  width: 23.5%;
+  height: 23.5%;
+  border-radius: 50%;
+  border: 4px solid #fff8dc;
+  background:
+    radial-gradient(circle at 32% 24%, #67e8f9 0%, #2563eb 52%, #1d4ed8 100%);
+  box-shadow:
+    0 0 0 4px rgba(245, 185, 59, 0.85),
+    0 12px 26px rgba(37, 99, 235, 0.48),
+    inset 0 3px 6px rgba(255, 255, 255, 0.55),
+    inset 0 -5px 10px rgba(15, 23, 42, 0.35);
+  display: grid;
+  place-items: center;
+  transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1), filter 0.18s ease, box-shadow 0.2s ease;
+}
+
+.lz-w-hub .lz-w-spin.lz-w-spin-3d:hover:not(:disabled):not(.is-busy) {
+  transform: translate(-50%, -50%) scale(1.05);
+  filter: brightness(1.06);
+  box-shadow:
+    0 0 0 4px rgba(251, 191, 36, 0.95),
+    0 16px 32px rgba(37, 99, 235, 0.55),
+    inset 0 3px 6px rgba(255, 255, 255, 0.65);
+}
+
+.lz-w-hub .lz-w-spin.lz-w-spin-3d:active:not(:disabled) {
+  transform: translate(-50%, -50%) scale(0.95);
+}
+
+.lz-w-hub .lz-w-spin.lz-w-spin-3d #draw-label.lz-w-spin-grid {
+  position: static;
+  transform: none;
+  width: auto;
+  opacity: 1;
+  color: #ffffff;
+  font-family: var(--w-display);
+  font-size: clamp(14px, 1.8vw, 18px);
+  font-weight: 800;
+  line-height: 1.18;
+  letter-spacing: 0.1em;
+  text-shadow: 0 2px 6px rgba(10, 28, 72, 0.48);
+}
+
+/* 转盘下方单行紧凑奖池概率带（不在转盘扇区上堆概率） */
+.lz-w-odds-strip {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 6px 10px;
+  width: min(100%, 540px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(47, 109, 255, 0.15);
+  box-shadow: 0 6px 20px rgba(47, 109, 255, 0.07);
+}
+
+.lz-w-odds-strip:empty {
+  display: none;
+}
+
+.lz-w-odds-strip li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #f3f7ff;
+  border: 1px solid rgba(47, 109, 255, 0.14);
+  font-size: 11.5px;
+  color: #334155;
+  font-family: var(--w-display);
+}
+
+.lz-w-odds-strip li.is-jackpot {
+  background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
+  border-color: rgba(217, 119, 6, 0.36);
+  color: #92400e;
+}
+
+.lz-w-odds-strip li.is-miss {
+  background: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.25);
+  color: #64748b;
+}
+
+.lz-w-odds-name {
+  font-weight: 700;
+}
+
+.lz-w-odds-val {
+  color: #2563eb;
+  font-weight: 800;
+}
+
+.lz-w-odds-strip li.is-jackpot .lz-w-odds-val {
+  color: #b45309;
+}
+
+.lz-w-odds-strip li.is-miss .lz-w-odds-val {
+  color: #64748b;
+}
+
+/* 结果弹窗高对比实底白卡（彻底解决透明看不清文字的问题） */
+body.lz-w-app .lz-modal {
+  background: rgba(15, 23, 42, 0.56);
+  backdrop-filter: blur(8px);
+}
+
+body.lz-w-app .lz-w-dialog {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  box-shadow: 0 28px 70px rgba(15, 23, 42, 0.28);
+}
+
+body.lz-w-app .lz-w-dialog.is-jackpot {
+  background: linear-gradient(180deg, #ffffff 0%, #fff8e1 100%);
+}

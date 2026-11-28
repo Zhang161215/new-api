@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light" />
     <meta name="theme-color" content="#f4f6fa" />
     <title>抽奖管理</title>
-    <link rel="stylesheet" href="./admin.css?v=a25" />
+    <link rel="stylesheet" href="./admin.css?v=a26" />
   </head>
   <body class="lz-admin" data-page="admin">
     <aside class="lz-ad-side">
@@ -18,52 +18,87 @@
         </span>
       </a>
       <nav class="lz-ad-nav" aria-label="管理">
-        <button type="button" data-view="overview" class="is-on">面板</button>
-        <button type="button" data-view="prizes">奖项配置</button>
-        <button type="button" data-view="codes">兑换码</button>
-        <button type="button" data-view="rules">次数规则</button>
-        <button type="button" data-view="gifts">礼包发放</button>
-        <button type="button" data-view="users">用户记录</button>
-        <button type="button" data-view="tickets">次数流水</button>
+        <span class="lz-ad-nav-group">运营监控</span>
+        <button type="button" data-view="overview" class="is-on"><span>运营面板</span></button>
+        <span class="lz-ad-nav-group">奖池与库存</span>
+        <button type="button" data-view="prizes"><span>奖项配置</span></button>
+        <button type="button" data-view="codes"><span>兑换码库存</span><em class="lz-ad-nav-badge" id="nav-lowstock-badge" hidden>0</em></button>
+        <span class="lz-ad-nav-group">规则与发放</span>
+        <button type="button" data-view="rules"><span>次数规则</span></button>
+        <button type="button" data-view="gifts"><span>礼包发放</span></button>
+        <span class="lz-ad-nav-group">记录与对账</span>
+        <button type="button" data-view="users"><span>用户记录</span></button>
+        <button type="button" data-view="tickets"><span>次数流水</span></button>
       </nav>
-      <a class="lz-ad-back" href="/lottery/wheel.html?play=1">返回用户抽奖页</a>
+      <a class="lz-ad-back" href="/lottery/wheel.html?play=1">← 返回用户抽奖页</a>
     </aside>
 
     <main class="lz-ad-main">
+      <!-- 顶部全局快捷控制栏（统一收口三组核心开关，不再在多页重复堆叠） -->
+      <div class="lz-ad-global-bar">
+        <div class="lz-ad-global-title" id="ad-topbar-title">运营面板</div>
+        <div class="lz-ad-global-switches">
+          <label class="lz-ad-mini-switch lz-ad-toggle-pill">
+            <span class="lz-ad-toggle-k">抽奖</span>
+            <span class="lz-ad-toggle-dot" aria-hidden="true"></span>
+            <span id="cfg-enabled-label">开启中</span>
+            <select id="cfg-enabled-overview" aria-label="抽奖开关">
+              <option value="1">开启</option>
+              <option value="0">关闭</option>
+            </select>
+          </label>
+          <label class="lz-ad-mini-switch lz-ad-toggle-pill is-broadcast">
+            <span class="lz-ad-toggle-k">群播报</span>
+            <span class="lz-ad-toggle-dot" aria-hidden="true"></span>
+            <span id="cfg-broadcast-label">播报开启</span>
+            <select id="cfg-broadcast-overview" aria-label="抽奖播报">
+              <option value="1">开启</option>
+              <option value="0">关闭</option>
+            </select>
+          </label>
+          <label class="lz-ad-mini-switch lz-ad-toggle-pill is-auto-redeem">
+            <span class="lz-ad-toggle-k">入账</span>
+            <span class="lz-ad-toggle-dot" aria-hidden="true"></span>
+            <span id="cfg-auto-redeem-label">自动入账</span>
+            <select id="cfg-auto-redeem-overview" aria-label="中奖自动入账">
+              <option value="1">开启</option>
+              <option value="0">关闭</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
       <section class="lz-ad-view" id="view-overview">
         <header class="lz-ad-hero lz-ad-hero-row">
-          <h1>抽奖面板</h1>
+          <div>
+            <h1>运营总览</h1>
+            <p>实时掌握抽取趋势、奖池库存水位与最新中奖入账明细。</p>
+          </div>
           <div class="lz-ad-hero-tools">
             <div class="lz-ad-tabs" id="dash-period-tabs" role="tablist" aria-label="统计周期">
               <button type="button" data-dash-period="today" class="is-on">今日</button>
               <button type="button" data-dash-period="week">本周</button>
               <button type="button" data-dash-period="all">累计</button>
             </div>
-            <label class="lz-ad-mini-switch">
-              <span id="cfg-enabled-label">开启中</span>
-              <select id="cfg-enabled-overview" aria-label="抽奖开关">
-                <option value="1">开启</option>
-                <option value="0">关闭</option>
-              </select>
-            </label>
-            <label class="lz-ad-mini-switch is-broadcast">
-              <span id="cfg-broadcast-label">播报开启</span>
-              <select id="cfg-broadcast-overview" aria-label="抽奖播报">
-                <option value="1">开启</option>
-                <option value="0">关闭</option>
-              </select>
-            </label>
-            <label class="lz-ad-mini-switch is-auto-redeem">
-              <span id="cfg-auto-redeem-label">自动入账</span>
-              <select id="cfg-auto-redeem-overview" aria-label="中奖自动入账">
-                <option value="1">开启</option>
-                <option value="0">关闭</option>
-              </select>
-            </label>
           </div>
         </header>
         <p class="lz-ad-hint" id="cfg-enabled-msg"></p>
+        <div class="lz-ad-stock-alert" id="overview-stock-alert" hidden>
+          <div class="lz-ad-stock-alert-copy">
+            <strong>库存预警</strong>
+            <span id="overview-stock-alert-text">有奖项兑换码余量不足，缺货将暂停全盘抽奖。</span>
+          </div>
+          <button type="button" class="lz-ad-btn" id="overview-goto-restock">去补兑换码</button>
+        </div>
         <ul class="lz-ad-kpis" id="dash-kpis"></ul>
+        <div class="lz-ad-card lz-ad-stock-overview" id="overview-stock-card" hidden>
+          <div class="lz-ad-toolbar">
+            <h2>奖池库存水位</h2>
+            <p class="lz-ad-meta">任意额度奖库存归零时转盘将自动暂停，保障概率公平</p>
+            <button type="button" class="lz-ad-ghost" id="overview-open-codes">管理兑换码</button>
+          </div>
+          <div class="lz-ad-stock-bars" id="overview-stock-bars"></div>
+        </div>
         <div class="lz-ad-charts">
           <div class="lz-ad-card">
             <h2>今日奖项</h2>
@@ -130,14 +165,17 @@
       </section>
 
       <section class="lz-ad-view" id="view-codes" hidden>
-        <header class="lz-ad-hero">
-          <h1>兑换码</h1>
-          <p>查库存和发放，或导入兑换页下载的 txt。文件名如 0.5.txt、1.txt、3.txt、10.txt 会自动对应额度奖。缺货时转盘会暂停，补货后自动恢复。</p>
+        <header class="lz-ad-hero lz-ad-hero-row">
+          <div>
+            <h1>兑换码库存</h1>
+            <p>查库存和发放，或批量导入兑换页下载的 txt（如 0.5.txt、1.txt、10.txt 自动识别对应额度奖）。缺货时转盘自动暂停，补货后恢复。</p>
+          </div>
+          <button type="button" class="lz-ad-btn" id="open-code-drawer">+ 批量导入 / 粘贴兑换码</button>
         </header>
-        <div class="lz-ad-codes-split">
+        <div class="lz-ad-codes-wide">
           <div class="lz-ad-card lz-ad-codes-list">
             <div class="lz-ad-toolbar">
-              <h2>库存与发放</h2>
+              <h2>库存与发放记录</h2>
             </div>
             <div class="lz-ad-code-chips" id="code-stock-chips"></div>
             <div class="lz-ad-filters">
@@ -176,16 +214,21 @@
             </div>
             <div class="lz-ad-pager" id="admin-code-pager"></div>
           </div>
-          <div class="lz-ad-card lz-ad-add-codes-card" id="code-import-card">
-            <h2>录入兑换码</h2>
-            <p class="lz-ad-note">支持兑换页下载的 txt：一行一个码。也可直接粘贴。中奖只发码，用户到充值页自行兑换。</p>
+        </div>
+        <div class="lz-ad-drawer-mask" id="code-drawer-mask" hidden>
+          <div class="lz-ad-card lz-ad-add-codes-card lz-ad-drawer" id="code-import-card" role="dialog" aria-modal="true" aria-label="录入兑换码">
+            <div class="lz-ad-drawer-head">
+              <h2>批量导入 / 粘贴兑换码</h2>
+              <button type="button" class="lz-ad-ghost" id="close-code-drawer">关闭</button>
+            </div>
+            <p class="lz-ad-note">支持拖拽或选择兑换页下载的 txt（一行一个码），也可直接粘贴。自动按文件名匹配额度奖。</p>
             <div class="lz-ad-add-codes">
               <label>
                 <span>额度奖</span>
                 <select id="code-prize"></select>
               </label>
               <label class="lz-ad-file">
-                <span>从文件导入</span>
+                <span>从文件导入（支持多选或拖拽到此抽屉）</span>
                 <input id="code-file" type="file" accept=".txt,.csv,text/plain,text/csv" multiple />
               </label>
               <div class="lz-ad-import-list" id="code-import-list" hidden></div>
@@ -197,7 +240,7 @@
               <p class="lz-ad-hint" id="code-msg" hidden></p>
               <div class="lz-ad-stock-actions">
                 <button type="button" class="lz-ad-ghost" id="code-import-all" hidden>按文件全部入库</button>
-                <button type="button" class="lz-ad-btn" id="code-submit">入库</button>
+                <button type="button" class="lz-ad-btn" id="code-submit">确认入库</button>
               </div>
             </div>
           </div>
@@ -205,11 +248,17 @@
       </section>
 
       <section class="lz-ad-view" id="view-rules" hidden>
-        <header class="lz-ad-hero">
-          <h1>次数规则</h1>
-          <p>活动开关、支付送次数规则，以及查用户次数和手动补发。</p>
+        <header class="lz-ad-hero lz-ad-hero-row">
+          <div>
+            <h1>次数规则与补发</h1>
+            <p>配置支付送次数规则与防刷窗口，或查询用户剩余次数进行手动补发。全局开关已收口至顶部栏。</p>
+          </div>
+          <div class="lz-ad-tabs" id="rules-subtabs" role="tablist" aria-label="次数规则子页">
+            <button type="button" data-rules-sub="rule" class="is-on">支付送次数规则</button>
+            <button type="button" data-rules-sub="wallet">查询与手动补发</button>
+          </div>
         </header>
-        <div class="lz-ad-card lz-ad-rules-cfg">
+        <div class="lz-ad-card lz-ad-rules-cfg" hidden>
           <label>
             <span>抽奖开关</span>
             <select id="cfg-enabled">
@@ -231,7 +280,7 @@
               <option value="0">关闭</option>
             </select>
           </label>
-          <p class="lz-ad-hint" id="cfg-rules-msg">关掉抽奖后不能抽，但支付仍会送次数；关掉播报期间抽中的不会补发；关掉自动入账后，中奖只发兑换码，由用户自己兑换。</p>
+          <p class="lz-ad-hint" id="cfg-rules-msg"></p>
         </div>
         <div class="lz-ad-card lz-ad-grant-rule" id="grant-rule-card">
           <div class="lz-ad-rule-head">
@@ -317,7 +366,7 @@
             <p class="lz-ad-hint" id="rule-msg"></p>
           </div>
         </div>
-        <div class="lz-ad-rules-split">
+        <div class="lz-ad-rules-split" id="rules-wallet-pane" hidden>
           <div class="lz-ad-card lz-ad-lookup">
             <h2>查询用户次数</h2>
             <p class="lz-ad-note">用用户 ID 或用户名查找。留空点查询会列出已有抽奖次数的用户。点一行填入右侧补发。</p>
@@ -600,6 +649,6 @@
       </div>
     </div>
 
-    <script src="./lottery.js?v=w83"></script>
+    <script src="./lottery.js?v=w85"></script>
   </body>
 </html>

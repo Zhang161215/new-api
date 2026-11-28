@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -178,12 +179,24 @@ func lotteryLogDTO(row model.LotteryTicketLog) gin.H {
 }
 
 func userFacingPrizes(prizes []model.LotteryPrize) []gin.H {
+	totalWeight := 0
+	for _, p := range prizes {
+		if p.Enabled && p.Weight > 0 {
+			totalWeight += p.Weight
+		}
+	}
 	out := make([]gin.H, 0, len(prizes))
 	for _, p := range prizes {
 		if !p.Enabled {
 			continue
 		}
-		out = append(out, lotteryPrizeDTO(p, false))
+		item := lotteryPrizeDTO(p, false)
+		odds := 0.0
+		if totalWeight > 0 && p.Weight > 0 {
+			odds = math.Round((float64(p.Weight)/float64(totalWeight))*10000) / 100
+		}
+		item["odds"] = odds
+		out = append(out, item)
 	}
 	return out
 }
