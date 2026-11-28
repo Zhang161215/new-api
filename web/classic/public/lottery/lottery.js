@@ -1568,21 +1568,52 @@ function formatPrizeOdds(prize, list) {
 
 function renderWheelOddsStrip() {
   const strip = $('prize-odds-strip');
+  const rateEl = $('odds-win-rate');
   if (!strip || PAGE !== 'wheel') return;
   const list = prizes();
   if (!list.length) {
     strip.replaceChildren();
+    if (rateEl) rateEl.textContent = '中奖率 —';
     return;
   }
+  const hasServerOdds = list.some((p) => p.odds !== null && p.odds !== undefined && Number.isFinite(Number(p.odds)));
+  const total = totalWeight(list) || 1;
+  let winRate = 0;
+  list.forEach((p) => {
+    const isMiss = p.tier === 'miss' || (!Number(p.quota) && !p.extraTicket);
+    if (isMiss) return;
+    if (hasServerOdds && Number.isFinite(Number(p.odds))) winRate += Number(p.odds);
+    else winRate += (Math.max(0, Number(p.weight) || 0) / total) * 100;
+  });
+  if (rateEl) {
+    const rounded = Math.round(winRate * 10) / 10;
+    rateEl.textContent = `中奖率 ${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}%`;
+  }
+
+  const order = { legend: 0, rare: 1, uncommon: 2, common: 3, bonus: 4, miss: 5 };
+  const dotColor = { legend: '#f59e0b', rare: '#4f46e5', uncommon: '#2563eb', common: '#0ea5e9', bonus: '#10b981', miss: '#94a3b8' };
+  const pctColor = { legend: '#b45309', rare: '#4338ca', uncommon: '#1d4ed8', common: '#0369a1', bonus: '#047857', miss: '#64748b' };
+  const sorted = [...list].sort((a, b) => {
+    const ka = wheelSliceStyle(a, 0).kind;
+    const kb = wheelSliceStyle(b, 0).kind;
+    return (order[ka] ?? 9) - (order[kb] ?? 9);
+  });
+
   strip.replaceChildren(
-    ...list.map((prize) => {
+    ...sorted.map((prize, i) => {
       const li = document.createElement('li');
-      const isJackpot = isJackpotPrize(prize);
-      const isMiss = prize.tier === 'miss' || (!Number(prize.quota) && !prize.extraTicket);
-      li.className = isJackpot ? 'is-jackpot' : isMiss ? 'is-miss' : '';
+      const st = wheelSliceStyle(prize, i);
+      li.className = 'v4-odds-chip';
+      li.dataset.prizeId = String(prize.id);
       const pct = formatPrizeOdds(prize, list);
-      li.innerHTML = `<span class="lz-w-odds-name">${escapeHtml(prizeWheelText(prize))}</span>${
-        pct ? `<strong class="lz-w-odds-val">${escapeHtml(pct)}</strong>` : ''
+      const shortName = prize.extraTicket
+        ? '再抽'
+        : st.kind === 'miss'
+          ? '未中'
+          : prizeWheelText(prize).replace(/\.00$/, '').replace(/\.50$/, '.5');
+      li.title = `${prize.label || prizeWheelText(prize)}：中奖概率 ${pct}`;
+      li.innerHTML = `<i class="v4-odds-dot" style="background:${dotColor[st.kind] || '#3b82f6'}"></i><span class="v4-odds-name">${escapeHtml(shortName)}</span>${
+        pct ? `<strong class="v4-odds-val" style="color:${pctColor[st.kind] || '#1d4ed8'}">${escapeHtml(pct)}</strong>` : ''
       }`;
       return li;
     }),
@@ -1874,7 +1905,10 @@ function renderWinFeed(feed) {
   list.replaceChildren(
     ...rows.map((row) => {
       const li = document.createElement('li');
-      li.innerHTML = `<span class="who">${escapeHtml(row.who)}</span><span class="prize">${escapeHtml(row.label)}</span><time datetime="${new Date(row.at).toISOString()}">${clock(row.at)}</time>`;
+      const isHigh = Number(row.quota) >= 3 || /\$10|\$5|\$3/.test(String(row.label || ''));
+      if (isHigh) li.className = 'is-jackpot';
+      const ts = clock(row.at).slice(0, 5);
+      li.innerHTML = `<span class="who">${escapeHtml(row.who)}</span><span class="prize">${escapeHtml(row.label)}</span><time datetime="${new Date(row.at).toISOString()}">${ts}</time>`;
       return li;
     }),
   );
@@ -1890,21 +1924,22 @@ function scheduleSidePanelSync() {
 }
 
 function syncSidePanels() {
-  const panels = [...document.querySelectorAll('.lz-w-panel-side')];
-  if (panels.length < 2) return;
   const list = $('win-feed');
-  list?.querySelectorAll('[data-clone="1"]').forEach((node) => node.remove());
-  list?.classList.remove('is-looping');
-  const left = panels[0];
-  const right = panels[1];
-  left.style.height = '';
-  left.style.maxHeight = '';
-  right.style.height = '';
-  right.style.maxHeight = '';
-  const h = left.offsetHeight;
-  if (h > 0) {
-    right.style.height = `${h}px`;
-    right.style.maxHeight = `${h}px`;
+  const panels = [...document.querySelectorAll('.lz-w-panel-side')];
+  if (panels.length >= 2) {
+    list?.querySelectorAll('[data-clone="1"]').forEach((node) => node.remove());
+    list?.classList.remove('is-looping');
+    const left = panels[0];
+    const right = panels[1];
+    left.style.height = '';
+    left.style.maxHeight = '';
+    right.style.height = '';
+    right.style.maxHeight = '';
+    const h = left.offsetHeight;
+    if (h > 0) {
+      right.style.height = `${h}px`;
+      right.style.maxHeight = `${h}px`;
+    }
   }
   if (list) setupFeedMarquee(list);
 }
@@ -1939,28 +1974,81 @@ function setupFeedMarquee(list) {
   list.style.setProperty('--feed-ms', `${Math.max(16, seeds.length * 2.4)}s`);
 }
 
+function renderGrantRuleCard(rule, state) {
+  const grid = $('grant-tier-grid');
+  const badge = $('rule-mode-badge');
+  if (!grid) return;
+  if (rule.mode === 'tiers' && rule.tiers.length) {
+    if (badge) badge.textContent = '按最高档';
+    grid.className = `v4-tier-grid${rule.tiers.length === 1 ? ' is-single' : rule.tiers.length === 2 ? ' is-pair' : ''}`;
+    const lastIdx = rule.tiers.length - 1;
+    grid.innerHTML = rule.tiers
+      .map((t, idx) => {
+        const cls =
+          idx === lastIdx && rule.tiers.length > 1
+            ? 'is-top'
+            : idx >= Math.floor(rule.tiers.length * 0.65)
+              ? 'is-high'
+              : idx >= Math.floor(rule.tiers.length * 0.35)
+                ? 'is-mid'
+                : '';
+        return `<div class="v4-tier-item ${cls}"><div class="v4-tier-min">满 ${escapeHtml(formatYuan(t.min))}</div><div class="v4-tier-val">+${t.tickets} 次</div></div>`;
+      })
+      .join('');
+    return;
+  }
+  if (rule.mode === 'per_amount') {
+    if (badge) badge.textContent = '每满即送';
+    grid.className = 'v4-tier-grid is-pair';
+    grid.innerHTML = `
+      <div class="v4-tier-item is-mid"><div class="v4-tier-min">每满 ${escapeHtml(formatYuan(rule.stepAmount))}</div><div class="v4-tier-val">+${rule.stepTickets} 次</div></div>
+      <div class="v4-tier-item is-top"><div class="v4-tier-min">单笔封顶</div><div class="v4-tier-val">${rule.maxTickets} 次</div></div>
+    `;
+    return;
+  }
+  if (badge) badge.textContent = '每笔即送';
+  grid.className = 'v4-tier-grid is-single';
+  const minText = rule.minPayAmount > 0 ? `单笔满 ${formatYuan(rule.minPayAmount)}` : '任意成功支付';
+  grid.innerHTML = `<div class="v4-tier-item is-top"><div class="v4-tier-min">${escapeHtml(minText)}</div><div class="v4-tier-val">送 +${rule.ticketsPerPayment} 次</div></div>`;
+}
+
 function renderPersonal(state) {
   const root = $('me-stats');
   const rule = state.grantRule || normalizeGrantRule(null, state.ticketsPerPayment || 1);
   if (root) {
     root.innerHTML = `
-      <div class="lz-w-balance">
-        <div>
-          <p class="lz-w-balance-k">可抽次数</p>
-          <p class="lz-w-balance-v"><strong>${state.tickets ?? 0}</strong><span>次</span></p>
-          <p class="lz-w-balance-hint">${escapeHtml(grantRuleShort(rule))}</p>
+      <div class="v4-ticket-box lz-w-balance">
+        <p class="v4-ticket-k">当前可抽次数</p>
+        <div class="v4-ticket-row lz-w-balance-v">
+          <strong class="v4-ticket-num">${state.tickets ?? 0}</strong>
+          <span class="v4-ticket-unit">次</span>
+          <span id="delta-slot" class="v4-delta" aria-hidden="true"></span>
         </div>
+        <p class="v4-ticket-sub">${escapeHtml(grantRuleShort(rule))}</p>
       </div>
-      <ul class="lz-w-meta">
-        <li><span>今日已抽</span><strong>${state.todayDraws || 0}</strong></li>
-        <li><span>成功支付</span><strong>${state.payments || 0}</strong></li>
-        <li><span>累计入账</span><strong>${formatMoney(state.totalQuota)}</strong></li>
-      </ul>
+      <div class="v4-stat-grid">
+        <div class="v4-stat-tile"><div class="v4-stat-k">今日已抽</div><div class="v4-stat-v">${state.todayDraws || 0}</div></div>
+        <div class="v4-stat-tile"><div class="v4-stat-k">成功支付</div><div class="v4-stat-v">${state.payments || 0}</div></div>
+        <div class="v4-stat-tile is-gold"><div class="v4-stat-k">累计入账</div><div class="v4-stat-v">${formatMoney(state.totalQuota)}</div></div>
+      </div>
     `;
+  }
+  renderGrantRuleCard(rule, state);
+  const heroSub = $('hero-subtitle');
+  if (heroSub) {
+    const maxQuota = Math.max(0, ...prizes().map((p) => Number(p.quota) || 0));
+    const maxText = maxQuota > 0 ? ` · 最高赢取 ${formatMoney(maxQuota)} 头奖` : '';
+    heroSub.textContent =
+      state.autoRedeem === false
+        ? `全模型通用额度 · 中奖发码支持一键兑换${maxText}`
+        : `全模型通用额度 · 中奖自动秒充钱包${maxText}`;
   }
   const note = $('dock-note-text');
   if (note) {
-    note.textContent = `支付送次数：${grantRuleSummary(rule)}。每次抽取消耗 1 次，奖项内容由后台配置。`;
+    const winHint = rule.windowHours > 0 ? `${windowText(rule.windowHours)}内按单笔最高一档补差发放；` : '';
+    note.textContent = `${winHint}每次消耗 1 次，额度来自库存兑换码，${
+      state.autoRedeem === false ? '支持弹窗或记录页一键兑换入账。' : '中奖默认自动直充余额。'
+    }`;
   }
   scheduleSidePanelSync();
 }
@@ -1982,20 +2070,32 @@ function applyActivityStamp(state = readState()) {
   const blocked = closed || sold;
   document.body.classList.toggle('is-closed', closed);
   document.body.classList.toggle('is-soldout', sold);
-  document.querySelector('.lz-w-ornament')?.classList.toggle('is-soldout', blocked);
+  const stageEl = document.querySelector('.lz-w-ornament');
+  stageEl?.classList.toggle('is-soldout', blocked);
+  stageEl?.classList.toggle('is-blocked', blocked);
   const stamp = $('stock-stamp');
   if (stamp) stamp.hidden = !blocked;
+  const card = $('stamp-card');
+  if (card) card.dataset.kind = closed ? 'closed' : 'soldout';
+  const eyeL = $('stamp-eye-l');
+  const eyeR = $('stamp-eye-r');
+  const drop = $('stamp-drop');
+  const zzz = $('stamp-zzz');
   const tape = $('stamp-tape');
   const title = $('stamp-title');
   const sub = $('stamp-sub');
   const note = $('dock-note-text');
   if (closed) {
-    if (tape) tape.textContent = '活动关闭';
-    if (title) title.textContent = '活动已关闭';
+    if (eyeL) eyeL.textContent = '︶';
+    if (eyeR) eyeR.textContent = '︶';
+    if (drop) drop.hidden = true;
+    if (zzz) zzz.hidden = false;
+    if (tape) tape.textContent = '活动休眠';
+    if (title) title.textContent = '转盘打盹中';
     if (sub) {
       sub.innerHTML = state?.isAdmin
         ? '暂时不能转盘<br><a class="lz-w-stamp-admin" href="./admin.html">点这里重新开启</a>'
-        : '暂时不能转盘<br>充值仍会送抽奖次数';
+        : '暂时不能转盘<br>充值仍会送次数哦';
     }
     if (note) {
       note.textContent = state?.isAdmin
@@ -2005,6 +2105,10 @@ function applyActivityStamp(state = readState()) {
     return;
   }
   if (sold) {
+    if (eyeL) eyeL.textContent = '×';
+    if (eyeR) eyeR.textContent = '×';
+    if (drop) drop.hidden = false;
+    if (zzz) zzz.hidden = true;
     if (tape) tape.textContent = '暂时打烊';
     if (title) title.textContent = '奖被抽空了';
     if (sub) {
@@ -2054,7 +2158,7 @@ function renderHistory(history) {
       const li = document.createElement('li');
       const t = new Date(row.at);
       const extra = PAGE === 'wheel'
-        ? `<span class="label">${escapeHtml(row.label)}</span>${drawCodeCell(row)}<time datetime="${t.toISOString()}">${clock(row.at)}</time>`
+        ? `<span class="label">${escapeHtml(row.label)}</span><div class="v4-mine-right">${drawCodeCell(row)}<time datetime="${t.toISOString()}">${clock(row.at).slice(0, 5)}</time></div>`
         : `<span>${escapeHtml(row.label)}</span><time datetime="${t.toISOString()}">${clock(row.at)}</time>`;
       li.innerHTML = extra;
       return li;
@@ -2143,18 +2247,25 @@ function setBusy(busy, tickets) {
   document.querySelector('.lz-w-ornament')?.classList.toggle('is-spinning', busy);
   if (!btn || !label) return;
   btn.classList.toggle('is-busy', busy);
+  const live = readState();
+  const closed = isActivityClosed(live);
+  const sold = !closed && isSoldOut(live);
+  const remain = tickets !== undefined ? Number(tickets) : Number(live?.tickets);
   if (PAGE === 'wheel') {
-    label.innerHTML = busy ? '开奖<br>中…' : '立即<br>抽奖';
+    if (busy) label.innerHTML = '<span>好运</span><span>来袭</span>';
+    else if (closed) label.innerHTML = '<span>暂未</span><span>开启</span>';
+    else if (sold) label.innerHTML = '<span>暂停</span><span>抽奖</span>';
+    else if (Number.isFinite(remain) && remain < 1) label.innerHTML = '<span>次数</span><span>用完</span>';
+    else label.innerHTML = '<span>立即</span><span>抽奖</span>';
   } else {
     label.textContent = '转一次';
   }
   if (busy) {
     btn.disabled = true;
-    setDrawStatus(PAGE === 'wheel' ? '开奖中…' : '正在转');
+    setDrawStatus(PAGE === 'wheel' ? '' : '正在转');
     return;
   }
-  const live = readState();
-  btn.disabled = isActivityClosed(live) || isSoldOut(live);
+  btn.disabled = closed || sold;
   if (PAGE === 'wheel') {
     setDrawStatus('');
     return;
@@ -2310,12 +2421,21 @@ function openResult(prize, result = {}) {
   const wheelText = prizeWheelText(prize);
   $('result-kicker').textContent = jackpot
     ? Number(prize.quota) >= 10
-      ? '恭喜中大奖'
-      : '抽中大奖'
-    : prize.quota || prize.extraTicket
-      ? '抽中了'
-      : '这次没有中';
+      ? '✨ JACKPOT · 恭喜中头奖'
+      : '⚡ BIG WIN · 抽中大奖'
+    : prize.extraTicket
+      ? '🍀 好运加倍'
+      : prize.quota
+        ? '🎉 恭喜中奖'
+        : '这次擦肩而过';
   $('result-title').textContent = wheelText;
+  const iconWrap = $('res-icon-wrap');
+  if (iconWrap) {
+    const st = wheelSliceStyle(prize, 0);
+    const glyphFill = jackpot ? '#fde047' : 'none';
+    const glyphStroke = jackpot ? '#fef08a' : st.kind === 'miss' ? '#64748b' : '#2563eb';
+    iconWrap.innerHTML = `<svg width="${jackpot ? 36 : 32}" height="${jackpot ? 36 : 32}" viewBox="0 0 24 24" fill="${glyphFill}" stroke="${glyphStroke}" stroke-width="${jackpot ? 1.5 : 2}" stroke-linecap="round" stroke-linejoin="round">${wheelGlyphPath(st.kind)}</svg>`;
+  }
   const icon = $('result-icon');
   if (icon) {
     icon.src = prizeIconSrc(prize);
@@ -2458,6 +2578,7 @@ function closeResult() {
   const modal = $('result-modal');
   if (modal) modal.hidden = true;
   clearJackpotFx();
+  window.LotteryFx?.clearLand?.();
 }
 
 async function onDraw() {
@@ -2508,7 +2629,7 @@ async function onDraw() {
     }
     const landKind = { 'is-jackpot': 'jackpot', 'is-miss': 'miss' }[dialogTone(prize)] || 'win';
     await Promise.all([
-      window.LotteryFx?.landOn(list.indexOf(prize), list.length, landKind),
+      window.LotteryFx?.landOn(list.indexOf(prize), list.length, landKind, prize.id),
       playJackpotFx(prize),
     ]);
     const fresh = await LotteryClient.getState();
@@ -2930,6 +3051,7 @@ function bootBgm() {
     btn.setAttribute('aria-pressed', wanted ? 'true' : 'false');
     btn.setAttribute('aria-label', wanted ? '关闭音乐和音效' : '开启音乐和音效');
     btn.title = wanted ? (playing ? '关闭音乐和音效' : '点击页面后播放') : '开启音乐和音效';
+    setText('bgm-text', wanted ? '音效开' : '已静音');
   };
 
   const playIfWanted = async () => {

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light" />
     <meta name="theme-color" content="#eef4ff" />
-    <title>额度抽奖</title>
+    <title>AI 算力幸运大转盘 · Synai996</title>
     <script>
       (function () {
         try {
@@ -15,173 +15,313 @@
         } catch (e) {}
       })();
     </script>
-    <link rel="preload" as="style" href="./wheel.css?v=w61" />
-    <link rel="preload" as="script" href="./lottery.js?v=w85" />
+    <link rel="preload" as="style" href="./wheel-v4.css?v=w70" />
+    <link rel="preload" as="script" href="./lottery.js?v=w90" />
     <link rel="preload" as="audio" href="./assets/bgm.mp3?v=b1" />
-    <link rel="preload" as="image" href="./assets/ui/wheel-outer-daytime.webp?v=w61" fetchpriority="high" />
-    <link rel="stylesheet" href="./lottery.css" />
-    <link rel="stylesheet" href="./wheel.css?v=w61" />
-    <script defer src="./lottery.js?v=w85"></script>
-    <script defer src="./fx.js?v=f3"></script>
+    <link rel="preload" as="image" href="./assets/ui/wheel-outer-daytime.webp?v=w70" fetchpriority="high" />
+    <link rel="stylesheet" href="./wheel-v4.css?v=w70" />
+    <script defer src="./lottery.js?v=w90"></script>
+    <script defer src="./wheel-v4-fx.js?v=w70"></script>
   </head>
-  <body class="lz-w-app" data-page="wheel">
-    <a class="lz-skip" href="#draw-btn">跳到抽奖</a>
+  <body class="lz-w-app v4-body" data-page="wheel">
+    <a class="v4-skip" href="#draw-btn">跳到抽奖</a>
 
-    <header class="lz-w-nav">
-      <a class="lz-w-logo" href="/" aria-label="返回控制台">
-        <img class="lz-w-logo-img" src="/logo.png" width="32" height="32" alt="" />
-        <span class="lz-w-logo-name">额度抽奖</span>
-      </a>
-      <div class="lz-w-nav-end">
-        <button type="button" class="lz-w-bgm" id="bgm-btn" aria-pressed="true" aria-label="关闭音乐和音效" title="音乐和音效">
-          <svg class="lz-w-bgm-on" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M4 9v6h3.2L12 19.8V4.2L7.2 9H4zm11.5 3a3.5 3.5 0 0 0-2-3.15v6.3A3.5 3.5 0 0 0 15.5 12zm-2-8.05v2.06A6.5 6.5 0 0 1 19.5 12a6.5 6.5 0 0 1-6 6.99v2.06A8.5 8.5 0 0 0 21.5 12a8.5 8.5 0 0 0-8-8.05z"/></svg>
-          <svg class="lz-w-bgm-off" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M4 9v6h3.2L12 19.8V4.2L7.2 9H4zm12.7 1.1 1.4 1.4-2.1 2.1 2.1 2.1-1.4 1.4-2.1-2.1-2.1 2.1-1.4-1.4 2.1-2.1-2.1-2.1 1.4-1.4 2.1 2.1 2.1-2.1z"/></svg>
-        </button>
-        <a class="lz-w-admin-link" id="admin-link" href="./admin.html" hidden>抽奖管理</a>
-        <div class="lz-w-user is-out" id="user-chip">
-          <span class="lz-w-user-dot" aria-hidden="true"></span>
-          <span id="auth-hint">未登录</span>
-        </div>
-        <form class="lz-w-login" id="lottery-login" hidden>
-          <input id="login-username" type="text" name="username" placeholder="用户名" autocomplete="username" />
-          <input id="login-password" type="password" name="password" placeholder="密码" autocomplete="current-password" />
-          <button type="submit">登录</button>
-          <p class="lz-w-auth" id="login-msg" hidden></p>
-        </form>
-      </div>
-    </header>
+    <div id="day-stage" class="v4-stage">
+      <div class="v4-aurora v4-a1" aria-hidden="true"></div>
+      <div class="v4-aurora v4-a2" aria-hidden="true"></div>
+      <div class="v4-aurora v4-a3" aria-hidden="true"></div>
+      <div class="v4-grid" aria-hidden="true"></div>
+      <canvas id="bg-fx-canvas" aria-hidden="true"></canvas>
+      <canvas id="confetti-canvas" aria-hidden="true"></canvas>
 
-    <main class="lz-w-board">
-      <aside class="lz-w-panel lz-w-panel-side" aria-labelledby="feed-title">
-        <div class="lz-w-panel-head">
-          <h2 id="feed-title">中奖记录</h2>
-          <p>全站最近入账</p>
+      <!-- 顶部清透导航 -->
+      <header class="v4-nav">
+        <a class="v4-brand lz-w-logo" href="/" aria-label="返回首页">
+          <img class="v4-brand-img lz-w-logo-img" src="/logo.png" width="32" height="32" alt="" onerror="this.hidden=true;this.nextElementSibling.hidden=false;" />
+          <span class="v4-brand-badge" hidden>S</span>
+          <span class="v4-brand-name">Synai996</span>
+          <span class="v4-brand-pill lz-w-logo-name">额度抽奖</span>
+        </a>
+
+        <div class="v4-nav-end">
+          <button type="button" class="v4-pill-btn lz-w-bgm" id="bgm-btn" aria-pressed="true" aria-label="关闭音乐和音效" title="音乐和音效">
+            <svg class="lz-w-bgm-on v4-ico-on" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+            <svg class="lz-w-bgm-off v4-ico-off" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+            <span id="bgm-text">音效开</span>
+          </button>
+
+          <a class="v4-admin-link lz-w-admin-link" id="admin-link" href="./admin.html" hidden>抽奖管理</a>
+
+          <div class="v4-user-chip lz-w-user is-out" id="user-chip">
+            <span class="v4-user-dot lz-w-user-dot" aria-hidden="true"></span>
+            <span id="auth-hint">未登录</span>
+          </div>
+
+          <form class="v4-login-form lz-w-login" id="lottery-login" hidden>
+            <input id="login-username" type="text" name="username" placeholder="用户名" autocomplete="username" />
+            <input id="login-password" type="password" name="password" placeholder="密码" autocomplete="current-password" />
+            <button type="submit">登录</button>
+            <p class="v4-login-msg" id="login-msg" hidden></p>
+          </form>
         </div>
-        <div class="lz-w-feed-viewport">
-          <ol class="lz-w-feed" id="win-feed">
-            <li class="lz-empty">
-              <div class="lz-w-empty">
-                <strong>暂无中奖记录</strong>
-                <span class="lz-w-empty-hint">全站入账后会滚动显示</span>
+      </header>
+
+      <!-- 三栏主舞台 -->
+      <main class="v4-main">
+        <!-- 左栏：全站实时中奖 + 阶梯充值规则 -->
+        <aside class="v4-col v4-col-left">
+          <section class="v4-panel v4-feed-card" aria-labelledby="feed-title">
+            <div class="v4-panel-head">
+              <div class="v4-head-title">
+                <span class="v4-live-dot" aria-hidden="true"></span>
+                <h2 id="feed-title">全站中奖播报</h2>
               </div>
-            </li>
-          </ol>
-        </div>
-      </aside>
+              <span class="v4-live-tag">LIVE</span>
+            </div>
+            <div class="v4-feed-mask lz-w-feed-viewport">
+              <ol class="v4-feed-list lz-w-feed" id="win-feed">
+                <li class="lz-empty">
+                  <div class="lz-w-empty">
+                    <strong>暂无中奖记录</strong>
+                    <span class="lz-w-empty-hint">全站入账后会滚动显示</span>
+                  </div>
+                </li>
+              </ol>
+            </div>
+          </section>
 
-      <section class="lz-w-arena">
-        <div class="lz-w-hero">
-          <div class="lz-w-hero-kicker">AI 算力幸运转盘 · 真实库存自动入账</div>
-          <h1 class="lz-w-title-text">幸运大抽奖</h1>
-        </div>
+          <section class="v4-panel v4-rule-card" aria-labelledby="rule-title">
+            <div class="v4-rule-head">
+              <h3 id="rule-title">单笔充值送次数</h3>
+              <span class="v4-rule-badge" id="rule-mode-badge">按最高档</span>
+            </div>
+            <div class="v4-tier-grid" id="grant-tier-grid"></div>
+            <p class="v4-rule-note" id="dock-note-text">成功支付送抽奖次数，每次抽取消耗 1 次，额度来自库存兑换码，中奖默认自动直充余额。</p>
+          </section>
+        </aside>
 
-        <div class="lz-w-ornament lz-w-wheel-stack" aria-label="抽奖转盘">
-          <div class="lz-w-holo-orbit-1" aria-hidden="true"></div>
-          <div class="lz-w-holo-orbit-2" aria-hidden="true"></div>
-          <div class="lz-w-disc" aria-hidden="false">
-            <div id="lucky-wheel" role="img" aria-label="额度抽奖转盘"></div>
-            <div class="lz-w-disc-sheen" aria-hidden="true"></div>
+        <!-- 中栏：白天 3D 精雕高动效转盘 -->
+        <section class="v4-col v4-col-center">
+          <div class="v4-hero">
+            <div class="v4-wordmark-wrap">
+              <svg class="v4-star" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+                <path d="M12 2C13 7.8 16.2 11 22 12C16.2 13 13 16.2 12 22C11 16.2 7.8 13 2 12C7.8 11 11 7.8 12 2Z" />
+              </svg>
+              <svg class="v4-wordmark-svg" viewBox="0 0 460 60" role="img" aria-label="AI 算力幸运大转盘">
+                <defs>
+                  <linearGradient id="wmFill" x1="0%" y1="0%" x2="100%" y2="85%">
+                    <stop offset="0%" stop-color="#1d4ed8" />
+                    <stop offset="34%" stop-color="#0284c7" />
+                    <stop offset="64%" stop-color="#2563eb" />
+                    <stop offset="100%" stop-color="#d97706" />
+                  </linearGradient>
+                  <linearGradient id="wmSheen" x1="-60%" y1="0%" x2="0%" y2="0%">
+                    <stop offset="0%" stop-color="#ffffff" stop-opacity="0" />
+                    <stop offset="50%" stop-color="#ffffff" stop-opacity="0.72" />
+                    <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+                    <animate attributeName="x1" values="-70%;140%" dur="3.8s" repeatCount="indefinite" />
+                    <animate attributeName="x2" values="-10%;200%" dur="3.8s" repeatCount="indefinite" />
+                  </linearGradient>
+                  <filter id="wmDepth" x="-8%" y="-15%" width="116%" height="145%">
+                    <feDropShadow dx="0" dy="3" stdDeviation="0" flood-color="#1e3a8a" flood-opacity="0.24" />
+                    <feDropShadow dx="0" dy="7" stdDeviation="5" flood-color="#2563eb" flood-opacity="0.18" />
+                  </filter>
+                </defs>
+                <g filter="url(#wmDepth)">
+                  <text x="230" y="43" text-anchor="middle" font-family="'Maple Mono NF CN', 'PingFang SC', monospace" font-size="35" font-weight="800" letter-spacing="2" fill="none" stroke="#ffffff" stroke-width="7" stroke-linejoin="round">AI 算力幸运大转盘</text>
+                  <text x="230" y="43" text-anchor="middle" font-family="'Maple Mono NF CN', 'PingFang SC', monospace" font-size="35" font-weight="800" letter-spacing="2" fill="url(#wmFill)">AI 算力幸运大转盘</text>
+                  <text x="230" y="43" text-anchor="middle" font-family="'Maple Mono NF CN', 'PingFang SC', monospace" font-size="35" font-weight="800" letter-spacing="2" fill="url(#wmSheen)">AI 算力幸运大转盘</text>
+                </g>
+              </svg>
+              <svg class="v4-star v4-star-2" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+                <path d="M12 2C13 7.8 16.2 11 22 12C16.2 13 13 16.2 12 22C11 16.2 7.8 13 2 12C7.8 11 11 7.8 12 2Z" />
+              </svg>
+            </div>
+            <p id="hero-subtitle" class="v4-hero-sub">全模型通用额度 · 中奖自动秒充钱包 · 最高赢取 $10.00 头奖</p>
           </div>
-          <img class="lz-w-wheel-outer" src="./assets/ui/wheel-outer-daytime.webp?v=w61" alt="" draggable="false" fetchpriority="high" decoding="async" />
-          <div class="lz-w-pointer-needle" aria-hidden="true">
-            <svg viewBox="0 0 36 46" width="34" height="44">
-              <defs>
-                <linearGradient id="lz-ptr-gold" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stop-color="#fffbeb" />
-                  <stop offset="48%" stop-color="#f5b93b" />
-                  <stop offset="100%" stop-color="#b45309" />
-                </linearGradient>
-              </defs>
-              <path d="M18 44L5 15C3.5 9.5 7.6 4 13.4 4h9.2C28.4 4 32.5 9.5 31 15L18 44z" fill="url(#lz-ptr-gold)" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="round" />
-              <circle cx="18" cy="14" r="4.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.8" />
-            </svg>
-          </div>
-          <div class="lz-w-hub">
-            <button class="lz-w-spin lz-w-spin-3d" id="draw-btn" type="button">
-              <span class="lz-w-spin-grid" id="draw-label">立即<br>抽奖</span>
-            </button>
-          </div>
-          <div class="lz-w-jackpot-fx" id="jackpot-fx" hidden aria-hidden="true"></div>
-          <div class="lz-w-stamp" id="stock-stamp" hidden>
-            <div class="lz-w-stamp-card">
-              <span class="lz-w-stamp-tape" id="stamp-tape">暂时打烊</span>
-              <div class="lz-w-stamp-face" aria-hidden="true">
-                <span class="lz-w-stamp-eye">×</span>
-                <span class="lz-w-stamp-eye">×</span>
-                <span class="lz-w-stamp-mouth"></span>
-                <span class="lz-w-stamp-drop"></span>
+
+          <!-- 3D 雕塑外圈 + 满级动效核心转盘 -->
+          <div id="wheel-stage" class="v4-wheel-stage lz-w-ornament lz-w-wheel-stack" aria-label="抽奖转盘">
+            <div class="v4-wheel-aura" aria-hidden="true"></div>
+            <div class="v4-speed-lines" aria-hidden="true"></div>
+            <div class="v4-holo-orbit-1" aria-hidden="true"></div>
+            <div class="v4-holo-orbit-2" aria-hidden="true"></div>
+
+            <!-- 旋转内盘（严丝合缝位于 3D 外圈内孔 63.8%） -->
+            <div class="v4-wheel-well lz-w-disc">
+              <div id="lucky-wheel" class="v4-wheel-host" role="img" aria-label="Synai996 AI 算力转盘盘面"></div>
+              <div class="v4-glass-sheen" aria-hidden="true"></div>
+              <div id="wheel-spotlight" class="v4-spotlight" style="--n: 6;" aria-hidden="true">
+                <div class="v4-spotlight-dim"></div>
+                <div class="v4-spotlight-hit"></div>
               </div>
-              <strong class="lz-w-stamp-title" id="stamp-title">奖被抽空了</strong>
-              <p class="lz-w-stamp-sub" id="stamp-sub">站长去进货了<br>转盘先歇一会儿</p>
+            </div>
+
+            <!-- 3D 精雕珍珠白×香槟金×蓝晶 AI 外圈 -->
+            <img class="v4-wheel-outer lz-w-wheel-outer" src="./assets/ui/wheel-outer-daytime.webp?v=w70" alt="" draggable="false" fetchpriority="high" decoding="async" />
+
+            <!-- 外圈金珠环实时流光扫射层 -->
+            <div class="v4-rim-sweep" aria-hidden="true">
+              <i class="v4-rim-sweep-idle"></i>
+            </div>
+
+            <!-- 精准对齐 24 颗 3D 珍珠的动态星芒跑马灯 -->
+            <div id="bulb-glow-ring" class="v4-bulb-ring" aria-hidden="true"></div>
+
+            <!-- 12 点钟立体香槟金×蓝晶机械拨片指针 + 撞钉火花 -->
+            <div class="v4-pointer-mount" aria-hidden="true">
+              <svg id="pointer-blade" class="v4-pointer-blade" viewBox="0 0 46 62" fill="none">
+                <defs>
+                  <linearGradient id="ptrGold" x1="23" y1="3" x2="23" y2="58" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stop-color="#fffbeb" />
+                    <stop offset="38%" stop-color="#f5c96b" />
+                    <stop offset="82%" stop-color="#c98a1e" />
+                    <stop offset="100%" stop-color="#925b0b" />
+                  </linearGradient>
+                  <linearGradient id="ptrCrystal" x1="23" y1="22" x2="23" y2="52" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stop-color="#e0f2fe" />
+                    <stop offset="45%" stop-color="#38bdf8" />
+                    <stop offset="100%" stop-color="#1d4ed8" />
+                  </linearGradient>
+                </defs>
+                <circle cx="23" cy="15" r="12.5" fill="#ffffff" stroke="#d9a038" stroke-width="2" />
+                <path d="M13 15C13 9.5 17.5 5 23 5C28.5 5 33 9.5 33 15L25.4 53.5C24.9 56.2 21.1 56.2 20.6 53.5L13 15Z" fill="url(#ptrGold)" stroke="#ffffff" stroke-width="1.2" />
+                <path d="M23 22L26 45.8C25.4 49 20.6 49 20 45.8L23 22Z" fill="url(#ptrCrystal)" />
+                <circle cx="23" cy="15" r="4.5" fill="#1d4ed8" />
+                <circle cx="23" cy="15" r="2" fill="#e0f2fe" />
+              </svg>
+              <div id="pointer-spark" class="v4-pointer-spark"></div>
+            </div>
+
+            <!-- 中心 3D 精密机械鎏金×蓝晶穹顶核心旋钮 -->
+            <div class="v4-hub-wrap lz-w-hub">
+              <span class="v4-hub-ripple" aria-hidden="true"></span>
+              <span class="v4-hub-ripple v4-hub-ripple-2" aria-hidden="true"></span>
+              <svg class="v4-hub-mech-ring" viewBox="0 0 120 120" aria-hidden="true">
+                <circle cx="60" cy="60" r="56.5" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="1" />
+                <g fill="#fffbeb" stroke="#a16207" stroke-width="0.9">
+                  <circle cx="60" cy="4.2" r="2.1" />
+                  <circle cx="99.5" cy="20.5" r="2.1" />
+                  <circle cx="115.8" cy="60" r="2.1" />
+                  <circle cx="99.5" cy="99.5" r="2.1" />
+                  <circle cx="60" cy="115.8" r="2.1" />
+                  <circle cx="20.5" cy="99.5" r="2.1" />
+                  <circle cx="4.2" cy="60" r="2.1" />
+                  <circle cx="20.5" cy="20.5" r="2.1" />
+                </g>
+              </svg>
+              <span class="v4-hub-energy-collar" aria-hidden="true"></span>
+              <button class="v4-hub-btn lz-w-spin" id="draw-btn" type="button" aria-label="立即抽奖">
+                <span class="v4-hub-title" id="draw-label"><span>立即</span><span>抽奖</span></span>
+              </button>
+            </div>
+
+            <div class="lz-w-jackpot-fx" id="jackpot-fx" hidden aria-hidden="true"></div>
+
+            <!-- 经典倾斜可爱表情 缺货 / 打烊 覆盖卡 -->
+            <div class="v4-stamp-overlay lz-w-stamp" id="stock-stamp" hidden>
+              <div class="v4-stamp-card" id="stamp-card" data-kind="soldout">
+                <span class="v4-stamp-tape" id="stamp-tape">暂时打烊</span>
+                <div class="v4-stamp-face" aria-hidden="true">
+                  <span class="v4-stamp-eye" id="stamp-eye-l">×</span>
+                  <span class="v4-stamp-eye" id="stamp-eye-r">×</span>
+                  <span class="v4-stamp-blush left"></span>
+                  <span class="v4-stamp-blush right"></span>
+                  <span class="v4-stamp-mouth"></span>
+                  <span class="v4-stamp-drop" id="stamp-drop"></span>
+                  <span class="v4-stamp-zzz" id="stamp-zzz" hidden>zZ</span>
+                </div>
+                <strong class="v4-stamp-title" id="stamp-title">奖被抽空了</strong>
+                <p class="v4-stamp-sub" id="stamp-sub">站长去进货了<br>转盘先歇一会儿</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 盘下超紧凑单行中奖概率条 -->
+          <div class="v4-odds-bar" id="odds-bar" aria-label="中奖概率公示">
+            <span class="v4-odds-rate" id="odds-win-rate">中奖率 —</span>
+            <ul class="v4-odds-list" id="prize-odds-strip"></ul>
+          </div>
+
+          <p class="v4-draw-status" id="draw-status" hidden></p>
+        </section>
+
+        <!-- 右栏：我的次数 + 三格指标 + 最近抽取 -->
+        <aside class="v4-col v4-col-right">
+          <section class="v4-panel v4-me-card" aria-labelledby="me-title">
+            <div class="v4-panel-head">
+              <h2 id="me-title">我的抽取</h2>
+              <a class="v4-topup-btn" href="/console/topup">
+                去充值
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
+              </a>
+            </div>
+
+            <div id="me-stats"></div>
+
+            <div class="v4-mine-section">
+              <div class="v4-mine-head">
+                <h3>最近抽取</h3>
+                <a class="v4-mine-more" href="./history.html">查看全部 →</a>
+              </div>
+              <ol class="v4-mine-list lz-w-mine" id="history-list">
+                <li class="lz-empty">
+                  <div class="lz-w-empty">
+                    <strong>还没有抽取记录</strong>
+                    <span class="lz-w-empty-hint">抽奖结果会显示在这里</span>
+                  </div>
+                </li>
+              </ol>
+            </div>
+          </section>
+        </aside>
+      </main>
+
+      <!-- 浮动 Toast -->
+      <p class="v4-toast" id="draw-toast" hidden role="status"></p>
+
+      <!-- 白天实底水晶中奖结果弹窗 -->
+      <div class="v4-modal-backdrop lz-modal" id="result-modal" hidden>
+        <div class="v4-modal-card lz-dialog lz-w-dialog" role="dialog" aria-modal="true" aria-labelledby="result-title" aria-describedby="result-desc">
+          <div class="v4-res-glow" id="res-glow" aria-hidden="true"></div>
+          <div class="v4-res-body">
+            <div class="v4-res-kicker-wrap">
+              <span class="v4-res-kicker" id="result-kicker">抽奖结果</span>
+            </div>
+            <div class="v4-res-icon-wrap" id="res-icon-wrap" aria-hidden="true"></div>
+            <img id="result-icon" alt="" hidden />
+            <h2 class="v4-res-title" id="result-title">—</h2>
+            <p class="v4-res-chip" id="result-chip" hidden>大奖</p>
+
+            <div class="v4-res-credit" id="result-credit" hidden>
+              <span class="v4-res-check" aria-hidden="true">✓</span>
+              <span><span id="result-credit-k">已自动入账</span> <strong id="result-credit-amount"></strong></span>
+            </div>
+
+            <div class="v4-res-code" id="result-code-wrap" hidden>
+              <div class="v4-res-code-meta">
+                <span class="v4-res-code-k">专属兑换码</span>
+                <code id="result-code-text"></code>
+              </div>
+              <button type="button" class="v4-res-copy" id="result-code-btn" data-copy="">
+                <span class="lz-w-copy-tip">复制</span>
+              </button>
+            </div>
+
+            <p class="v4-res-desc" id="result-desc"></p>
+
+            <div class="v4-res-actions">
+              <button class="v4-res-btn v4-res-btn-emerald" id="result-redeem" type="button" hidden>一键兑换到余额</button>
+              <button class="v4-res-btn v4-res-btn-primary" id="result-close" type="button">继续抽取</button>
             </div>
           </div>
         </div>
-
-        <ul class="lz-w-odds-strip" id="prize-odds-strip" aria-label="奖池与中奖概率"></ul>
-
-        <p class="lz-w-draw-status" id="draw-status" hidden></p>
-        <p class="lz-w-toast" id="draw-toast" hidden role="status"></p>
-        <div class="lz-w-note">
-          <span class="lz-w-note-ico" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="#2f6dff" d="M12 2 4 5.5v6.2c0 5 3.4 9.4 8 10.8 4.6-1.4 8-5.8 8-10.8V5.5L12 2zm-1.2 13.3-3.1-3.1 1.4-1.4 1.7 1.7 4.2-4.2 1.4 1.4-5.6 5.6z"/></svg>
-          </span>
-          <div>
-            <p class="lz-w-note-title">活动说明</p>
-            <p class="lz-w-note-text" id="dock-note-text">成功支付送抽奖次数，每次抽取消耗 1 次。奖项内容由后台配置。</p>
-          </div>
-        </div>
-      </section>
-
-      <aside class="lz-w-panel lz-w-panel-side" aria-labelledby="me-title">
-        <div class="lz-w-panel-head">
-          <h2 id="me-title">我的抽取</h2>
-          <a class="lz-w-topup" href="/console/topup">去充值</a>
-        </div>
-        <div class="lz-w-stats" id="me-stats"></div>
-        <section class="lz-w-mine-block">
-          <h3 class="lz-w-sub">最近抽取</h3>
-          <ol class="lz-w-mine" id="history-list">
-            <li class="lz-empty">
-              <div class="lz-w-empty">
-                <strong>还没有抽取记录</strong>
-                <span class="lz-w-empty-hint">抽奖结果会显示在这里</span>
-              </div>
-            </li>
-          </ol>
-          <a class="lz-w-more" href="./history.html">查看全部记录</a>
-        </section>
-      </aside>
-    </main>
+      </div>
+    </div>
 
     <span id="tickets-count" hidden></span>
     <span id="stat-today" hidden></span>
     <span id="stat-sum" hidden></span>
-    <span id="mode-label" class="lz-visually-hidden">MOCK</span>
-
-    <div class="lz-modal" id="result-modal" hidden>
-      <div class="lz-dialog lz-w-dialog" role="dialog" aria-modal="true" aria-labelledby="result-title" aria-describedby="result-desc">
-        <div class="lz-w-result-art">
-          <img id="result-icon" alt="" />
-        </div>
-        <p class="lz-dialog-kicker" id="result-kicker">抽奖结果</p>
-        <h2 id="result-title">—</h2>
-        <p class="lz-w-result-chip" id="result-chip" hidden>大奖</p>
-        <div class="lz-w-result-code" id="result-code-wrap" hidden>
-          <span class="lz-w-result-code-k">兑换码</span>
-          <button type="button" class="lz-w-copy" id="result-code-btn" data-copy="">
-            <code id="result-code-text"></code>
-            <span class="lz-w-copy-tip">复制</span>
-          </button>
-        </div>
-        <div class="lz-w-result-credit" id="result-credit" hidden>
-          <span class="lz-w-result-credit-icon" aria-hidden="true"></span>
-          <span><span id="result-credit-k">已自动入账</span> <strong id="result-credit-amount"></strong></span>
-        </div>
-        <p id="result-desc"></p>
-        <button class="lz-w-spin lz-w-spin-plain" id="result-redeem" type="button" hidden>一键兑换到余额</button>
-        <button class="lz-w-spin lz-w-spin-plain" id="result-close" type="button">继续抽取</button>
-      </div>
-    </div>
-
+    <span id="mode-label" hidden>MOCK</span>
   </body>
 </html>
