@@ -26,7 +26,7 @@ const ScrollHome = ({ docsUrl, siteUrl, systemName }) => {
           rechargeUrl: '/console/topup',
           subscriptionUrl: '/console/topup',
           pricingUrl: '/pricing',
-          tutorialUrl: 'https://doc.synai996.space/',
+          tutorialUrl: docsUrl || 'https://doc.synai996.space/',
           logo: '/synai-logo.png',
           systemName: displayName === 'New API' ? 'Synai996' : displayName,
           showDemoSettings: false,
