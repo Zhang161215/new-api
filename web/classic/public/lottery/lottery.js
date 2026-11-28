@@ -2255,6 +2255,8 @@ function setBusy(busy, tickets) {
     if (busy) label.innerHTML = '<span>好运</span><span>来袭</span>';
     else if (closed) label.innerHTML = '<span>暂未</span><span>开启</span>';
     else if (sold) label.innerHTML = '<span>暂停</span><span>抽奖</span>';
+    // 未登录时次数也是 0，别显示「次数用完」，点了会提示登录
+    else if (LotteryClient.mode === 'api' && live?.loggedIn === false) label.innerHTML = '<span>登录</span><span>抽奖</span>';
     else if (Number.isFinite(remain) && remain < 1) label.innerHTML = '<span>次数</span><span>用完</span>';
     else label.innerHTML = '<span>立即</span><span>抽奖</span>';
   } else {

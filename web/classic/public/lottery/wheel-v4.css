@@ -1851,6 +1851,13 @@ body.v4-body {
 }
 
 @media (max-width: 560px) {
+  /* 手机宽度放不下一行：登录表单换到第二行铺满，否则「登录」按钮被挤出屏幕 */
+  .v4-nav { flex-wrap: wrap; row-gap: 8px; padding: 8px 14px; }
+  .v4-brand-pill,
+  .v4-user-chip { white-space: nowrap; }
+  .v4-nav-end { flex: 1 1 auto; justify-content: flex-end; }
+  .v4-login-form { flex: 1 1 100%; }
+  .v4-login-form input { flex: 1 1 0; min-width: 0; width: auto; }
   .v4-wordmark-svg { height: 40px; }
   .v4-star { width: 16px; height: 16px; }
   .v4-odds-bar { border-radius: 16px; }
