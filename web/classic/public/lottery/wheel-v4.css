@@ -554,8 +554,11 @@ body.v4-body {
 
 /* ================= 中栏：3D 鎏金湛蓝动感艺术标题 ================= */
 .v4-hero {
+  position: relative;
+  z-index: 9; /* 压在转盘外圈光环上面，转动时的速度线也挡不住标题 */
   text-align: center;
-  margin-bottom: 6px;
+  /* 外圈全息光环比盘面大 4.5%（约 24px），原来只留 6px，会压住副标题 */
+  margin-bottom: 34px;
 }
 .v4-wordmark-wrap {
   position: relative;
@@ -1269,7 +1272,10 @@ body.v4-body {
 
 /* ================= 盘下超紧凑单行中奖概率胶囊条 ================= */
 .v4-odds-bar {
-  margin-top: 10px;
+  position: relative;
+  z-index: 9;
+  /* 同上：给外圈光环留出位置，别压住中奖率 */
+  margin-top: 36px;
   width: 100%;
   max-width: 560px;
   display: flex;
